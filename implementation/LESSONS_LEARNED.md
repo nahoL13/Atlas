@@ -53,6 +53,30 @@ A ausência de atrito também é informação.
 
 # Registro
 
-Nenhuma entrada ainda.
+## SPEC-0001 — Workspace Bootstrap (2026-07-10)
 
-A primeira SPEC concluída inaugura este registro.
+**Descobrimos que...**
+
+A máquina não tinha pnpm; o corepack ativou a última estável (11.11.0), um major acima do que o plano assumia (10.x).
+
+O pnpm exige a flag `-w` para adicionar dependências na raiz do workspace (guard `ERR_PNPM_ADDING_TO_ROOT`).
+
+"Instalar a última estável" trouxe o TypeScript 7.0.2 (compilador nativo), que o typescript-eslint 8.63 ainda não suporta (TypeError em `typescript-estree`); o `pnpm typecheck` puro funcionava com o TS 7 — a quebra era só no lint. Pinamos `typescript@^5` (5.9.3) e tudo ficou verde.
+
+`pnpm format` sem proteção reformataria toda a documentação manuscrita; `**/*.md` no `.prettierignore` resolveu sem custo.
+
+**A arquitetura ajudou porque...**
+
+O plano previa explicitamente o risco de incompatibilidade do TS 7 e o fallback (`typescript@^5`), então o problema foi resolvido em um passo, sem parar a execução.
+
+Critérios de aceitação executáveis (cinco comandos na raiz) tornaram a Definition of Done objetiva e verificável.
+
+**A arquitetura atrapalhou porque...**
+
+Nada a registrar — nenhum componente arquitetural em uso ainda nesta SPEC.
+
+**Precisamos mudar...**
+
+Voltar o TypeScript para a série 7 quando o typescript-eslint suportar o compilador nativo (encaminhamento: verificação registrada como observação da SPEC-0002; remover a nota de pin do CLAUDE.md quando resolvido).
+
+Planos devem verificar versões reais na máquina em vez de assumi-las (encaminhamento: PLAN-0001 corrigido nesta entrega; prática incorporada aos próximos planos).

@@ -6,7 +6,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Project Atlas: plataforma de IA pessoal organizada como **monólito modular**, orientada por um ciclo cognitivo (compreensão → raciocínio → planejamento → execução → observação → aprendizado → resposta). A primeira Persona oficial será **Jarvis**. Este repositório é o workspace raiz; a plataforma principal viverá em `atlas-core`.
 
-**Estado em julho/2026: fase "Architecture & Engineering Foundation" — ainda não existe código.** O repositório contém apenas documentação arquitetural. Não há comandos de build/teste/lint; serão definidos quando o primeiro projeto nascer via SPEC.
+**Estado em julho/2026: fundação do monorepo criada (SPEC-0001).** Workspace pnpm + TypeScript strict operacionais; nenhum componente do Module Catalog implementado ainda — `packages/contracts` e `packages/core` nascem na SPEC-0002, `apps/cli` na SPEC-0003.
+
+## Comandos
+
+- `pnpm install` — instala o workspace (Node ≥ 24, pnpm ≥ 11 via corepack)
+- `pnpm lint` — ESLint (flat config, typescript-eslint)
+- `pnpm format` / `pnpm format:check` — Prettier (arquivos `.md` são ignorados por design)
+- `pnpm typecheck` — TypeScript sem emissão
+- `pnpm test` — Vitest
+- `pnpm build` — build recursivo (no-op até existirem packages)
+
+Nota: `typescript` está pinado na série 5 até o typescript-eslint suportar o TS 7 (ver LESSONS_LEARNED).
 
 ## Invariantes (não negociáveis)
 
@@ -60,6 +71,6 @@ Para evitar buscas inúteis — os itens abaixo são citados pela documentação
 
 - `CURRENT_SPRINT` e `NEXT_CONTEXT` → viverão em `docs/05-context/` (pasta existe, vazia)
 - Roadmap
-- A estrutura de código-alvo (`apps/`, `packages/`, `tooling/`...) descrita em `docs/03-architecture/ProjectStructure.md` — a fundação é criada pela `implementation/specs/SPEC-0001-workspace-bootstrap.md` (Draft)
+- `packages/` e `apps/`: `packages/contracts` e `packages/core` nascem na SPEC-0002 (core-bootstrap); `apps/cli` na SPEC-0003 (cli-foundation)
 
 Quando um desses artefatos for criado, atualize esta seção (e remova-a quando esvaziar).

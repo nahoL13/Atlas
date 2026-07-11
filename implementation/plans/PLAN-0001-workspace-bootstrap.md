@@ -12,7 +12,7 @@
 
 - NÃO criar `apps/`, `packages/`, `tooling/`, `.github/` nem `.claude/skills/` (SPEC-0001, Fora do Escopo).
 - NÃO adicionar dependências além de: `typescript`, `@types/node`, `vitest`, `eslint`, `@eslint/js`, `typescript-eslint`, `eslint-config-prettier`, `prettier`.
-- Dependências instaladas sem versão fixa no comando (`pnpm add -D <pkg>` = última estável); o `pnpm-lock.yaml` registra as versões exatas — isso cumpre a Restrição da SPEC ("versões exatas definidas no plano, priorizando estáveis").
+- Dependências instaladas na raiz com `pnpm add -Dw <pkg>` (a flag `-w` é obrigatória na raiz do workspace), sem versão fixa no comando (= última estável); o `pnpm-lock.yaml` registra as versões exatas — isso cumpre a Restrição da SPEC ("versões exatas definidas no plano, priorizando estáveis"). Exceção: `typescript` pinado em `^5` — o 7.x é incompatível com o typescript-eslint em 2026-07 (ver LESSONS_LEARNED).
 - Raiz é ESM: `"type": "module"` no `package.json`.
 - Mensagens de commit: conventional commits com descrição em português.
 - Todo commit termina com o trailer: `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>` (usar dois `-m`).
@@ -135,7 +135,7 @@ Expected: exatamente 1 commit listado.
 - [ ] **Step 1: Verificar o pnpm**
 
 Run: `pnpm --version`
-Expected: `10.x`. Se ausente: `corepack enable` e repetir.
+Expected: `11.x`. Se ausente: `corepack enable && corepack prepare pnpm@latest --activate` e repetir.
 
 - [ ] **Step 2: Criar `package.json`**
 
@@ -196,8 +196,8 @@ git commit -m "chore: configura workspace pnpm" -m "Co-Authored-By: Claude Fable
 
 - [ ] **Step 1: Instalar TypeScript e tipos do Node**
 
-Run: `pnpm add -D typescript @types/node`
-Expected: devDependencies atualizadas sem erros.
+Run: `pnpm add -Dw typescript@^5 @types/node`
+Expected: devDependencies atualizadas sem erros. (TS pinado em `^5`: o 7.x quebra o typescript-eslint — ver LESSONS_LEARNED.)
 
 - [ ] **Step 2: Criar `tsconfig.base.json`**
 
@@ -239,7 +239,7 @@ Expected: devDependencies atualizadas sem erros.
 - [ ] **Step 4: Verificar a instalação**
 
 Run: `pnpm exec tsc --version`
-Expected: `Version 5.x`. (`pnpm typecheck` ainda falharia com TS18003 — sem inputs até a Task 4; não executar aqui.)
+Expected: `Version 5.9.x`. (`pnpm typecheck` ainda falharia com TS18003 — sem inputs até a Task 4; não executar aqui.)
 
 - [ ] **Step 5: Commit**
 
@@ -285,7 +285,7 @@ Expected: FALHA — `vitest` não instalado (`Command "vitest" not found`).
 
 - [ ] **Step 3: Instalar o Vitest**
 
-Run: `pnpm add -D vitest`
+Run: `pnpm add -Dw vitest`
 Expected: devDependencies atualizadas sem erros.
 
 - [ ] **Step 4: Criar `vitest.config.ts`**
@@ -331,7 +331,7 @@ git commit -m "test: adiciona pipeline vitest com teste smoke" -m "Co-Authored-B
 
 - [ ] **Step 1: Instalar as dependências**
 
-Run: `pnpm add -D eslint @eslint/js typescript-eslint eslint-config-prettier prettier`
+Run: `pnpm add -Dw eslint @eslint/js typescript-eslint eslint-config-prettier prettier`
 Expected: devDependencies atualizadas sem erros.
 
 - [ ] **Step 2: Criar `eslint.config.js`**
@@ -366,7 +366,10 @@ pnpm-lock.yaml
 node_modules/
 dist/
 coverage/
+**/*.md
 ```
+
+(`**/*.md` protege a documentação manuscrita — `docs/`, `PROJECT.md`, `implementation/` — de churn de formatação; código e configs continuam cobertos.)
 
 - [ ] **Step 5: Rodar o lint**
 

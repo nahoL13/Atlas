@@ -20,7 +20,7 @@ Workspace Bootstrap — fundação do monorepo
 
 **Status**
 
-In Progress
+Review
 
 ---
 
