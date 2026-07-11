@@ -71,7 +71,7 @@ Origem: fluxo de SPECs definido no Project Structure (`SPEC-0003-cli-foundation`
 - `src/commands/status.ts`: `runStatus(atlas, output)` — formata e entrega estado + config resolvida;
 - comandos: `status`, `--help`/`-h`, `--version`/`-v`;
 - fontes de config implementadas: **flags** (`--log-level`, `--data-dir`) e **env** (`ATLAS_LOG_LEVEL`, `ATLAS_DATA_DIR`), com precedência `flags > env`; resultado passado como `override` a `createAtlas({ config })`;
-- declarar a dependência `@atlas/core: workspace:*`;
+- declarar as dependências `@atlas/contracts: workspace:*` (tipos públicos: `AtlasConfig`, `AtlasPlatform`, `InvalidConfigError`) e `@atlas/core: workspace:*`;
 - exports/execução sem `dist/`: `bin` aponta para `./src/main.ts`, executado pelo Node via *type stripping* nativo;
 - ajustar o Vitest para incluir `apps/*/tests/**/*.test.ts`;
 - registrar ADR-0005 (execução de TS em apps via *type stripping*) e ADR-0006 (precedência de fontes de configuração);
@@ -270,7 +270,7 @@ Esta SPEC será considerada concluída somente quando:
 
 Não criar novos módulos, serviços ou packages além de `apps/cli`.
 
-Não adicionar dependências de runtime: parsing via `node:util` (`parseArgs`); a única dependência de `apps/cli` é `@atlas/core` (`workspace:*`).
+Não adicionar dependências de runtime externas: parsing via `node:util` (`parseArgs`); as dependências de `apps/cli` são apenas packages do workspace — `@atlas/contracts` e `@atlas/core` (`workspace:*`). O core não re-exporta os tipos de contracts, então a CLI importa os contratos públicos direto de `@atlas/contracts` (regra ProjectStructure: `apps/* → packages/*`).
 
 Não alterar `@atlas/contracts` nem `@atlas/core`. Se a implementação sugerir que uma mudança neles é necessária, **parar e registrar** antes de prosseguir (Constituição).
 

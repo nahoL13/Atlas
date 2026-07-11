@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- NENHUMA dependência de runtime nova; a única dependência de `@atlas/cli` é `@atlas/core: workspace:*`. Parsing via `node:util` (`parseArgs`).
+- NENHUMA dependência de runtime externa nova; as dependências de `@atlas/cli` são apenas packages do workspace: `@atlas/contracts: workspace:*` (tipos públicos) e `@atlas/core: workspace:*`. O core não re-exporta os tipos de contracts, então a CLI importa os contratos direto de `@atlas/contracts`. Parsing via `node:util` (`parseArgs`).
 - NÃO alterar `@atlas/contracts` nem `@atlas/core`. Se algo sugerir que uma mudança neles é necessária, **parar e registrar** antes de prosseguir (Constituição).
 - A validação de configuração permanece no core (`loadConfig`): o Input Gateway repassa valores crus; o core é a única fonte de verdade da validação.
 - Interfaces de Gateway ficam locais em `apps/cli`; sem tocar em `@atlas/contracts`.
@@ -71,6 +71,7 @@ export default defineConfig({
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@atlas/contracts": "workspace:*",
     "@atlas/core": "workspace:*"
   }
 }
