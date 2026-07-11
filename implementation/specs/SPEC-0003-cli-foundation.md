@@ -184,10 +184,10 @@ Erro local de uso:
 CliUsageError (message) — comando/flag desconhecidos; capturado por run()
 ```
 
-Entry testável:
+Entry testável (a versão é injetada para manter `run()` puro, sem `fs`):
 
 ```text
-run(argv: string[], env: NodeJS.ProcessEnv, gateways: { input: InputGateway; output: OutputGateway }): Promise<number>
+run(argv: string[], env: NodeJS.ProcessEnv, gateways: { input: InputGateway; output: OutputGateway }, version: string): Promise<number>
 ```
 
 Nenhuma interface nova em `@atlas/contracts`.
