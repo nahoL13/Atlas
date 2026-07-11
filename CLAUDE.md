@@ -8,6 +8,8 @@ Project Atlas: plataforma de IA pessoal organizada como **monólito modular**, o
 
 **Estado em julho/2026: plataforma mínima operável (SPEC-0002).** `@atlas/contracts` e `@atlas/core` existem: `createAtlas()` sobe até `ready`, expõe config validada/congelada e desliga com segurança. Próximo: `apps/cli` na SPEC-0003 (cli-foundation).
 
+**Nova sessão ou retomada de trabalho: leia `docs/05-context/NEXT_CONTEXT.md` antes de qualquer coisa.**
+
 ## Comandos
 
 - `pnpm install` — instala o workspace (Node ≥ 24, pnpm ≥ 11 via corepack)
@@ -69,7 +71,6 @@ Os termos do projeto têm significado técnico preciso — na dúvida sobre um t
 
 Para evitar buscas inúteis — os itens abaixo são citados pela documentação, porém **ainda não existem**:
 
-- `CURRENT_SPRINT` e `NEXT_CONTEXT` → viverão em `docs/05-context/` (pasta existe, vazia)
 - Roadmap
 - `apps/cli` → nasce na SPEC-0003 (cli-foundation); demais packages do catálogo conforme SPECs futuras
 
