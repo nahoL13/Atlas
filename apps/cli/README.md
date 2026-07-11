@@ -15,8 +15,10 @@ Overrides de configuração (precedência: flag > env > default):
 - `--log-level <silent|error|info|debug>` · `ATLAS_LOG_LEVEL`
 - `--data-dir <caminho>` · `ATLAS_DATA_DIR`
 
-Durante o desenvolvimento, sem `dist/`:
+Durante o desenvolvimento, sem `dist/` (execução do fonte via `tsx`):
 
 ```bash
-node apps/cli/src/main.ts status
+tsx apps/cli/src/main.ts status
+# ou, pelo workspace:
+pnpm -F @atlas/cli run atlas status
 ```

@@ -72,9 +72,9 @@ Origem: fluxo de SPECs definido no Project Structure (`SPEC-0003-cli-foundation`
 - comandos: `status`, `--help`/`-h`, `--version`/`-v`;
 - fontes de config implementadas: **flags** (`--log-level`, `--data-dir`) e **env** (`ATLAS_LOG_LEVEL`, `ATLAS_DATA_DIR`), com precedência `flags > env`; resultado passado como `override` a `createAtlas({ config })`;
 - declarar as dependências `@atlas/contracts: workspace:*` (tipos públicos: `AtlasConfig`, `AtlasPlatform`, `InvalidConfigError`) e `@atlas/core: workspace:*`;
-- exports/execução sem `dist/`: `bin` aponta para `./src/main.ts`, executado pelo Node via *type stripping* nativo;
+- execução sem `dist/`: roda o fonte `.ts` via `tsx` (`devDependency`); `bin` aponta para `./src/main.ts` (shebang `#!/usr/bin/env -S npx tsx`);
 - ajustar o Vitest para incluir `apps/*/tests/**/*.test.ts`;
-- registrar ADR-0005 (execução de TS em apps via *type stripping*) e ADR-0006 (precedência de fontes de configuração);
+- registrar ADR-0005 (execução de TS em apps via `tsx`) e ADR-0006 (precedência de fontes de configuração);
 - atualizar `CLAUDE.md` (estado do projeto; remover `apps/cli` da seção de itens ainda não criados).
 
 ---
@@ -105,7 +105,7 @@ ADRs 0001, 0002, 0003 e 0004 aceitos.
 - `pnpm lint` passa sem erros;
 - `pnpm typecheck` passa, cobrindo raiz, os dois packages e o novo `apps/cli`;
 - `pnpm test` executa os testes da raiz, dos packages e de `apps/cli`, todos verdes;
-- `node apps/cli/src/main.ts status` imprime `state: ready` e a config resolvida, e encerra com código `0`;
+- `tsx apps/cli/src/main.ts status` imprime `Atlas: ready` e a config resolvida, e encerra com código `0`;
 - teste comprova: precedência realizada — flag sobrepõe env sobrepõe default (ex.: `ATLAS_LOG_LEVEL=error` + `--log-level debug` ⇒ `logLevel: debug`);
 - teste comprova: `--log-level` inválido resulta em `InvalidConfigError` renderizada em stderr e código de saída `1`;
 - teste comprova: comando ou flag desconhecidos resultam em mensagem de uso em stderr e código de saída `2`;
@@ -236,7 +236,7 @@ flags  >  env  >  arquivo  >  defaults
 4. Input Gateway (TDD: comando por argv; `flags > env`; `-h`/`-v`; desconhecidos ⇒ `CliUsageError`);
 5. comando `status` (TDD: renderiza estado + config; propaga `InvalidConfigError`);
 6. `run()` integrando Input Gateway + core real + Output Gateway (TDD: `status` ⇒ 0; config inválida ⇒ 1; uso inválido ⇒ 2; `--version`/`--help` ⇒ 0);
-7. `main.ts` como casca fina; validar execução real via `node apps/cli/src/main.ts status`;
+7. `main.ts` como casca fina; validar execução real via `tsx apps/cli/src/main.ts status`;
 8. registrar ADR-0005 e ADR-0006 e atualizar documentação;
 9. validar todos os critérios de aceitação.
 
@@ -278,7 +278,7 @@ A validação de configuração permanece no core (`loadConfig`): o Input Gatewa
 
 Interfaces de Gateway ficam locais em `apps/cli`; promoção para `@atlas/contracts` só quando existir um segundo consumidor, via ADR.
 
-Sem `dist/`: execução direta do fonte via *type stripping* nativo do Node (`bin` → `./src/main.ts`).
+Sem `dist/`: execução direta do fonte `.ts` via `tsx` (`bin` → `./src/main.ts`). `tsx` é `devDependency` (dev tooling), não dependência de runtime.
 
 Imports entre packages exclusivamente via nome `@atlas/*` declarado no `package.json`; sem path aliases.
 
@@ -286,7 +286,7 @@ Imports entre packages exclusivamente via nome `@atlas/*` declarado no `package.
 
 # Observações
 
-**Verificação técnica durante a implementação (não assumir):** confirmar que o Node deste ambiente (≥ 24) executa um `bin` apontando para `.ts` com *type stripping* atravessando os imports dos packages (`@atlas/core` resolve para `./src/index.ts`, também `.ts`). Caminho de teste: `node apps/cli/src/main.ts status`. Se falhar, o fallback é adicionar `tsx` como `devDependency` — mas isso muda uma decisão do design (Node nativo) e o ADR-0005; nesse caso, **parar e consultar** antes de mudar de rota.
+**Resultado da verificação de execução (registrado):** a hipótese original (Node ≥ 24 executa o `bin` `.ts` via *type stripping* nativo) **falhou** — o Node nativo não remapeia imports com sufixo `.js` (convenção NodeNext) para os arquivos `.ts`; até `@atlas/core` falha ao ser carregado (`packages/core/src/index.ts` importa `./config/load-config.js`). Como o repositório inteiro usa a convenção `.js`, a rota nativa é inviável sem reescrever core/contracts. Decisão (consultada com o usuário): usar **`tsx`** como `devDependency`, que resolve `.js`→`.ts` e carrega o fonte sem mudar código. Registrado no ADR-0005. O `esbuild` (motor do `tsx`) precisou ser aprovado em `pnpm-workspace.yaml` (`allowBuilds`), pois o pnpm 11 não lê mais o campo `pnpm` do `package.json`.
 
 A versão exibida por `--version` é lida do `package.json` do próprio app (via `node:fs` + `import.meta.url`), evitando duplicação e a configuração de import de JSON.
 
@@ -326,4 +326,4 @@ Após implementação:
 
 O Atlas passa a ter uma interface executável real: `atlas status` sobe a plataforma, mostra estado e configuração resolvida a partir de flags e ambiente, e desliga com segurança, com códigos de saída coerentes para sucesso, erro de configuração e erro de uso.
 
-As sementes de Input Gateway e Output Gateway estão estabelecidas localmente em `apps/cli`, a precedência de fontes de configuração está decidida e documentada (`flags > env > arquivo > defaults`, com `flags` e `env` implementados), e o padrão sem-`dist` está estendido a aplicações executáveis via *type stripping* nativo do Node — sem nenhuma dependência de runtime adicionada.
+As sementes de Input Gateway e Output Gateway estão estabelecidas localmente em `apps/cli`, a precedência de fontes de configuração está decidida e documentada (`flags > env > arquivo > defaults`, com `flags` e `env` implementados), e o padrão sem-`dist` está estendido a aplicações executáveis rodando o fonte via `tsx` — sem nenhuma dependência de *runtime* adicionada (o `tsx` é *dev tooling*).

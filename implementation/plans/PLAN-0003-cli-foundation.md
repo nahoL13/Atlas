@@ -14,7 +14,7 @@
 - NÃO alterar `@atlas/contracts` nem `@atlas/core`. Se algo sugerir que uma mudança neles é necessária, **parar e registrar** antes de prosseguir (Constituição).
 - A validação de configuração permanece no core (`loadConfig`): o Input Gateway repassa valores crus; o core é a única fonte de verdade da validação.
 - Interfaces de Gateway ficam locais em `apps/cli`; sem tocar em `@atlas/contracts`.
-- Sem `dist/`: execução direta do fonte; `bin` → `./src/main.ts`.
+- Sem `dist/`: execução direta do fonte `.ts` via `tsx` (`devDependency`); `bin` → `./src/main.ts` (shebang `#!/usr/bin/env -S npx tsx`). Nota: a rota original (Node nativo/type stripping) falhou pela convenção de imports `.js`; ver Task 4 Step 6.
 - `verbatimModuleSyntax` está ligado: imports somente-de-tipo usam `import type`. Imports relativos com sufixo `.js` (ESM NodeNext). Imports de packages via `@atlas/*`.
 - `noUncheckedIndexedAccess` e `exactOptionalPropertyTypes` estão ligados: tratar acessos indexados como possivelmente `undefined` e só atribuir propriedades opcionais quando definidas.
 - devDependencies permanecem centralizadas na raiz; o script do package usa os binários da raiz.
@@ -701,18 +701,18 @@ const code = await run(process.argv.slice(2), process.env, gateways, readVersion
 process.exit(code);
 ```
 
-- [ ] **Step 6: Verificar a execução real via Node (type stripping)**
+- [ ] **Step 6: Verificar a execução real via `tsx`**
 
-Run: `node apps/cli/src/main.ts status`
+> **Nota de execução (2026-07-11):** a rota original (Node nativo via *type stripping*) falhou — o Node não remapeia imports `.js` (NodeNext) para `.ts`, e o repositório inteiro usa essa convenção (até `@atlas/core` falha). Decisão consultada com o usuário: usar `tsx` (`devDependency`). Shebang do `bin`: `#!/usr/bin/env -S npx tsx`. O `esbuild` (motor do `tsx`) precisa ser aprovado em `pnpm-workspace.yaml` (`allowBuilds: { esbuild: true }`).
+
+Run: `tsx apps/cli/src/main.ts status`
 Expected: imprime `Atlas: ready`, `logLevel: info`, `dataDir: <home>/.atlas`; encerra com código `0` (`echo $?` ⇒ `0`).
 
-Run: `node apps/cli/src/main.ts --version`
+Run: `tsx apps/cli/src/main.ts --version`
 Expected: imprime `0.1.0`; código `0`.
 
-Run: `node apps/cli/src/main.ts bogus`
+Run: `tsx apps/cli/src/main.ts bogus`
 Expected: imprime o uso em stderr; código `2` (`echo $?` ⇒ `2`).
-
-> **Se a execução falhar por type stripping não atravessar os imports dos packages** (`@atlas/core` → `./src/index.ts`): **parar e consultar o usuário** antes de mudar de rota. O fallback previsto é `tsx` como `devDependency`, o que altera o design (Node nativo) e o ADR-0005.
 
 - [ ] **Step 7: Commit**
 
