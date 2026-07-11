@@ -13,5 +13,9 @@
     "format:check": "prettier --check .",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "^7.0.2"
   }
 }
