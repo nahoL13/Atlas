@@ -7,7 +7,15 @@
       "Bash(rtk read *)",
       "Bash(rtk grep *)",
       "Bash(git init *)",
-      "Bash(rtk git *)"
+      "Bash(rtk git *)",
+      "Bash(pnpm --version)",
+      "Bash(corepack enable *)",
+      "Bash(corepack prepare *)",
+      "Bash(rtk pnpm *)",
+      "Bash(pnpm add *)",
+      "Bash(rtk tsc *)",
+      "Bash(pnpm test *)",
+      "Bash(echo \"exit: $?\")"
     ]
   }
 }
