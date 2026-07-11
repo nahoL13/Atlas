@@ -10,9 +10,9 @@ Este documento existe para que qualquer sessão nova (humano ou IA, qualquer mod
 
 # Estado Imediato
 
-- **SPEC-0002 (core-bootstrap) está em `Review`**, aguardando o humano aprovar. Ao aprovar: editar o Status para `Done` em `implementation/specs/SPEC-0002-core-bootstrap.md` e commitar.
+- **SPEC-0002 (core-bootstrap): `Done`** (aprovada pelo humano em 2026-07-11). Próximo: iniciar SPEC-0003 (cli-foundation) pelo brainstorming.
 - SPEC-0001 (workspace-bootstrap): `Done`.
-- Suíte completa verde na última verificação: `pnpm install && pnpm lint && pnpm format:check && pnpm typecheck && pnpm test` (19 testes, 5 arquivos).
+- Suíte completa verde na última verificação (2026-07-11, antes de aprovar a SPEC-0002): `pnpm install && pnpm lint && pnpm format:check && pnpm typecheck && pnpm test` (19 testes, 5 arquivos).
 - Working tree limpa; branch única `main`, **sem remote** (GitHub/CI ainda não decididos).
 
 ---

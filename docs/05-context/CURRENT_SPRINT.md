@@ -13,7 +13,7 @@ Objetivo: plataforma mínima operável + primeira interface executável (CLI).
 | SPEC | Título | Status |
 | --- | --- | --- |
 | SPEC-0001 | Workspace Bootstrap | Done |
-| SPEC-0002 | Core Bootstrap | **Review** |
-| SPEC-0003 | CLI Foundation | não iniciada (próxima) |
+| SPEC-0002 | Core Bootstrap | Done |
+| SPEC-0003 | CLI Foundation | **em andamento (próxima)** |
 
 Detalhes de retomada: `docs/05-context/NEXT_CONTEXT.md`.
