@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Project Atlas: plataforma de IA pessoal organizada como **monólito modular**, orientada por um ciclo cognitivo (compreensão → raciocínio → planejamento → execução → observação → aprendizado → resposta). A primeira Persona oficial será **Jarvis**. Este repositório é o workspace raiz; a plataforma principal viverá em `atlas-core`.
 
-**Estado em julho/2026: fundação do monorepo criada (SPEC-0001).** Workspace pnpm + TypeScript strict operacionais; nenhum componente do Module Catalog implementado ainda — `packages/contracts` e `packages/core` nascem na SPEC-0002, `apps/cli` na SPEC-0003.
+**Estado em julho/2026: plataforma mínima operável (SPEC-0002).** `@atlas/contracts` e `@atlas/core` existem: `createAtlas()` sobe até `ready`, expõe config validada/congelada e desliga com segurança. Próximo: `apps/cli` na SPEC-0003 (cli-foundation).
 
 ## Comandos
 
@@ -71,6 +71,6 @@ Para evitar buscas inúteis — os itens abaixo são citados pela documentação
 
 - `CURRENT_SPRINT` e `NEXT_CONTEXT` → viverão em `docs/05-context/` (pasta existe, vazia)
 - Roadmap
-- `packages/` e `apps/`: `packages/contracts` e `packages/core` nascem na SPEC-0002 (core-bootstrap); `apps/cli` na SPEC-0003 (cli-foundation)
+- `apps/cli` → nasce na SPEC-0003 (cli-foundation); demais packages do catálogo conforme SPECs futuras
 
 Quando um desses artefatos for criado, atualize esta seção (e remova-a quando esvaziar).

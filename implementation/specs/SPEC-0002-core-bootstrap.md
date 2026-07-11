@@ -20,7 +20,7 @@ Core Bootstrap — contratos públicos e plataforma mínima
 
 **Status**
 
-Ready
+Review
 
 ---
 

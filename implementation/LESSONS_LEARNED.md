@@ -53,6 +53,34 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## SPEC-0002 — Core Bootstrap (2026-07-11)
+
+**Descobrimos que...**
+
+O padrão exports → `./src/index.ts` (sem `dist/`) funcionou sem atrito: Vitest e `tsc` resolvem os packages do workspace direto do fonte, e o dev loop é instantâneo.
+
+O probe do TS7 (encaminhamento da SPEC-0001) falhou novamente: em 2026-07-11 o typescript-eslint 8.63 ainda quebra com o compilador nativo; revertido para a série 5 com a suíte verde.
+
+Erros fatais do ESLint chegam mascarados pelo proxy de output (RTK); o log completo fica em `~/Library/Application Support/rtk/tee/`.
+
+Uma indisponibilidade temporária do executor de comandos engoliu a corrida vermelha do TDD nos contracts; compensada verificando a contagem de arquivos de teste antes do verde. Os ciclos red→green das demais tasks foram integrais.
+
+**A arquitetura ajudou porque...**
+
+Contratos definidos primeiro tornaram o core trivial de tipar e testar — nenhum teste precisou de mock (ADR-0004: dependências explícitas por parâmetro).
+
+Os hooks do lifecycle (costura para a futura ativação de componentes) tornaram o estado `failed` alcançável e testável sem inventar componentes especulativos.
+
+**A arquitetura atrapalhou porque...**
+
+Nada a registrar — os limites (contracts sem dependências; core como composition root) couberam naturalmente no escopo.
+
+**Precisamos mudar...**
+
+TypeScript segue pinado na série 5 (encaminhamento: repetir o probe do TS7 na SPEC-0003; ao passar, despinar e remover a nota do CLAUDE.md).
+
+---
+
 ## SPEC-0001 — Workspace Bootstrap (2026-07-10)
 
 **Descobrimos que...**
