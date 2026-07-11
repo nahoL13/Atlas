@@ -8,7 +8,7 @@ Plataforma de inteligência artificial pessoal, organizada como monorepo modular
 
 ## Desenvolvimento
 
-Requisitos: Node.js ≥ 24 e pnpm 10.
+Requisitos: Node.js ≥ 24 e pnpm ≥ 11.
 
 ```bash
 pnpm install
