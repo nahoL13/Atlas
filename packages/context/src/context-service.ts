@@ -26,9 +26,8 @@ export function createContextService(): ContextService {
       sessions.set(id, conversation);
     },
     closeSession(id: SessionId): void {
-      if (!sessions.delete(id)) {
-        throw new ContextError(`Sessão desconhecida: ${id}`);
-      }
+      mustGet(id);
+      sessions.delete(id);
     },
   };
 }
