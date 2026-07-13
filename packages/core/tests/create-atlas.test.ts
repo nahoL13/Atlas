@@ -23,4 +23,11 @@ describe('createAtlas', () => {
       InvalidConfigError,
     );
   });
+
+  it('expõe um cognitive que responde via provider fake', async () => {
+    const atlas = await createAtlas({ config: { model: { provider: 'fake' } } });
+    const answer = await atlas.cognitive.ask('olá');
+    expect(answer).toBe('[fake] olá');
+    await atlas.shutdown();
+  });
 });

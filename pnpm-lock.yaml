@@ -55,9 +55,15 @@ importers:
 
   packages/core:
     dependencies:
+      '@atlas/cognitive':
+        specifier: workspace:*
+        version: link:../cognitive
       '@atlas/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@atlas/model-gateway':
+        specifier: workspace:*
+        version: link:../model-gateway
 
   packages/model-gateway:
     dependencies:

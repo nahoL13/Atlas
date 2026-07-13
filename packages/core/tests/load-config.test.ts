@@ -39,4 +39,32 @@ describe('loadConfig', () => {
       expect((error as InvalidConfigError).issues).toHaveLength(2);
     }
   });
+
+  it('aplica os defaults de model', () => {
+    const config = loadConfig();
+    expect(config.model).toEqual({ provider: 'local', model: 'llama3.2' });
+  });
+
+  it('mescla model parcialmente preservando os defaults', () => {
+    const config = loadConfig({ model: { provider: 'fake' } });
+    expect(config.model).toEqual({ provider: 'fake', model: 'llama3.2' });
+  });
+
+  it('rejeita provider de model desconhecido', () => {
+    expect(() =>
+      loadConfig({ model: { provider: 'nope' as AtlasConfig['model']['provider'] } }),
+    ).toThrow(InvalidConfigError);
+  });
+
+  it('rejeita provider remote sem apiKey', () => {
+    expect(() => loadConfig({ model: { provider: 'remote', model: 'gpt-x' } })).toThrow(
+      InvalidConfigError,
+    );
+  });
+
+  it('rejeita provider local sem model', () => {
+    expect(() => loadConfig({ model: { provider: 'local', model: '' } })).toThrow(
+      InvalidConfigError,
+    );
+  });
 });

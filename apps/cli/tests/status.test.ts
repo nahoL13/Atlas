@@ -18,7 +18,12 @@ describe('runStatus', () => {
   it('renderiza estado e config resolvida', () => {
     const atlas: AtlasPlatform = {
       state: 'ready',
-      config: { logLevel: 'info', dataDir: '/home/x/.atlas' },
+      config: {
+        logLevel: 'info',
+        dataDir: '/home/x/.atlas',
+        model: { provider: 'local', model: 'llama3.2' },
+      },
+      cognitive: { ask: async () => '' },
       shutdown: async () => {},
     };
     const cap = capture();

@@ -1,8 +1,24 @@
-import { InvalidConfigError, LOG_LEVELS, type AtlasConfig } from '@atlas/contracts';
+import {
+  InvalidConfigError,
+  LOG_LEVELS,
+  type AtlasConfig,
+  type AtlasConfigOverride,
+  type ModelGatewayConfig,
+  type ProviderName,
+} from '@atlas/contracts';
 import { defaultConfig } from './defaults.js';
 
-export function loadConfig(override: Partial<AtlasConfig> = {}): AtlasConfig {
-  const merged: AtlasConfig = { ...defaultConfig(), ...override };
+const PROVIDERS: readonly ProviderName[] = ['fake', 'local', 'remote'];
+
+export function loadConfig(override: AtlasConfigOverride = {}): AtlasConfig {
+  const defaults = defaultConfig();
+  const model: ModelGatewayConfig = { ...defaults.model, ...override.model };
+  const merged: AtlasConfig = {
+    logLevel: override.logLevel ?? defaults.logLevel,
+    dataDir: override.dataDir ?? defaults.dataDir,
+    model,
+  };
+
   const issues: string[] = [];
 
   if (!LOG_LEVELS.includes(merged.logLevel)) {
@@ -13,6 +29,20 @@ export function loadConfig(override: Partial<AtlasConfig> = {}): AtlasConfig {
 
   if (typeof merged.dataDir !== 'string' || merged.dataDir.trim() === '') {
     issues.push('dataDir deve ser uma string não vazia');
+  }
+
+  if (!PROVIDERS.includes(model.provider)) {
+    issues.push(
+      `model.provider deve ser um de: ${PROVIDERS.join(', ')} (recebido: ${String(model.provider)})`,
+    );
+  }
+
+  if (model.provider === 'remote' && (model.apiKey === undefined || model.apiKey.trim() === '')) {
+    issues.push('model.apiKey é obrigatório para o provider remote');
+  }
+
+  if (model.provider !== 'fake' && (model.model === undefined || model.model.trim() === '')) {
+    issues.push('model.model é obrigatório para os providers local e remote');
   }
 
   if (issues.length > 0) {

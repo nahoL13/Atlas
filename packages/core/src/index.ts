@@ -1,13 +1,24 @@
-import type { AtlasConfig, AtlasPlatform } from '@atlas/contracts';
+import type { AtlasConfigOverride, AtlasPlatform } from '@atlas/contracts';
+import { createModelGateway } from '@atlas/model-gateway';
+import { createCognitiveCore } from '@atlas/cognitive';
 import { loadConfig } from './config/load-config.js';
 import { createLifecycle } from './lifecycle/lifecycle.js';
 
 export interface CreateAtlasOptions {
-  config?: Partial<AtlasConfig>;
+  config?: AtlasConfigOverride;
 }
 
-export async function createAtlas(options: CreateAtlasOptions = {}): Promise<AtlasPlatform> {
+export interface CreateAtlasDeps {
+  fetch?: typeof fetch;
+}
+
+export async function createAtlas(
+  options: CreateAtlasOptions = {},
+  deps: CreateAtlasDeps = {},
+): Promise<AtlasPlatform> {
   const config = loadConfig(options.config);
+  const gateway = createModelGateway(config.model, { fetch: deps.fetch ?? globalThis.fetch });
+  const cognitive = createCognitiveCore({ gateway });
   const lifecycle = createLifecycle();
   await lifecycle.start();
 
@@ -16,6 +27,7 @@ export async function createAtlas(options: CreateAtlasOptions = {}): Promise<Atl
       return lifecycle.state;
     },
     config,
+    cognitive,
     shutdown: () => lifecycle.shutdown(),
   };
 }
