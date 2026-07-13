@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Project Atlas: plataforma de IA pessoal organizada como **monólito modular**, orientada por um ciclo cognitivo (compreensão → raciocínio → planejamento → execução → observação → aprendizado → resposta). A primeira Persona oficial será **Jarvis**. Este repositório é o workspace raiz; a plataforma principal viverá em `atlas-core`.
 
-**Estado em julho/2026: plataforma mínima operável (SPEC-0002).** `@atlas/contracts` e `@atlas/core` existem: `createAtlas()` sobe até `ready`, expõe config validada/congelada e desliga com segurança. Próximo: `apps/cli` na SPEC-0003 (cli-foundation).
+**Estado em julho/2026: primeira interface executável (SPEC-0003).** Além de `@atlas/contracts` e `@atlas/core` (`createAtlas()` sobe até `ready`, expõe config validada/congelada e desliga com segurança), existe `apps/cli` (`@atlas/cli`): `atlas status` sobe a plataforma pelo terminal, mostra estado e config resolvida (precedência `flags > env > defaults`) e desliga com segurança; `atlas --help`/`--version` também existem. Execução do fonte via `tsx` (ADR-0005), sem `dist/`.
 
 **Nova sessão ou retomada de trabalho: leia `docs/05-context/NEXT_CONTEXT.md` antes de qualquer coisa.**
 
@@ -72,6 +72,6 @@ Os termos do projeto têm significado técnico preciso — na dúvida sobre um t
 Para evitar buscas inúteis — os itens abaixo são citados pela documentação, porém **ainda não existem**:
 
 - Roadmap
-- `apps/cli` → nasce na SPEC-0003 (cli-foundation); demais packages do catálogo conforme SPECs futuras
+- demais packages do catálogo conforme SPECs futuras
 
 Quando um desses artefatos for criado, atualize esta seção (e remova-a quando esvaziar).
