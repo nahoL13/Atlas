@@ -53,6 +53,38 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## SPEC-0006 — atlas chat (conversa multi-turno) (2026-07-13)
+
+**Descobrimos que...**
+
+Tratar a conversa como **dado** (ADR-0008) — um valor `Conversation` que flui pelo sistema, com `respond` como função pura que recebe e devolve o histórico — manteve o Cognitive Core sem estado e testável sem mock. O multi-turno saiu de `respond` puro + o loop da CLI segurando o valor, **sem** criar Context Service. A migração futura do detentor (borda → Context Service) é troca de quem guarda, não de contrato.
+
+Estender a interface `CognitiveCore` quebrou o typecheck de um consumidor que a suíte não pega: `apps/cli/tests/status.test.ts` monta um `AtlasPlatform`/`cognitive` à mão, e o `vitest` (transpila, não typecheck) passava verde enquanto o `tsc` acusava `startConversation`/`respond` ausentes. O plano não previu esse ajuste (mesma classe de correção da SPEC-0005). Lição a incorporar aos planos: **ao estender um contrato, listar os stubs manuais de `AtlasPlatform`/contratos nos testes como arquivos a atualizar**, e rodar `pnpm typecheck` (não só `pnpm test`) no gate da task.
+
+A verificação manual (Step do plano) pegou um bug real que os testes unitários não pegariam: a 1ª implementação do `LineReader` usava `readline.question` por vez e, com **input via pipe** (não-TTY), perdia linhas — os eventos `line` da rajada disparavam antes do próximo `question` registrar o listener, e o `close` encerrava. A correção foi uma **fila de linhas com waiters** (buffer de `line` + fila de `next()` pendentes), robusta em TTY e pipe. Reforça: exercitar o caminho real (não só o stub) antes de concluir — o stub roteirizado (`scriptedReader`) nunca reproduziria a rajada.
+
+Com o provider `fake` (que ecoa a última mensagem), a acumulação de contexto **não** é observável pela saída do chat — por isso a asserção de multi-turno vive no teste unitário do cognitive (gateway stub captura as mensagens), e o teste no nível de `run` cobre ordem/exit. Distribuir a asserção pela camada certa evitou um teste frágil.
+
+`deps.createLineReader` **lazy** (fábrica, não instância) foi essencial: criar o `readline` real ansiosamente seguraria o `stdin` e impediria `status`/`ask` de encerrar. O leitor real só nasce quando o comando é `chat`; testes injetam um roteiro.
+
+O probe do TS7 (encaminhamento herdado) falhou de novo em 2026-07-13 (mesmo `TypeError` do `typescript-estree` com `typescript@7.0.2`); revertido para a série 5 com a suíte verde e sem resíduo no `package.json`/lockfile.
+
+**A arquitetura ajudou porque...**
+
+O módulo já existia e o contrato `CognitiveCore` já vivia em `@atlas/contracts` (ADR-0007): estender a conversa foi acrescentar operações ao contrato + implementá-las, sem novo módulo nem promoção. A composição manual (ADR-0004) deixou o loop de chat testável com `gateway` (via provider `fake`) e `LineReader` stub, sem rede nem TTY. Mapear o erro de modelo por `AtlasError.code` permitiu tratá-lo **dentro** do loop (chat sobrevive à falha) reusando a mesma mensagem amigável do `ask`, sem a CLI conhecer `@atlas/model-gateway`.
+
+**A arquitetura atrapalhou porque...**
+
+Nada estrutural. Os atritos foram: (a) o gap do plano no stub manual de teste (tooling/processo, não arquitetura), corrigido na execução; (b) o bug de I/O do `readline` com pipe (detalhe de plataforma), corrigido com a fila de linhas.
+
+**Precisamos mudar...**
+
+TypeScript segue pinado na série 5 (encaminhamento: repetir o probe do TS7 em SPEC futura).
+
+O Context Service é o dono natural do estado de conversa hoje segurado pela CLI (encaminhamento: SPEC futura; ADR-0008 já registra a transição sem quebra de contrato). Auto-gerência do processo do Ollama e `ModelGateway.health()` ficaram fora de escopo (encaminhamento: SPECs futuras). Enviar o histórico inteiro a cada turno é aceitável no MVP; compactação/limite de contexto virá com necessidade (encaminhamento: futura, provável junto do Context Service).
+
+---
+
 ## SPEC-0005 — Cognitive Core (mínimo) (2026-07-13)
 
 **Descobrimos que...**
