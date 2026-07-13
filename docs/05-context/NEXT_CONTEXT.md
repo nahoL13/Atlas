@@ -10,7 +10,7 @@ Este documento existe para que qualquer sessão nova (humano ou IA, qualquer mod
 
 # Estado Imediato
 
-- **SPEC-0003 (cli-foundation) está em `Review`**, aguardando o humano aprovar. Ao aprovar: editar o Status para `Done` em `implementation/specs/SPEC-0003-cli-foundation.md`, atualizar `CURRENT_SPRINT.md` e commitar.
+- **SPEC-0003 (cli-foundation): `Done`** (aprovada pelo humano em 2026-07-12). Próximo: escolher e iniciar a SPEC-0004 pelo brainstorming (candidatas abaixo).
 - SPEC-0001 e SPEC-0002: `Done`.
 - `apps/cli` (`@atlas/cli`) existe: `atlas status` sobe o core pelo terminal, mostra estado + config resolvida (precedência `flags > env > defaults`) e desliga; `--help`/`--version` também. Execução do fonte via `tsx` (ADR-0005), sem `dist/`. Rodar: `tsx apps/cli/src/main.ts status` ou `pnpm -F @atlas/cli run atlas status`.
 - Suíte completa verde na última verificação (2026-07-12): `pnpm install && pnpm lint && pnpm format:check && pnpm typecheck && pnpm test` (**37 testes, 9 arquivos**).

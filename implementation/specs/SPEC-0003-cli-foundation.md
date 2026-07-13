@@ -20,7 +20,7 @@ CLI Foundation — primeira interface executável (`apps/cli`)
 
 **Status**
 
-Review
+Done
 
 ---
 
