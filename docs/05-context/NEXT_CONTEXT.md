@@ -2,7 +2,7 @@
 
 > **Project Atlas — Contexto de Retomada para a Próxima Sessão**
 
-Atualizado em: 2026-07-12
+Atualizado em: 2026-07-13
 
 Este documento existe para que qualquer sessão nova (humano ou IA, qualquer modelo) retome o trabalho sem depender de contexto de conversa. Atualize-o ao encerrar sessões de trabalho relevantes.
 
@@ -10,21 +10,25 @@ Este documento existe para que qualquer sessão nova (humano ou IA, qualquer mod
 
 # Estado Imediato
 
-- **SPEC-0004 (model-gateway): `Done`** (aprovada pelo humano em 2026-07-12). Próximo: escolher e iniciar a SPEC-0005 pelo brainstorming (candidatas abaixo).
-- SPEC-0001, SPEC-0002 e SPEC-0003: `Done`.
-- `apps/cli` (`@atlas/cli`) existe: `atlas status` sobe o core pelo terminal, mostra estado + config resolvida (precedência `flags > env > defaults`) e desliga; `--help`/`--version` também. Execução do fonte via `tsx` (ADR-0005), sem `dist/`. Rodar: `tsx apps/cli/src/main.ts status` ou `pnpm -F @atlas/cli run atlas status`.
-- `packages/model-gateway` (`@atlas/model-gateway`) existe: `createModelGateway(config)` → `generate()` (geração única, sem streaming) com provedor por config — `fake` (testes), `local`/Ollama (grátis), `remote` (pago, OpenAI-compatible). Provedores de rede recebem `fetch` por parâmetro (testados sem rede). Verificação real: `pnpm --filter @atlas/model-gateway exec tsx scripts/smoke.ts --provider fake|local|remote`. **Ainda sem consumidor** (será orquestrado pelo Cognitive Core).
-- Suíte completa verde na última verificação (2026-07-12): `pnpm install && pnpm lint && pnpm format:check && pnpm typecheck && pnpm test` (**53 testes, 14 arquivos**).
+- **SPEC-0005 (cognitive-core): `Review`** (implementada em 2026-07-13; pendente de aprovação do humano → `Done`). Entregue: `packages/cognitive` (`@atlas/cognitive`) + comando `atlas ask`.
+- **SPEC-0004 (model-gateway): `Done`**. SPEC-0001, SPEC-0002 e SPEC-0003: `Done`.
+- `apps/cli` (`@atlas/cli`) existe: `atlas status` sobe o core pelo terminal, mostra estado + config resolvida (precedência `flags > env > defaults`) e desliga; `atlas ask "<objetivo>"` envia um objetivo ao núcleo cognitivo e imprime a resposta (default provider `local`/Ollama; flags `--provider/--model/--base-url/--api-key`, envs `ATLAS_MODEL*`); `--help`/`--version` também. Execução do fonte via `tsx` (ADR-0005), sem `dist/`. Rodar: `pnpm --filter @atlas/cli exec tsx src/main.ts ask "diga olá" --provider fake` (o `rtk proxy tsx` não acha o binário; use `pnpm exec`).
+- `packages/cognitive` (`@atlas/cognitive`) existe: `createCognitiveCore({ gateway })` → `ask(objetivo)` monta `[{system neutro}, {user}]`, chama `gateway.generate` uma vez e devolve o texto. Ciclo cognitivo colapsado (Compreensão+Raciocínio+Resposta); sem estado. Depende só do contrato em `@atlas/contracts`. **Primeiro consumidor do Model Gateway.**
+- `packages/model-gateway` (`@atlas/model-gateway`) existe: `createModelGateway(config)` → `generate()` (geração única, sem streaming) com provedor por config — `fake` (testes), `local`/Ollama (grátis), `remote` (pago, OpenAI-compatible). Provedores de rede recebem `fetch` por parâmetro (testados sem rede). Verificação real: `pnpm --filter @atlas/model-gateway exec tsx scripts/smoke.ts --provider fake|local|remote`.
+- `@atlas/core` agora compõe `createModelGateway(config.model, { fetch })` + `createCognitiveCore({ gateway })` e expõe `atlas.cognitive`; `createAtlas(options, { fetch })` injeta `fetch` (testes sem rede). `config.model` validado no `loadConfig`.
+- Suíte completa verde na última verificação (2026-07-13): `pnpm install && pnpm lint && pnpm format:check && pnpm typecheck && pnpm test` (**68 testes, 15 arquivos**).
 - Working tree limpa; branch única `main`, **sem remote** (GitHub/CI ainda não decididos).
 
 ---
 
-# Próximo Trabalho: SPEC-0005 (a definir)
+# Próximo Trabalho: SPEC-0006 (a definir)
 
-A fundação do MVP (workspace + core + CLI + acesso a modelos) está entregue. A próxima SPEC ainda **não foi escolhida** — decidir no brainstorming. Candidatas plausíveis (nenhuma comprometida; o projeto não tem roadmap):
+A fundação do MVP (workspace + core + CLI + acesso a modelos) e a **primeira resposta cognitiva ponta a ponta** (SPEC-0005) estão entregues. A próxima SPEC ainda **não foi escolhida** — decidir no brainstorming. Candidatas plausíveis (nenhuma comprometida; o projeto não tem roadmap):
 
-- **Cognitive Core (primeiro orquestrador)**: dar ao Model Gateway o seu primeiro consumidor — orquestrar um `generate` mínimo respeitando o ciclo cognitivo. É o único módulo autorizado a usar o gateway (ModuleCatalog); destrava a primeira resposta ponta a ponta e, com ele, um `atlas ask` na CLI.
-- **Provedor nativo da Anthropic** no Model Gateway (API Messages própria, distinta do `remote` OpenAI-compatible) — mais uma implementação do mesmo contrato, se/quando houver necessidade.
+- **Próximas etapas do ciclo cognitivo**: Planner / Runtime / Memory / Context — evoluir o `ask` para orquestrar Planejamento/Execução/Observação/Aprendizado (hoje colapsados). O contrato `CognitiveCore` pode ganhar operações/retornos mais ricos sem quebrar o atual.
+- **Persona Service** (tom/identidade "Jarvis"): o system prompt do Cognitive Core é neutro por design; personalidade é responsabilidade deste serviço, inexistente.
+- **Provedor nativo da Anthropic** no Model Gateway (API Messages própria, distinta do `remote` OpenAI-compatible) — mais uma implementação do mesmo contrato.
+- **Config por arquivo** (slot `arquivo` do ADR-0006, ainda não implementado) ou **distribuição/empacotamento da CLI** (bin publicável).
 - **Event Bus / Plugin Manager**: quando existir o primeiro publisher/extensão real (o Plugin Manager ainda carece de seção no ModuleCatalog — ver Pendências).
 
 **Processo obrigatório** (igual às SPECs 0001–0004):
@@ -34,7 +38,7 @@ A fundação do MVP (workspace + core + CLI + acesso a modelos) está entregue. 
 3. Usuário revisa → plano em `implementation/plans/` (skill `superpowers:writing-plans`, TDD, commits por task).
 4. Execução inline (skill `superpowers:executing-plans`) → `Review` → lições em `implementation/LESSONS_LEARNED.md` (obrigatório, é DoD) → usuário aprova → `Done`.
 
-**Padrões estabelecidos (SPEC-0003/0004), reutilizáveis:** gateways/adaptadores como interfaces locais + composição por parâmetro (inclusive `fetch` injetado → testes sem rede); execução de apps/scripts via `tsx`; precedência de config `flags > env > arquivo > defaults` (`arquivo` ainda não implementado — ADR-0006); consumidores importam `@atlas/contracts` direto (o core não re-exporta tipos); contrato só sobe a `@atlas/contracts` com 2º consumidor (via ADR); slot pago de modelo atendido por provedor `remote` OpenAI-compatible (genérico).
+**Padrões estabelecidos (SPEC-0003/0004/0005), reutilizáveis:** gateways/adaptadores como interfaces locais + composição por parâmetro (inclusive `fetch` injetado → testes sem rede); `createAtlas(options, { fetch })` encadeia o `fetch` até o gateway; execução de apps/scripts via `tsx` (via `pnpm exec`, não `rtk proxy`); precedência de config `flags > env > arquivo > defaults` (`arquivo` ainda não implementado — ADR-0006), inclusive para campos aninhados (`config.model`, merge campo-a-campo); consumidores importam `@atlas/contracts` direto (o core não re-exporta tipos); contrato só sobe a `@atlas/contracts` com 2º consumidor (via ADR — o do Model Gateway subiu na SPEC-0005, ADR-0007, com re-export no package de origem); erro de módulo mapeado por `AtlasError.code` (ex.: `ATLAS_MODEL_GATEWAY`) sem acoplar o consumidor ao package que o lança; config aninhada exige tipo de override próprio (`AtlasConfigOverride` com `Partial<...>`) por causa do `exactOptionalPropertyTypes`; slot pago de modelo atendido por provedor `remote` OpenAI-compatible (genérico).
 
 ---
 
@@ -62,8 +66,9 @@ A fundação do MVP (workspace + core + CLI + acesso a modelos) está entregue. 
 # Mapa Rápido
 
 - Roteador: `CLAUDE.md` (raiz) — invariantes, comandos, gatilhos de leitura.
-- SPECs/planos/lições: `implementation/` · ADRs: `docs/06-adr/` (0001 monorepo, 0002 TS/Node, 0003 composition root, 0004 composição manual, 0005 execução de apps via tsx, 0006 precedência de config).
-- CLI: `apps/cli` (`@atlas/cli`) — `main.ts` (casca) → `run()` → gateways locais + comando `status`.
-- Model Gateway: `packages/model-gateway` (`@atlas/model-gateway`) — `createModelGateway` (seletor) → provedores `fake`/`ollama`/`remote`; `scripts/smoke.ts` para verificação.
+- SPECs/planos/lições: `implementation/` · ADRs: `docs/06-adr/` (0001 monorepo, 0002 TS/Node, 0003 composition root, 0004 composição manual, 0005 execução de apps via tsx, 0006 precedência de config, 0007 promoção do contrato do Model Gateway).
+- CLI: `apps/cli` (`@atlas/cli`) — `main.ts` (casca) → `run()` → gateways locais + comandos `status` e `ask` (`commands/ask.ts`).
+- Cognitive Core: `packages/cognitive` (`@atlas/cognitive`) — `createCognitiveCore({ gateway })` → `ask(objetivo)`; system prompt neutro; sem estado.
+- Model Gateway: `packages/model-gateway` (`@atlas/model-gateway`) — `createModelGateway` (seletor) → provedores `fake`/`ollama`/`remote`; `scripts/smoke.ts` para verificação. Contrato vive em `@atlas/contracts` (ADR-0007).
 - Regras de estrutura e dependência: `docs/03-architecture/ProjectStructure.md` (v2.1, regras 1–11).
 - Estado do sprint: `docs/05-context/CURRENT_SPRINT.md`.

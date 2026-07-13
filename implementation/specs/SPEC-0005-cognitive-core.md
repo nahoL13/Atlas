@@ -20,7 +20,7 @@ Cognitive Core mínimo — primeiro orquestrador + comando `atlas ask` (`package
 
 **Status**
 
-Draft
+Review
 
 ---
 

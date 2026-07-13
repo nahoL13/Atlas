@@ -53,6 +53,38 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## SPEC-0005 — Cognitive Core (mínimo) (2026-07-13)
+
+**Descobrimos que...**
+
+A promoção de um contrato para `@atlas/contracts` foi disparada exatamente pelo 2º consumidor (a regra de placement): o `@atlas/cognitive` precisou do `ModelGateway`, então os tipos do gateway (`Role`, `Message`, `GenerateRequest`, `GenerateResult`, `ModelGateway`, `ModelGatewayConfig`, `ProviderName`) subiram a contracts (ADR-0007). Re-exportá-los de `@atlas/model-gateway` (via `export type { ... } from '@atlas/contracts'`) manteve `HttpDeps`/`createModelGateway`/provedores/testes intactos — churn quase nulo e a regra "consumidor depende de contrato, não de implementação" preservada.
+
+Config aninhada (`config.model: ModelGatewayConfig`) exige merge campo-a-campo e um tipo de override próprio: com `exactOptionalPropertyTypes`, `Partial<AtlasConfig>` não serve mais como override (o `model` interno tem campos obrigatórios), então nasceu `AtlasConfigOverride` com `model?: Partial<ModelGatewayConfig>`; o merge faz `{ ...defaults.model, ...override.model }` e monta os overrides condicionalmente (nunca `campo: undefined`), tanto no `loadConfig` quanto no Input Gateway da CLI.
+
+A CLI mapeia o erro de modelo por `AtlasError.code === 'ATLAS_MODEL_GATEWAY'` (não por `instanceof ModelGatewayError`), o que permite mensagem amigável + exit `1` **sem** `apps/cli` importar `@atlas/model-gateway` — o desacoplamento apps→gateway fica intacto (a CLI só conhece `@atlas/core` e `@atlas/contracts`).
+
+O ciclo cognitivo foi honrado de forma colapsada (uma única chamada `generate` com `[{system}, {user}]`), sem saídas estruturadas especulativas (intenção/estratégia/risco) — YAGNI: nenhum consumidor as usa ainda. O teste do orquestrador usa um `gateway` stub e o caminho de erro da CLI usa `fetch` injetado que rejeita (provider `local`) → suíte inteira sem rede.
+
+Verificação manual (`ask ... --provider fake`) precisa de `pnpm --filter @atlas/cli exec tsx src/main.ts ...`: o `rtk proxy tsx ...` falha com `tsx: No such file or directory` porque o `tsx` não está no PATH direto do proxy; pelo `pnpm exec` resolve-se o binário do workspace.
+
+**A arquitetura ajudou porque...**
+
+O módulo já existia no Module Catalog (`Cognitive Core → packages/cognitive`, camada Intelligence): nenhuma decisão de novo módulo, só a primeira implementação. A composição manual (ADR-0004) tornou tudo testável sem mock — `createAtlas(options, { fetch })` injeta o `fetch` até o gateway, e o `provider: 'fake'` dá uma resposta ponta a ponta sem rede nem credenciais.
+
+O Core como único orquestrador/composition root (Regra 11) absorveu todo o wiring (gateway + cognitive) sem vazar implementações para `@atlas/cognitive` (que depende só do contrato) nem para a CLI. Trocar o modelo por trás do `ask` é só configuração — o Cognitive Core não conhece o provedor.
+
+**A arquitetura atrapalhou porque...**
+
+Nada estrutural — a ordem das tasks (refatoração de tipos → package sem consumidor → tornar `config.model`/`cognitive` obrigatórios ajustando o único teste que os constrói à mão → ligar a CLI) manteve a suíte verde a cada passo. O único atrito foi de tooling (invocação do `tsx` via proxy), não dos limites arquiteturais.
+
+**Precisamos mudar...**
+
+TypeScript segue pinado na série 5 (encaminhamento: repetir o probe do TS7 em SPEC futura; despinar quando o typescript-eslint suportar o compilador nativo).
+
+Próximas etapas do ciclo cognitivo (Planejamento, Execução, Observação, Aprendizado) dependem de Planner/Runtime/Memory/Context, inexistentes (encaminhamento: SPECs futuras); o `CognitiveCore` poderá ganhar operações/retornos mais ricos sem quebrar o contrato atual. Persona/tom ("Jarvis") fica com o Persona Service inexistente (encaminhamento: SPEC futura) — o system prompt desta SPEC é neutro.
+
+---
+
 ## SPEC-0004 — Model Gateway (2026-07-12)
 
 **Descobrimos que...**

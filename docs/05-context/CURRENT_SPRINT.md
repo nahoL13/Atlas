@@ -2,7 +2,7 @@
 
 > **Project Atlas — Estado do Trabalho Atual**
 
-Atualizado em: 2026-07-12
+Atualizado em: 2026-07-13
 
 ---
 
@@ -16,5 +16,6 @@ Objetivo: plataforma mínima operável + primeira interface executável (CLI) + 
 | SPEC-0002 | Core Bootstrap | Done |
 | SPEC-0003 | CLI Foundation | Done |
 | SPEC-0004 | Model Gateway | Done |
+| SPEC-0005 | Cognitive Core (mínimo) | Review |
 
 Detalhes de retomada: `docs/05-context/NEXT_CONTEXT.md`.
