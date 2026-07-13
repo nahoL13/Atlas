@@ -75,4 +75,17 @@ describe('CliInputGateway.normalize', () => {
       model: { model: 'llama3.2', baseUrl: 'http://host:11434' },
     });
   });
+
+  it('chat é reconhecido e devolve o comando chat', () => {
+    const parsed = gw.normalize(['chat'], {});
+    expect(parsed.command).toBe('chat');
+    expect(parsed.configOverride).toEqual({});
+  });
+
+  it('chat resolve overrides de model na precedência flags > env', () => {
+    const parsed = gw.normalize(['chat', '--provider', 'fake'], {
+      ATLAS_MODEL_PROVIDER: 'remote',
+    });
+    expect(parsed.configOverride).toEqual({ model: { provider: 'fake' } });
+  });
 });

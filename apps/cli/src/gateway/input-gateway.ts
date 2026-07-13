@@ -7,7 +7,7 @@ import type {
 } from '@atlas/contracts';
 
 export interface ParsedInput {
-  command: 'status' | 'help' | 'version' | 'ask';
+  command: 'status' | 'help' | 'version' | 'ask' | 'chat';
   configOverride: AtlasConfigOverride;
   objective?: string;
 }
@@ -137,6 +137,10 @@ export function createCliInputGateway(): InputGateway {
           throw new CliUsageError('o comando "ask" exige um objetivo: atlas ask "<objetivo>"');
         }
         return { command: 'ask', configOverride: resolveConfigOverride(values, env), objective };
+      }
+
+      if (command === 'chat') {
+        return { command: 'chat', configOverride: resolveConfigOverride(values, env) };
       }
 
       throw new CliUsageError(`comando desconhecido: ${String(command)}`);
