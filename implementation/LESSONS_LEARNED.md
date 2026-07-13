@@ -53,6 +53,36 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## SPEC-0008 — Persona Service (Jarvis) (2026-07-13)
+
+**Descobrimos que...**
+
+A identidade pôde ser injetada na **geração** sem acoplar o Cognitive ao conceito de Persona (ADR-0010): `createPersonaService().systemPrompt(persona)` deriva uma string a partir dos atributos textuais da Persona (nome/tom/formalidade/idioma/estilo/regras), e o `@atlas/core` passa essa string como `personaPrompt?: string` para `createCognitiveCore`. O Cognitive só concatena `personaPrompt` (identidade) com `TASK_FRAMING` (tarefa, renomeado de `SYSTEM_PROMPT` para deixar explícito que é enquadramento de tarefa, não mais o único ingrediente do system message) — ele nunca importa `@atlas/persona` nem conhece o tipo `Persona`. Isso manteve a regra "consumidor depende de contrato, não de implementação" mesmo sem contrato novo do lado do Cognitive: a interface pública ganhou só um parâmetro de string opcional.
+
+Validar `config.persona` importando `PERSONA_IDS` de `@atlas/persona` em `packages/core/src/config/load-config.ts` foi seguro porque o **core é composition root** (Regra 11) e pode importar implementações, diferente de `@atlas/cognitive`/`@atlas/contracts`, que não podem. Isso evitou duplicar a lista de ids conhecidos (o registro embutido de Personas continua a única fonte da verdade) sem promover `PersonaService` a um contrato mais amplo do que o necessário.
+
+Adicionar um campo obrigatório a `AtlasConfig`/`AtlasPlatform` (`persona`) voltou a exigir atualização atômica dos literais/mocks manuais em `apps/cli/tests/status.test.ts` no mesmo commit que estendeu o contrato e a composição — a mesma classe de atrito já registrada nas lições da SPEC-0005/0006/0007 (o `vitest` transpila e não pega o campo ausente; só o `tsc` acusa). Reforça, pela quarta vez, a mesma lição: listar os stubs manuais de `AtlasPlatform`/contratos como arquivos a atualizar e rodar `pnpm typecheck` a cada task.
+
+Voz (`voice`) e emoção simulada (`emotion`) entraram no modelo de dados da `Persona` como slots **declarativos e inertes**: fazem parte do tipo e dos dados embutidos (`jarvis`/`neutral`), mas propositalmente **não** entram em `systemPrompt(persona)` — não há canal de áudio/afeto que os consuma hoje. Documentá-los explicitamente (CLAUDE.md do `@atlas/persona`, ADR-0010) evita que alguém os trate como já ativos ou os remova por engano por parecerem mortos.
+
+O probe do TS7 (encaminhamento herdado) falhou pela quinta vez consecutiva em 2026-07-13, com o mesmo `TypeError: Cannot read properties of undefined (reading 'Cjs')` em `@typescript-eslint/typescript-estree@8.63.0` sob `typescript@7.0.2`; revertido para a série 5 com a suíte verde e sem resíduo em `package.json`/`pnpm-lock.yaml`. Cinco probes seguidos com a falha exata confirmam que repetir o probe a cada SPEC deixou de agregar informação nova.
+
+**A arquitetura ajudou porque...**
+
+O módulo já existia no Module Catalog (`Persona Service → packages/persona`, camada Interaction): nenhuma decisão de novo módulo, só a primeira implementação. A composição por parâmetro (ADR-0004) permitiu que o Cognitive ganhasse identidade sem crescer em responsabilidade — ele segue testável isoladamente com um `personaPrompt` literal, sem depender do registro de Personas. Tratar Jarvis como **configuração de dados**, não um novo Core (Glossary), manteve o Persona Service num papel estritamente passivo: não decide estratégia, não cria Plans, não chama o Model Gateway.
+
+**A arquitetura atrapalhou porque...**
+
+Nada estrutural. O único atrito foi de sequenciamento de tasks (stub manual de `AtlasPlatform` em `status.test.ts` precisando acompanhar o contrato estendido), já esperado e corrigido na execução.
+
+**Precisamos mudar...**
+
+TypeScript segue pinado na série 5. Encaminhamento revisado: parar de repetir o probe do TS7 a cada SPEC (cinco tentativas seguidas com o mesmo erro estrutural não geram sinal novo); retomar quando houver um gatilho externo — release do `typescript-eslint` que declare suporte ao compilador nativo do TS7 — em vez de por hábito de SPEC.
+
+Troca de Persona em runtime (ex.: `/persona <nome>` no `atlas chat`) ficou fora do escopo (encaminhamento: SPEC futura; exigiria re-semear a conversa com o novo `personaPrompt`). Voz e emoção simulada permanecem inertes até existir um canal de áudio/afeto que os consuma (encaminhamento: SPEC futura). Personas por arquivo de configuração externo dependem do slot `arquivo` do ADR-0006, ainda não implementado.
+
+---
+
 ## SPEC-0007 — Context Service (detentor de sessão) (2026-07-13)
 
 **Descobrimos que...**

@@ -22,10 +22,10 @@ Persona Service — identidade "Jarvis" injetada na geração cognitiva
 
 **Status**
 
-- [x] Draft
+- [ ] Draft
 - [ ] Ready
 - [ ] In Progress
-- [ ] Review
+- [x] Review
 - [ ] Done
 
 ---
