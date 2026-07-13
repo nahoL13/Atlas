@@ -23,7 +23,11 @@ describe('runStatus', () => {
         dataDir: '/home/x/.atlas',
         model: { provider: 'local', model: 'llama3.2' },
       },
-      cognitive: { ask: async () => '' },
+      cognitive: {
+        ask: async () => '',
+        startConversation: () => ({ messages: [] }),
+        respond: async () => ({ reply: '', conversation: { messages: [] } }),
+      },
       shutdown: async () => {},
     };
     const cap = capture();
