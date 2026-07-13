@@ -28,6 +28,12 @@ describe('runStatus', () => {
         startConversation: () => ({ messages: [] }),
         respond: async () => ({ reply: '', conversation: { messages: [] } }),
       },
+      context: {
+        openSession: () => 'session-1',
+        getConversation: () => ({ messages: [] }),
+        updateConversation: () => {},
+        closeSession: () => {},
+      },
       shutdown: async () => {},
     };
     const cap = capture();

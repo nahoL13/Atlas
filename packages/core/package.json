@@ -13,8 +13,9 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@atlas/cognitive": "workspace:*",
+    "@atlas/context": "workspace:*",
     "@atlas/contracts": "workspace:*",
-    "@atlas/model-gateway": "workspace:*",
-    "@atlas/cognitive": "workspace:*"
+    "@atlas/model-gateway": "workspace:*"
   }
 }

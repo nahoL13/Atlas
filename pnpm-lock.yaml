@@ -64,6 +64,9 @@ importers:
       '@atlas/cognitive':
         specifier: workspace:*
         version: link:../cognitive
+      '@atlas/context':
+        specifier: workspace:*
+        version: link:../context
       '@atlas/contracts':
         specifier: workspace:*
         version: link:../contracts
