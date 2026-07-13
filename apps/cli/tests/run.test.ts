@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createCliInputGateway } from '../src/gateway/input-gateway.js';
 import type { OutputGateway } from '../src/gateway/output-gateway.js';
+import type { LineReader } from '../src/gateway/line-reader.js';
 import { run } from '../src/run.js';
 
 function harness() {
@@ -18,6 +19,14 @@ function harness() {
     gateways: { input: createCliInputGateway(), output },
     out: () => out.join(''),
     err: () => err.join(''),
+  };
+}
+
+function scriptedReader(lines: string[]): LineReader {
+  let i = 0;
+  return {
+    next: async () => (i < lines.length ? lines[i++]! : null),
+    close: () => {},
   };
 }
 
@@ -98,6 +107,41 @@ describe('run (integração apps → core)', () => {
       { fetch: failingFetch },
     );
     expect(code).toBe(1);
+    expect(h.err()).toContain('modelo');
+    expect(h.out()).toBe('');
+  });
+
+  it('chat com fake responde cada linha na ordem e retorna 0', async () => {
+    const h = harness();
+    const code = await run(['chat', '--provider', 'fake'], {}, h.gateways, '0.1.0', {
+      createLineReader: () => scriptedReader(['oi', 'tudo bem?', '/sair']),
+    });
+    expect(code).toBe(0);
+    expect(h.out()).toBe('[fake] oi\n[fake] tudo bem?\n');
+  });
+
+  it('chat encerra em EOF (linha null) com exit 0', async () => {
+    const h = harness();
+    const code = await run(['chat', '--provider', 'fake'], {}, h.gateways, '0.1.0', {
+      createLineReader: () => scriptedReader(['olá']),
+    });
+    expect(code).toBe(0);
+    expect(h.out()).toBe('[fake] olá\n');
+  });
+
+  it('erro de modelo no chat imprime mensagem amigável, mantém o loop e retorna 0', async () => {
+    const h = harness();
+    const failingFetch = (async () => {
+      throw new Error('sem rede');
+    }) as unknown as typeof fetch;
+    const code = await run(
+      ['chat', '--provider', 'local', '--model', 'llama3.2'],
+      {},
+      h.gateways,
+      '0.1.0',
+      { fetch: failingFetch, createLineReader: () => scriptedReader(['primeira', '/sair']) },
+    );
+    expect(code).toBe(0);
     expect(h.err()).toContain('modelo');
     expect(h.out()).toBe('');
   });

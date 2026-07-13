@@ -2,8 +2,11 @@ import { AtlasError, InvalidConfigError } from '@atlas/contracts';
 import { createAtlas } from '@atlas/core';
 import { runStatus } from './commands/status.js';
 import { runAsk } from './commands/ask.js';
+import { runChat } from './commands/chat.js';
 import { CliUsageError } from './gateway/input-gateway.js';
+import { createReadlineLineReader } from './gateway/line-reader.js';
 import type { InputGateway, ParsedInput } from './gateway/input-gateway.js';
+import type { LineReader } from './gateway/line-reader.js';
 import type { OutputGateway } from './gateway/output-gateway.js';
 
 export interface CliGateways {
@@ -13,6 +16,7 @@ export interface CliGateways {
 
 export interface CliDeps {
   fetch?: typeof fetch;
+  createLineReader?: () => LineReader;
 }
 
 const HELP_TEXT = `Usage: atlas <command> [options]
@@ -20,6 +24,7 @@ const HELP_TEXT = `Usage: atlas <command> [options]
 Commands:
   status               Mostra o estado da plataforma e a config resolvida
   ask "<objetivo>"     Envia um objetivo ao núcleo cognitivo e imprime a resposta
+  chat                 Abre uma conversa interativa com o núcleo cognitivo
 
 Options:
   -h, --help           Mostra esta ajuda
@@ -69,6 +74,13 @@ export async function run(
     try {
       if (parsed.command === 'ask') {
         await runAsk(atlas, parsed.objective ?? '', output);
+      } else if (parsed.command === 'chat') {
+        const lineReader = (deps.createLineReader ?? createReadlineLineReader)();
+        try {
+          await runChat(atlas, output, lineReader);
+        } finally {
+          lineReader.close();
+        }
       } else {
         runStatus(atlas, output);
       }
