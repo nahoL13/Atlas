@@ -26,6 +26,7 @@ export class CliUsageError extends Error {
 interface CliValues {
   'log-level'?: string | undefined;
   'data-dir'?: string | undefined;
+  persona?: string | undefined;
   provider?: string | undefined;
   model?: string | undefined;
   'base-url'?: string | undefined;
@@ -42,6 +43,9 @@ function resolveConfigOverride(values: CliValues, env: NodeJS.ProcessEnv): Atlas
   if (env.ATLAS_DATA_DIR !== undefined) {
     override.dataDir = env.ATLAS_DATA_DIR;
   }
+  if (env.ATLAS_PERSONA !== undefined) {
+    override.persona = env.ATLAS_PERSONA;
+  }
 
   // Camada flags (maior precedência).
   if (values['log-level'] !== undefined) {
@@ -49,6 +53,9 @@ function resolveConfigOverride(values: CliValues, env: NodeJS.ProcessEnv): Atlas
   }
   if (values['data-dir'] !== undefined) {
     override.dataDir = values['data-dir'];
+  }
+  if (values.persona !== undefined) {
+    override.persona = values.persona;
   }
 
   const model: Partial<ModelGatewayConfig> = {};
@@ -96,6 +103,7 @@ function parseArgvOrThrow(argv: string[]) {
         version: { type: 'boolean', short: 'v' },
         'log-level': { type: 'string' },
         'data-dir': { type: 'string' },
+        persona: { type: 'string' },
         provider: { type: 'string' },
         model: { type: 'string' },
         'base-url': { type: 'string' },

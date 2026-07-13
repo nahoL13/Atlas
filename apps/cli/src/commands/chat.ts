@@ -9,6 +9,7 @@ export async function runChat(
   output: OutputGateway,
   lineReader: LineReader,
 ): Promise<void> {
+  output.write(`${atlas.persona.name}: olá! Como posso ajudar?\n`);
   const session = atlas.context.openSession(atlas.cognitive.startConversation());
   try {
     for (;;) {

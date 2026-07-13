@@ -31,6 +31,7 @@ Options:
   -v, --version        Mostra a versão
       --log-level <l>  Sobrepõe o nível de log (silent|error|info|debug)
       --data-dir <p>   Sobrepõe o diretório de dados
+      --persona <id>   Persona ativa (jarvis|neutral)
       --provider <p>   Provedor de modelo (local|remote|fake)
       --model <m>      Nome do modelo
       --base-url <u>   Base URL do provedor de modelo

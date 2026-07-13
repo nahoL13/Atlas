@@ -54,5 +54,6 @@ describe('runStatus', () => {
     expect(text).toContain('Atlas: ready');
     expect(text).toContain('logLevel: info');
     expect(text).toContain('dataDir: /home/x/.atlas');
+    expect(text).toContain('persona: Jarvis (jarvis)');
   });
 });
