@@ -57,6 +57,7 @@ describe('createAtlas', () => {
       config: { persona: 'neutral', model: { provider: 'fake' } },
     });
     expect(atlas.persona.id).toBe('neutral');
+    expect(atlas.cognitive.startConversation().messages[0]!.content).toContain('Assistente');
     await atlas.shutdown();
   });
 });

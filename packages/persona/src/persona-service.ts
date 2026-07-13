@@ -1,12 +1,12 @@
 import type { Persona, PersonaService } from '@atlas/contracts';
-import { PERSONAS } from './personas.js';
+import { PERSONAS, PERSONA_IDS } from './personas.js';
 import { PersonaError } from './errors.js';
 
 export function createPersonaService(): PersonaService {
   return {
     get(id: string): Persona {
       const persona = PERSONAS[id];
-      if (persona === undefined) {
+      if (persona === undefined || !Object.hasOwn(PERSONAS, id)) {
         throw new PersonaError(`Persona desconhecida: ${id}`);
       }
       return persona;
@@ -15,7 +15,7 @@ export function createPersonaService(): PersonaService {
       return Object.hasOwn(PERSONAS, id);
     },
     list(): readonly string[] {
-      return Object.keys(PERSONAS);
+      return PERSONA_IDS;
     },
     systemPrompt(persona: Persona): string {
       const parts = [

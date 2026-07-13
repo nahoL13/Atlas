@@ -33,6 +33,17 @@ describe('createPersonaService', () => {
     }
   });
 
+  it('get rejeita chaves herdadas de Object.prototype (não confunde com registro)', () => {
+    const svc = createPersonaService();
+    try {
+      svc.get('constructor');
+      throw new Error('deveria ter lançado');
+    } catch (e) {
+      expect(e).toBeInstanceOf(AtlasError);
+      expect((e as AtlasError).code).toBe('ATLAS_PERSONA');
+    }
+  });
+
   it('systemPrompt inclui nome, tom e estilo, e NÃO inclui voz/emoção', () => {
     const svc = createPersonaService();
     const jarvis = svc.get('jarvis');

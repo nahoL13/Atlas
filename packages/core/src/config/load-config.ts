@@ -6,8 +6,8 @@ import {
   type ModelGatewayConfig,
   type ProviderName,
 } from '@atlas/contracts';
-import { defaultConfig } from './defaults.js';
 import { PERSONA_IDS } from '@atlas/persona';
+import { defaultConfig } from './defaults.js';
 
 const PROVIDERS: readonly ProviderName[] = ['fake', 'local', 'remote'];
 
