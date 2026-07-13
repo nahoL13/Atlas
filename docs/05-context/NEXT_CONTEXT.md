@@ -10,7 +10,7 @@ Este documento existe para que qualquer sessão nova (humano ou IA, qualquer mod
 
 # Estado Imediato
 
-- **SPEC-0006 (atlas chat): `Review`** (implementada em 2026-07-13; pendente de aprovação do humano → `Done`). Entregue: comando `atlas chat` (conversa interativa multi-turno) + `CognitiveCore.startConversation`/`respond` (conversa-como-dado, ADR-0008).
+- **SPEC-0006 (atlas chat): `Done`** (aprovada pelo humano em 2026-07-13). Entregue: comando `atlas chat` (conversa interativa multi-turno) + `CognitiveCore.startConversation`/`respond` (conversa-como-dado, ADR-0008).
 - **SPEC-0005 (cognitive-core): `Done`** (aprovada pelo humano em 2026-07-13). Entregue: `packages/cognitive` (`@atlas/cognitive`) + comando `atlas ask`.
 - **SPEC-0004 (model-gateway): `Done`**. SPEC-0001, SPEC-0002 e SPEC-0003: `Done`.
 - `apps/cli` (`@atlas/cli`) existe: `atlas status` sobe o core pelo terminal, mostra estado + config resolvida (precedência `flags > env > defaults`) e desliga; `atlas ask "<objetivo>"` envia um objetivo ao núcleo cognitivo e imprime a resposta (default provider `local`/Ollama; flags `--provider/--model/--base-url/--api-key`, envs `ATLAS_MODEL*`); `atlas chat` abre uma conversa interativa multi-turno (mesmas flags/env; loop `readline` via `LineReader` injetável; sai em `/sair`/`/exit`/EOF/Ctrl-C; erro de modelo tratado dentro do loop sem derrubá-lo); `--help`/`--version` também. Execução do fonte via `tsx` (ADR-0005), sem `dist/`. Rodar: `pnpm --filter @atlas/cli exec tsx src/main.ts ask "diga olá" --provider fake` ou `printf 'oi\n/sair\n' | pnpm --filter @atlas/cli exec tsx src/main.ts chat --provider fake` (o `rtk proxy tsx` não acha o binário; use `pnpm exec`).
@@ -24,7 +24,7 @@ Este documento existe para que qualquer sessão nova (humano ou IA, qualquer mod
 
 # Próximo Trabalho: SPEC-0007 (a definir)
 
-A fundação do MVP (workspace + core + CLI + acesso a modelos), a **primeira resposta cognitiva ponta a ponta** (SPEC-0005) e a **conversa interativa multi-turno** (SPEC-0006, `atlas chat`) estão entregues. A SPEC-0006 está em `Review` aguardando aprovação → `Done`. A próxima SPEC ainda **não foi escolhida** — decidir no brainstorming. Candidatas plausíveis (nenhuma comprometida — o projeto não tem roadmap):
+A fundação do MVP (workspace + core + CLI + acesso a modelos), a **primeira resposta cognitiva ponta a ponta** (SPEC-0005) e a **conversa interativa multi-turno** (SPEC-0006, `atlas chat`) estão entregues. A próxima SPEC ainda **não foi escolhida** — decidir no brainstorming. Candidatas plausíveis (nenhuma comprometida — o projeto não tem roadmap):
 
 - **Próximas etapas do ciclo cognitivo**: Planner / Runtime / Memory / Context — evoluir o `ask`/`respond` para orquestrar Planejamento/Execução/Observação/Aprendizado (hoje colapsados). O Context Service é o dono natural do estado de conversa (hoje segurado interinamente pela CLI — ADR-0008).
 - **Auto-gerência do Ollama** (subir/parar o processo) e **health-check de startup** (`ModelGateway.health()`) — mapeados como fora de escopo da SPEC-0006.

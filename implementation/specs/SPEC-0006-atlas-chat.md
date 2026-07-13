@@ -20,7 +20,7 @@ Chat interativo multi-turno na CLI — `atlas chat` + Cognitive Core consciente 
 
 **Status**
 
-Review
+Done
 
 ---
 
