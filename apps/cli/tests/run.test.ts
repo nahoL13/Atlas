@@ -70,4 +70,35 @@ describe('run (integração apps → core)', () => {
     expect(code).toBe(0);
     expect(h.out()).toContain('Usage:');
   });
+
+  it('ask com provider fake imprime a resposta e retorna 0', async () => {
+    const h = harness();
+    const code = await run(['ask', 'olá', '--provider', 'fake'], {}, h.gateways, '0.1.0');
+    expect(code).toBe(0);
+    expect(h.out()).toContain('[fake] olá');
+  });
+
+  it('ask sem objetivo retorna 2 e escreve o uso em stderr', async () => {
+    const h = harness();
+    const code = await run(['ask'], {}, h.gateways, '0.1.0');
+    expect(code).toBe(2);
+    expect(h.err()).toContain('objetivo');
+  });
+
+  it('erro do modelo (provider local sem rede) retorna 1 com mensagem amigável', async () => {
+    const h = harness();
+    const failingFetch = (async () => {
+      throw new Error('sem rede');
+    }) as unknown as typeof fetch;
+    const code = await run(
+      ['ask', 'olá', '--provider', 'local', '--model', 'llama3.2'],
+      {},
+      h.gateways,
+      '0.1.0',
+      { fetch: failingFetch },
+    );
+    expect(code).toBe(1);
+    expect(h.err()).toContain('modelo');
+    expect(h.out()).toBe('');
+  });
 });

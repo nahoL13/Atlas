@@ -1,6 +1,7 @@
-import { InvalidConfigError } from '@atlas/contracts';
+import { AtlasError, InvalidConfigError } from '@atlas/contracts';
 import { createAtlas } from '@atlas/core';
 import { runStatus } from './commands/status.js';
+import { runAsk } from './commands/ask.js';
 import { CliUsageError } from './gateway/input-gateway.js';
 import type { InputGateway, ParsedInput } from './gateway/input-gateway.js';
 import type { OutputGateway } from './gateway/output-gateway.js';
@@ -10,16 +11,25 @@ export interface CliGateways {
   output: OutputGateway;
 }
 
+export interface CliDeps {
+  fetch?: typeof fetch;
+}
+
 const HELP_TEXT = `Usage: atlas <command> [options]
 
 Commands:
   status               Mostra o estado da plataforma e a config resolvida
+  ask "<objetivo>"     Envia um objetivo ao núcleo cognitivo e imprime a resposta
 
 Options:
   -h, --help           Mostra esta ajuda
   -v, --version        Mostra a versão
       --log-level <l>  Sobrepõe o nível de log (silent|error|info|debug)
       --data-dir <p>   Sobrepõe o diretório de dados
+      --provider <p>   Provedor de modelo (local|remote|fake)
+      --model <m>      Nome do modelo
+      --base-url <u>   Base URL do provedor de modelo
+      --api-key <k>    API key do provedor remoto
 `;
 
 export async function run(
@@ -27,6 +37,7 @@ export async function run(
   env: NodeJS.ProcessEnv,
   gateways: CliGateways,
   version: string,
+  deps: CliDeps = {},
 ): Promise<number> {
   const { input, output } = gateways;
 
@@ -51,14 +62,32 @@ export async function run(
   }
 
   try {
-    const atlas = await createAtlas({ config: parsed.configOverride });
-    runStatus(atlas, output);
-    await atlas.shutdown();
+    const atlas = await createAtlas(
+      { config: parsed.configOverride },
+      deps.fetch !== undefined ? { fetch: deps.fetch } : {},
+    );
+    try {
+      if (parsed.command === 'ask') {
+        await runAsk(atlas, parsed.objective ?? '', output);
+      } else {
+        runStatus(atlas, output);
+      }
+    } finally {
+      await atlas.shutdown();
+    }
     return 0;
   } catch (cause) {
     if (cause instanceof InvalidConfigError) {
       output.error(
         `Configuração inválida:\n${cause.issues.map((issue) => `  - ${issue}`).join('\n')}\n`,
+      );
+      return 1;
+    }
+    if (cause instanceof AtlasError && cause.code === 'ATLAS_MODEL_GATEWAY') {
+      output.error(
+        `Não foi possível obter resposta do modelo: ${cause.message}\n` +
+          `Se estiver usando o provedor local, verifique se o Ollama está rodando ` +
+          `(ollama serve) e se o modelo foi baixado (ollama pull <model>).\n`,
       );
       return 1;
     }

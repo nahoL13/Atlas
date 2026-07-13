@@ -47,4 +47,32 @@ describe('CliInputGateway.normalize', () => {
   it('flag desconhecida lança CliUsageError', () => {
     expect(() => gw.normalize(['status', '--nope'], {})).toThrow(CliUsageError);
   });
+
+  it('ask com objetivo devolve o comando ask e o objetivo', () => {
+    const parsed = gw.normalize(['ask', 'resuma isto'], {});
+    expect(parsed.command).toBe('ask');
+    expect(parsed.objective).toBe('resuma isto');
+    expect(parsed.configOverride).toEqual({});
+  });
+
+  it('ask sem objetivo lança CliUsageError', () => {
+    expect(() => gw.normalize(['ask'], {})).toThrow(CliUsageError);
+  });
+
+  it('a flag --provider sobrepõe o env ATLAS_MODEL_PROVIDER', () => {
+    const parsed = gw.normalize(['ask', 'oi', '--provider', 'fake'], {
+      ATLAS_MODEL_PROVIDER: 'remote',
+    });
+    expect(parsed.configOverride).toEqual({ model: { provider: 'fake' } });
+  });
+
+  it('o env preenche model quando não há flag', () => {
+    const parsed = gw.normalize(['ask', 'oi'], {
+      ATLAS_MODEL: 'llama3.2',
+      ATLAS_MODEL_BASE_URL: 'http://host:11434',
+    });
+    expect(parsed.configOverride).toEqual({
+      model: { model: 'llama3.2', baseUrl: 'http://host:11434' },
+    });
+  });
 });
