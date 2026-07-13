@@ -11,9 +11,9 @@ describe('createModelGateway', () => {
   });
 
   it('provedor desconhecido lança ModelGatewayError', () => {
-    expect(() =>
-      createModelGateway({ provider: 'nope' as unknown as ProviderName }),
-    ).toThrow(ModelGatewayError);
+    expect(() => createModelGateway({ provider: 'nope' as unknown as ProviderName })).toThrow(
+      ModelGatewayError,
+    );
   });
 
   it('remote sem apiKey lança na criação (delegado ao provedor)', () => {

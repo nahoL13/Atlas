@@ -1,11 +1,6 @@
-import type {
-  GenerateRequest,
-  GenerateResult,
-  ModelGateway,
-  ModelGatewayConfig,
-} from '../model-gateway.js';
+import type { GenerateRequest, GenerateResult, ModelGateway } from '../model-gateway.js';
 
-export function createFakeProvider(_config: ModelGatewayConfig): ModelGateway {
+export function createFakeProvider(): ModelGateway {
   return {
     async generate(request: GenerateRequest): Promise<GenerateResult> {
       const last = request.messages.at(-1);

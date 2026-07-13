@@ -22,7 +22,12 @@ function stubFetch(response: Response | (() => Promise<Response>)): {
   return { deps: { fetch: fetchStub }, calls };
 }
 
-const base = { provider: 'remote', baseUrl: 'https://api.x/v1', apiKey: 'secret', model: 'gpt-x' } as const;
+const base = {
+  provider: 'remote',
+  baseUrl: 'https://api.x/v1',
+  apiKey: 'secret',
+  model: 'gpt-x',
+} as const;
 
 describe('remote provider', () => {
   it('envia auth + corpo e mapeia a resposta', async () => {

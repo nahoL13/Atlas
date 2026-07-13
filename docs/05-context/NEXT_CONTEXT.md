@@ -10,30 +10,31 @@ Este documento existe para que qualquer sessão nova (humano ou IA, qualquer mod
 
 # Estado Imediato
 
-- **SPEC-0003 (cli-foundation): `Done`** (aprovada pelo humano em 2026-07-12). Próximo: escolher e iniciar a SPEC-0004 pelo brainstorming (candidatas abaixo).
-- SPEC-0001 e SPEC-0002: `Done`.
+- **SPEC-0004 (model-gateway): `Review`** (implementada inline em 2026-07-12; aguardando aprovação do humano para `Done`).
+- SPEC-0001, SPEC-0002 e SPEC-0003: `Done`.
 - `apps/cli` (`@atlas/cli`) existe: `atlas status` sobe o core pelo terminal, mostra estado + config resolvida (precedência `flags > env > defaults`) e desliga; `--help`/`--version` também. Execução do fonte via `tsx` (ADR-0005), sem `dist/`. Rodar: `tsx apps/cli/src/main.ts status` ou `pnpm -F @atlas/cli run atlas status`.
-- Suíte completa verde na última verificação (2026-07-12): `pnpm install && pnpm lint && pnpm format:check && pnpm typecheck && pnpm test` (**37 testes, 9 arquivos**).
+- `packages/model-gateway` (`@atlas/model-gateway`) existe: `createModelGateway(config)` → `generate()` (geração única, sem streaming) com provedor por config — `fake` (testes), `local`/Ollama (grátis), `remote` (pago, OpenAI-compatible). Provedores de rede recebem `fetch` por parâmetro (testados sem rede). Verificação real: `pnpm --filter @atlas/model-gateway exec tsx scripts/smoke.ts --provider fake|local|remote`. **Ainda sem consumidor** (será orquestrado pelo Cognitive Core).
+- Suíte completa verde na última verificação (2026-07-12): `pnpm install && pnpm lint && pnpm format:check && pnpm typecheck && pnpm test` (**53 testes, 14 arquivos**).
 - Working tree limpa; branch única `main`, **sem remote** (GitHub/CI ainda não decididos).
 
 ---
 
-# Próximo Trabalho: SPEC-0004 (a definir)
+# Próximo Trabalho: SPEC-0005 (a definir)
 
-A fundação do MVP (workspace + core + primeira interface) está entregue. A próxima SPEC ainda **não foi escolhida** — decidir no brainstorming. Candidatas plausíveis (nenhuma comprometida; o projeto não tem roadmap):
+A fundação do MVP (workspace + core + CLI + acesso a modelos) está entregue. A próxima SPEC ainda **não foi escolhida** — decidir no brainstorming. Candidatas plausíveis (nenhuma comprometida; o projeto não tem roadmap):
 
-- **Model Gateway** (`packages/model-gateway`): padronizar acesso a modelos de IA — habilita a primeira resposta cognitiva de fato (ex.: Claude via API Anthropic), isolando o provedor (Princípio 13).
-- **Expandir a CLI** para entrada de linguagem natural / comando de conversa (encaixa nas sementes de Input/Output Gateway já criadas).
+- **Cognitive Core (primeiro orquestrador)**: dar ao Model Gateway o seu primeiro consumidor — orquestrar um `generate` mínimo respeitando o ciclo cognitivo. É o único módulo autorizado a usar o gateway (ModuleCatalog); destrava a primeira resposta ponta a ponta e, com ele, um `atlas ask` na CLI.
+- **Provedor nativo da Anthropic** no Model Gateway (API Messages própria, distinta do `remote` OpenAI-compatible) — mais uma implementação do mesmo contrato, se/quando houver necessidade.
 - **Event Bus / Plugin Manager**: quando existir o primeiro publisher/extensão real (o Plugin Manager ainda carece de seção no ModuleCatalog — ver Pendências).
 
-**Processo obrigatório** (igual às SPECs 0001/0002/0003):
+**Processo obrigatório** (igual às SPECs 0001–0004):
 
 1. Brainstorming (skill `superpowers:brainstorming`): perguntas uma a uma, com recomendação.
 2. Escrever a SPEC usando `implementation/templates/SPEC-TEMPLATE.md` (Status `Draft`).
 3. Usuário revisa → plano em `implementation/plans/` (skill `superpowers:writing-plans`, TDD, commits por task).
 4. Execução inline (skill `superpowers:executing-plans`) → `Review` → lições em `implementation/LESSONS_LEARNED.md` (obrigatório, é DoD) → usuário aprova → `Done`.
 
-**Padrões estabelecidos na SPEC-0003, reutilizáveis:** gateways como interfaces locais + composição por parâmetro; execução de apps via `tsx`; precedência de config `flags > env > arquivo > defaults` (`arquivo` ainda não implementado — ADR-0006); apps consomem `@atlas/contracts` direto (o core não re-exporta tipos).
+**Padrões estabelecidos (SPEC-0003/0004), reutilizáveis:** gateways/adaptadores como interfaces locais + composição por parâmetro (inclusive `fetch` injetado → testes sem rede); execução de apps/scripts via `tsx`; precedência de config `flags > env > arquivo > defaults` (`arquivo` ainda não implementado — ADR-0006); consumidores importam `@atlas/contracts` direto (o core não re-exporta tipos); contrato só sobe a `@atlas/contracts` com 2º consumidor (via ADR); slot pago de modelo atendido por provedor `remote` OpenAI-compatible (genérico).
 
 ---
 
@@ -63,5 +64,6 @@ A fundação do MVP (workspace + core + primeira interface) está entregue. A pr
 - Roteador: `CLAUDE.md` (raiz) — invariantes, comandos, gatilhos de leitura.
 - SPECs/planos/lições: `implementation/` · ADRs: `docs/06-adr/` (0001 monorepo, 0002 TS/Node, 0003 composition root, 0004 composição manual, 0005 execução de apps via tsx, 0006 precedência de config).
 - CLI: `apps/cli` (`@atlas/cli`) — `main.ts` (casca) → `run()` → gateways locais + comando `status`.
+- Model Gateway: `packages/model-gateway` (`@atlas/model-gateway`) — `createModelGateway` (seletor) → provedores `fake`/`ollama`/`remote`; `scripts/smoke.ts` para verificação.
 - Regras de estrutura e dependência: `docs/03-architecture/ProjectStructure.md` (v2.1, regras 1–11).
 - Estado do sprint: `docs/05-context/CURRENT_SPRINT.md`.

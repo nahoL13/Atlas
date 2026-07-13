@@ -44,14 +44,12 @@ export function createModelGateway(
 ): ModelGateway {
   switch (config.provider) {
     case 'fake':
-      return createFakeProvider(config);
+      return createFakeProvider();
     case 'local':
       return createOllamaProvider(config, deps);
     case 'remote':
       return createRemoteProvider(config, deps);
     default:
-      throw new ModelGatewayError(
-        `Provedor de modelo desconhecido: ${String(config.provider)}`,
-      );
+      throw new ModelGatewayError(`Provedor de modelo desconhecido: ${String(config.provider)}`);
   }
 }

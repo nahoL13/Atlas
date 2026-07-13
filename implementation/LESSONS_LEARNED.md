@@ -53,6 +53,38 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## SPEC-0004 — Model Gateway (2026-07-12)
+
+**Descobrimos que...**
+
+`exactOptionalPropertyTypes: true` impede atribuir `undefined` explicitamente a propriedade opcional: montar `ModelGatewayConfig` no smoke exigiu construção condicional (`if (x !== undefined) config.x = x`) em vez de `{ x: valorTalvezUndefined }`. Padrão a repetir sempre que compor objetos com campos opcionais a partir de fontes `T | undefined` (flags/env).
+
+Injetar `fetch` por parâmetro (`HttpDeps`) permitiu testar os provedores de rede (Ollama/remote) sem tocar a rede, com stubs escritos à mão que capturam URL/headers/body — sem framework de mock, coerente com ADR-0004. A rede real fica só no smoke script.
+
+O ESLint do repo (`@typescript-eslint/no-unused-vars`) **não** ignora o prefixo `_`: um `_config` não usado no provedor `fake` quebrou o lint. O padrão do projeto é zero parâmetros não usados — o `fake` virou `createFakeProvider()` sem parâmetro (e o seletor chama sem argumento). Atenção: `pnpm typecheck`/`pnpm test` passam com var não usada; só `pnpm lint` a pega — rodar os três antes de concluir.
+
+`pnpm --filter <pkg> run <script> -- <flags>` vaza o `--` para o `process.argv` do script, e o `parseArgs` (sem `allowPositionals`) rejeita. A invocação correta para repassar flags é `pnpm --filter <pkg> exec tsx scripts/smoke.ts <flags>` (documentado no README do package).
+
+O probe do TS7 (encaminhamento herdado) falhou de novo em 2026-07-12: com `typescript@7.0.2`, o `@typescript-eslint/typescript-estree@8.63.0` lança `TypeError: Cannot read properties of undefined (reading 'Cjs')` e o ESLint sai com código 2. Revertido para a série 5 com a suíte verde.
+
+**A arquitetura ajudou porque...**
+
+O módulo já existia no Module Catalog (`Model Gateway → packages/model-gateway`): não houve decisão de novo módulo, só a primeira implementação. A regra de placement de contratos (tipos ficam locais até um 2º consumidor) manteve a SPEC isolada — sem tocar `@atlas/contracts`, `@atlas/core` nem `apps/cli`.
+
+Tratar o gateway como adaptador sem estado (Princípio 5) manteve a superfície mínima: uma operação `generate`, três provedores atrás do mesmo contrato, troca por config. Estender para um provedor nativo (ex.: Anthropic Messages) no futuro não quebra consumidores.
+
+**A arquitetura atrapalhou porque...**
+
+Nada estrutural — o único atrito foi de tooling (lint com `_`, `--` do pnpm run, probe do TS7), não dos limites arquiteturais.
+
+**Precisamos mudar...**
+
+TypeScript segue pinado na série 5 (encaminhamento: repetir o probe do TS7 em SPEC futura; despinar quando o typescript-eslint suportar o compilador nativo).
+
+Provedor nativo da Anthropic (API Messages própria) e streaming/tool-use ficaram fora de escopo (encaminhamento: SPECs futuras conforme o Cognitive Core precisar). O slot pago hoje é atendido pelo provedor `remote` OpenAI-compatible.
+
+---
+
 ## SPEC-0003 — CLI Foundation (2026-07-12)
 
 **Descobrimos que...**

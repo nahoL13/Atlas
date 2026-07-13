@@ -20,7 +20,7 @@ Model Gateway — acesso padronizado a modelos de IA (`packages/model-gateway`)
 
 **Status**
 
-Ready
+Review
 
 ---
 

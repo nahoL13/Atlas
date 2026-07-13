@@ -3,7 +3,7 @@ import { createFakeProvider } from '../src/providers/fake.js';
 
 describe('fake provider', () => {
   it('ecoa a última mensagem de forma determinística', async () => {
-    const gateway = createFakeProvider({ provider: 'fake' });
+    const gateway = createFakeProvider();
     const result = await gateway.generate({
       messages: [
         { role: 'system', content: 'contexto' },
@@ -14,7 +14,7 @@ describe('fake provider', () => {
   });
 
   it('sem mensagens devolve prefixo vazio', async () => {
-    const gateway = createFakeProvider({ provider: 'fake' });
+    const gateway = createFakeProvider();
     const result = await gateway.generate({ messages: [] });
     expect(result.text).toBe('[fake] ');
   });
