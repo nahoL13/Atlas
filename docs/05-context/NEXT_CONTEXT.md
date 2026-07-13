@@ -10,7 +10,7 @@ Este documento existe para que qualquer sessão nova (humano ou IA, qualquer mod
 
 # Estado Imediato
 
-- **SPEC-0004 (model-gateway): `Review`** (implementada inline em 2026-07-12; aguardando aprovação do humano para `Done`).
+- **SPEC-0004 (model-gateway): `Done`** (aprovada pelo humano em 2026-07-12). Próximo: escolher e iniciar a SPEC-0005 pelo brainstorming (candidatas abaixo).
 - SPEC-0001, SPEC-0002 e SPEC-0003: `Done`.
 - `apps/cli` (`@atlas/cli`) existe: `atlas status` sobe o core pelo terminal, mostra estado + config resolvida (precedência `flags > env > defaults`) e desliga; `--help`/`--version` também. Execução do fonte via `tsx` (ADR-0005), sem `dist/`. Rodar: `tsx apps/cli/src/main.ts status` ou `pnpm -F @atlas/cli run atlas status`.
 - `packages/model-gateway` (`@atlas/model-gateway`) existe: `createModelGateway(config)` → `generate()` (geração única, sem streaming) com provedor por config — `fake` (testes), `local`/Ollama (grátis), `remote` (pago, OpenAI-compatible). Provedores de rede recebem `fetch` por parâmetro (testados sem rede). Verificação real: `pnpm --filter @atlas/model-gateway exec tsx scripts/smoke.ts --provider fake|local|remote`. **Ainda sem consumidor** (será orquestrado pelo Cognitive Core).

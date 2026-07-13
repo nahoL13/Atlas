@@ -15,6 +15,6 @@ Objetivo: plataforma mínima operável + primeira interface executável (CLI) + 
 | SPEC-0001 | Workspace Bootstrap | Done |
 | SPEC-0002 | Core Bootstrap | Done |
 | SPEC-0003 | CLI Foundation | Done |
-| SPEC-0004 | Model Gateway | Review |
+| SPEC-0004 | Model Gateway | Done |
 
 Detalhes de retomada: `docs/05-context/NEXT_CONTEXT.md`.
