@@ -25,8 +25,8 @@ Context Service (detentor do estado temporário de conversa por sessão)
 - [ ] Draft
 - [ ] Ready
 - [ ] In Progress
-- [x] Review
-- [ ] Done
+- [ ] Review
+- [x] Done
 
 ---
 
