@@ -53,6 +53,40 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## SPEC-0003 — CLI Foundation (2026-07-12)
+
+**Descobrimos que...**
+
+A rota de execução escolhida no design (Node nativo via _type stripping_) não funciona com a convenção de imports `.js` (NodeNext) do repositório: o Node ≥ 24 não remapeia `.js` → `.ts`, e como todo o repo usa `.js`, nem `@atlas/core` carrega. Adotamos `tsx` (`devDependency`) — registrado no ADR-0005. Lição: uma decisão de execução deve ser verificada empiricamente antes de virar recomendação no brainstorming; a recomendação original ("Node nativo estende o padrão sem-`dist` naturalmente") não considerou a interação `.js`/type-stripping.
+
+O pnpm 11 não lê mais o campo `pnpm` do `package.json`; a aprovação de build de dependências (o `esbuild`, motor do `tsx`) vive em `pnpm-workspace.yaml` (`allowBuilds`). Sem isso, `pnpm install` sai com código 1 (`ERR_PNPM_IGNORED_BUILDS`) e trava a verificação de deps dos scripts do pnpm.
+
+O `@atlas/core` não re-exporta os tipos de `@atlas/contracts`; consumidores (a CLI) declaram `@atlas/contracts` como dependência direta (regra `apps/* → packages/*`). O plano assumira "só `@atlas/core`" e foi corrigido na execução.
+
+`AtlasConfig` tem propriedades `readonly` e `Partial<AtlasConfig>` as preserva — o override de config precisa ser construído num objeto local mutável antes de retornar.
+
+O probe do TS7 (encaminhamento da SPEC-0002) falhou de novo: em 2026-07-12 o typescript-eslint 8.63 continua quebrando com o TS 7.0.2; revertido para a série 5 com a suíte verde. Durante o revert, o executor de comandos ficou temporariamente indisponível e foi destravado com o prefixo `!` (usuário rodou a suíte).
+
+**A arquitetura ajudou porque...**
+
+Gateways como interfaces + composição por parâmetro (ADR-0004) tornaram `run()` testável com o core real e um Output Gateway capturador — sem mocks; a integração apps→core é barata porque `createAtlas` é in-memory.
+
+A validação centralizada no core (`loadConfig`) permitiu ao Input Gateway repassar valores crus e ainda exercitar o caminho de `InvalidConfigError` de ponta a ponta, com código de saída coerente.
+
+Manter as interfaces de Gateway locais em `apps/cli` (não em `@atlas/contracts`) evitou tocar core/contracts e respeitou a regra de placement de contratos (sem 2º consumidor ainda).
+
+**A arquitetura atrapalhou porque...**
+
+Nada estrutural — todo o atrito foi de tooling (execução de TS, pnpm 11, esbuild), não dos limites arquiteturais.
+
+**Precisamos mudar...**
+
+TypeScript segue pinado na série 5 (encaminhamento: repetir o probe do TS7 em SPEC futura; despinar e remover a nota do CLAUDE.md quando o typescript-eslint suportar o compilador nativo).
+
+Distribuição/empacotamento da CLI (bin publicável fora do workspace) continua em aberto (encaminhamento: SPEC futura de distribuição; o shebang `npx tsx` atende só o uso em dev).
+
+---
+
 ## SPEC-0002 — Core Bootstrap (2026-07-11)
 
 **Descobrimos que...**
