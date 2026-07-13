@@ -1,4 +1,7 @@
 import { ModelGatewayError } from './errors.js';
+import { createFakeProvider } from './providers/fake.js';
+import { createOllamaProvider } from './providers/ollama.js';
+import { createRemoteProvider } from './providers/remote.js';
 
 export type Role = 'system' | 'user' | 'assistant';
 
@@ -35,12 +38,20 @@ export interface HttpDeps {
   fetch: typeof fetch;
 }
 
-// Finalizada na Task 5, quando os provedores existirem.
 export function createModelGateway(
   config: ModelGatewayConfig,
-  _deps: HttpDeps = { fetch: globalThis.fetch },
+  deps: HttpDeps = { fetch: globalThis.fetch },
 ): ModelGateway {
-  throw new ModelGatewayError(
-    `Provedor de modelo ainda não implementado: ${String(config.provider)}`,
-  );
+  switch (config.provider) {
+    case 'fake':
+      return createFakeProvider(config);
+    case 'local':
+      return createOllamaProvider(config, deps);
+    case 'remote':
+      return createRemoteProvider(config, deps);
+    default:
+      throw new ModelGatewayError(
+        `Provedor de modelo desconhecido: ${String(config.provider)}`,
+      );
+  }
 }
