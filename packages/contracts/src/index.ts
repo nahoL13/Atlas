@@ -12,3 +12,4 @@ export type {
   ProviderName,
 } from './model.js';
 export type { CognitiveCore, Conversation, ConversationTurn } from './cognitive.js';
+export type { ContextService, SessionId } from './context.js';
