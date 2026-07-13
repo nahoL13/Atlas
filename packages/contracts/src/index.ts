@@ -11,3 +11,4 @@ export type {
   ModelGatewayConfig,
   ProviderName,
 } from './model.js';
+export type { CognitiveCore } from './cognitive.js';
