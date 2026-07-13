@@ -30,6 +30,8 @@ Tratar a conversa como **dado (valor)**, não como estado de um serviço:
 - O Cognitive Core permanece **sem estado**: recebe e devolve o histórico; não o armazena.
 - O **detentor** do valor `Conversation` entre as voltas é o **chamador**. No `atlas chat`, é a variável do loop `readline`. Isso é **interino e explícito**: quando o Context Service existir, ele passa a ser o detentor do estado temporário de conversa, sem alterar o contrato `respond` (que continua puro).
 
+  > **Realizado na SPEC-0007 / ADR-0009:** o detentor passou a ser o `@atlas/context` (`atlas.context`); `respond` permaneceu puro.
+
 ---
 
 # Consequências

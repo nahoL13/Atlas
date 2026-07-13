@@ -18,5 +18,6 @@ Objetivo: plataforma mínima operável + primeira interface executável (CLI) + 
 | SPEC-0004 | Model Gateway | Done |
 | SPEC-0005 | Cognitive Core (mínimo) | Done |
 | SPEC-0006 | atlas chat (conversa multi-turno) | Done |
+| SPEC-0007 | Context Service (detentor de sessão) | Review |
 
 Detalhes de retomada: `docs/05-context/NEXT_CONTEXT.md`.

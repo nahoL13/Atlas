@@ -22,10 +22,10 @@ Context Service (detentor do estado temporário de conversa por sessão)
 
 **Status**
 
-- [x] Draft
+- [ ] Draft
 - [ ] Ready
 - [ ] In Progress
-- [ ] Review
+- [x] Review
 - [ ] Done
 
 ---

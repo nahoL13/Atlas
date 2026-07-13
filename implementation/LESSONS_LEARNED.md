@@ -53,6 +53,34 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## SPEC-0007 — Context Service (detentor de sessão) (2026-07-13)
+
+**Descobrimos que...**
+
+O Context Service pôde nascer como **store de valor**, não orquestrador (ADR-0009): `openSession/getConversation/updateConversation/closeSession` guardam uma `Conversation` por sessão num `Map` em memória, sem decidir estratégia nem chamar o Cognitive Core. Isso resolveu a tensão documental entre o Module Catalog ("Context é utilizado pelo Cognitive Core") e o ADR-0008 (`respond` função pura): a leitura do catálogo passou a se referir ao contexto de ambiente futuro (cwd/repo/arquivos), não ao buffer de conversa. A **app** (`atlas chat`) virou a mediadora — lê a conversa do Context, chama `respond` puro, grava o resultado de volta — exatamente como o ADR-0008 previu ("migração é troca de detentor, não de contrato"): o diff não tocou `packages/cognitive/src/cognitive-core.ts` nem `packages/contracts/src/cognitive.ts`.
+
+Um package novo (`@atlas/context`) precisa de `pnpm install` para linkar no workspace **antes** do primeiro teste rodar — sem isso, `vitest`/`tsc` não resolvem `@atlas/context` a partir de `packages/core`/`apps/cli`, e o erro lido de fora (module not found) engana como se fosse import errado em vez de link de workspace pendente.
+
+Adicionar um campo obrigatório em `AtlasPlatform` (`context: ContextService`) precisa ser **atômico** com o fornecimento em `createAtlas`: um `tsc` limpo entre tasks só existe se o contrato, a composição no core **e** qualquer stub manual de `AtlasPlatform` nos testes (ex.: `apps/cli/tests/status.test.ts`) mudarem no mesmo commit — foi assim que a task de composição no core evitou o mesmo atrito já registrado na SPEC-0006 com `startConversation`/`respond` (contrato estendido sem o stub manual acompanhar, pego só pelo `tsc`, não pelo `vitest`). Reforça a lição anterior: listar os stubs manuais de contrato como arquivos a atualizar e rodar `pnpm typecheck` a cada task, não só ao final.
+
+O probe do TS7 (encaminhamento herdado) falhou novamente em 2026-07-13, com o mesmo `TypeError: Cannot read properties of undefined (reading 'Cjs')` em `@typescript-eslint/typescript-estree@8.63.0` sob `typescript@7.0.2`; revertido para a série 5 com a suíte verde e sem resíduo em `package.json`/`pnpm-lock.yaml`. Quarto probe consecutivo com a mesma falha exata — sinal de que a incompatibilidade é estrutural (o typescript-estree ainda não suporta o compilador nativo do TS7), não intermitente.
+
+**A arquitetura ajudou porque...**
+
+O módulo já existia no Module Catalog (`Context Service → packages/context`, camada Support): nenhuma decisão de novo módulo, só a primeira implementação. O contrato `ContextService`/`SessionId` foi direto para `@atlas/contracts` (dois consumidores desde o início: core compõe, CLI consome) sem exigir ADR de promoção. Manter o Cognitive Core sem dependência do Context (Regra do Module Catalog: só o Core decide estratégia) permitiu migrar o detentor da conversa sem tocar em `respond`/`startConversation` — a suíte de `packages/cognitive` não mudou uma linha.
+
+**A arquitetura atrapalhou porque...**
+
+Nada estrutural. O único cuidado foi de sequenciamento de tasks (link do package novo via `pnpm install`; manter o campo obrigatório em `AtlasPlatform` atômico com sua composição e os stubs de teste), aplicado corretamente na execução.
+
+**Precisamos mudar...**
+
+TypeScript segue pinado na série 5 (encaminhamento: repetir o probe do TS7 numa SPEC futura; considerar parar de repetir a cada SPEC e vincular a um gatilho externo — release do typescript-eslint que declare suporte ao TS7 — já que quatro probes seguidos deram o mesmo erro estrutural).
+
+O contexto de ambiente (cwd/repo/branch/arquivos) que o Cognitive/Planner poderão consumir no futuro ficou fora do escopo (encaminhamento: SPEC futura, quando houver um consumidor real — ADR-0009 já resolve o "quem medeia" antecipadamente). Persistência de sessão entre processos continua do Memory Service, inexistente.
+
+---
+
 ## SPEC-0006 — atlas chat (conversa multi-turno) (2026-07-13)
 
 **Descobrimos que...**
