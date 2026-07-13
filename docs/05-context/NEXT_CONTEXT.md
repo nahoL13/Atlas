@@ -10,7 +10,8 @@ Este documento existe para que qualquer sessão nova (humano ou IA, qualquer mod
 
 # Estado Imediato
 
-- **SPEC-0005 (cognitive-core): `Review`** (implementada em 2026-07-13; pendente de aprovação do humano → `Done`). Entregue: `packages/cognitive` (`@atlas/cognitive`) + comando `atlas ask`.
+- **SPEC-0005 (cognitive-core): `Done`** (aprovada pelo humano em 2026-07-13). Entregue: `packages/cognitive` (`@atlas/cognitive`) + comando `atlas ask`.
+- **SPEC-0006 (atlas chat): `Draft`** (brainstorming concluído em 2026-07-13; ADR-0008 aceito). Aguarda revisão do humano da SPEC → plano (`writing-plans`). Chat interativo multi-turno na CLI; conversa-como-dado, Core segue stateless.
 - **SPEC-0004 (model-gateway): `Done`**. SPEC-0001, SPEC-0002 e SPEC-0003: `Done`.
 - `apps/cli` (`@atlas/cli`) existe: `atlas status` sobe o core pelo terminal, mostra estado + config resolvida (precedência `flags > env > defaults`) e desliga; `atlas ask "<objetivo>"` envia um objetivo ao núcleo cognitivo e imprime a resposta (default provider `local`/Ollama; flags `--provider/--model/--base-url/--api-key`, envs `ATLAS_MODEL*`); `--help`/`--version` também. Execução do fonte via `tsx` (ADR-0005), sem `dist/`. Rodar: `pnpm --filter @atlas/cli exec tsx src/main.ts ask "diga olá" --provider fake` (o `rtk proxy tsx` não acha o binário; use `pnpm exec`).
 - `packages/cognitive` (`@atlas/cognitive`) existe: `createCognitiveCore({ gateway })` → `ask(objetivo)` monta `[{system neutro}, {user}]`, chama `gateway.generate` uma vez e devolve o texto. Ciclo cognitivo colapsado (Compreensão+Raciocínio+Resposta); sem estado. Depende só do contrato em `@atlas/contracts`. **Primeiro consumidor do Model Gateway.**
@@ -21,17 +22,18 @@ Este documento existe para que qualquer sessão nova (humano ou IA, qualquer mod
 
 ---
 
-# Próximo Trabalho: SPEC-0006 (a definir)
+# Próximo Trabalho: SPEC-0006 (atlas chat) — em Draft, aguardando revisão
 
-A fundação do MVP (workspace + core + CLI + acesso a modelos) e a **primeira resposta cognitiva ponta a ponta** (SPEC-0005) estão entregues. A próxima SPEC ainda **não foi escolhida** — decidir no brainstorming. Candidatas plausíveis (nenhuma comprometida; o projeto não tem roadmap):
+A fundação do MVP (workspace + core + CLI + acesso a modelos) e a **primeira resposta cognitiva ponta a ponta** (SPEC-0005) estão entregues. **A SPEC-0006 já foi escrita (Draft)** via brainstorming: `atlas chat` — chat interativo multi-turno na CLI (conversa-como-dado, ADR-0008; Cognitive Core segue stateless com `startConversation`/`respond`). **Próximo passo: o humano revisa `implementation/specs/SPEC-0006-atlas-chat.md`; ao aprovar, gerar o `PLAN-0006` (skill `superpowers:writing-plans`) e executar.**
 
-- **Próximas etapas do ciclo cognitivo**: Planner / Runtime / Memory / Context — evoluir o `ask` para orquestrar Planejamento/Execução/Observação/Aprendizado (hoje colapsados). O contrato `CognitiveCore` pode ganhar operações/retornos mais ricos sem quebrar o atual.
-- **Persona Service** (tom/identidade "Jarvis"): o system prompt do Cognitive Core é neutro por design; personalidade é responsabilidade deste serviço, inexistente.
-- **Provedor nativo da Anthropic** no Model Gateway (API Messages própria, distinta do `remote` OpenAI-compatible) — mais uma implementação do mesmo contrato.
-- **Config por arquivo** (slot `arquivo` do ADR-0006, ainda não implementado) ou **distribuição/empacotamento da CLI** (bin publicável).
-- **Event Bus / Plugin Manager**: quando existir o primeiro publisher/extensão real (o Plugin Manager ainda carece de seção no ModuleCatalog — ver Pendências).
+Candidatas para SPECs seguintes (depois da 0006; nenhuma comprometida — o projeto não tem roadmap):
 
-**Processo obrigatório** (igual às SPECs 0001–0004):
+- **Próximas etapas do ciclo cognitivo**: Planner / Runtime / Memory / Context — evoluir o `ask`/`respond` para orquestrar Planejamento/Execução/Observação/Aprendizado (hoje colapsados). O Context Service é o dono natural do estado de conversa (hoje segurado interinamente pela CLI — ADR-0008).
+- **Auto-gerência do Ollama** (subir/parar o processo) e **health-check de startup** (`ModelGateway.health()`) — mapeados como fora de escopo da SPEC-0006.
+- **Persona Service** (tom/identidade "Jarvis"): o system prompt é neutro por design; personalidade é deste serviço, inexistente.
+- **Provedor nativo da Anthropic** no Model Gateway; **config por arquivo** (slot `arquivo` do ADR-0006); **distribuição/empacotamento da CLI**; **Event Bus / Plugin Manager**.
+
+**Processo obrigatório** (igual às SPECs 0001–0005):
 
 1. Brainstorming (skill `superpowers:brainstorming`): perguntas uma a uma, com recomendação.
 2. Escrever a SPEC usando `implementation/templates/SPEC-TEMPLATE.md` (Status `Draft`).
