@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GenerateRequest, GenerateResult, ModelGateway } from '@atlas/contracts';
-import { createCognitiveCore, SYSTEM_PROMPT } from '../src/index.js';
+import { createCognitiveCore, TASK_FRAMING } from '../src/index.js';
 
 function stubGateway(impl: (request: GenerateRequest) => Promise<GenerateResult>): {
   gateway: ModelGateway;
@@ -19,11 +19,20 @@ function stubGateway(impl: (request: GenerateRequest) => Promise<GenerateResult>
 }
 
 describe('createCognitiveCore conversa', () => {
-  it('startConversation semeia só o system prompt', () => {
+  it('startConversation semeia o system prompt de tarefa (sem persona)', () => {
     const { gateway } = stubGateway(async () => ({ text: '' }));
     const core = createCognitiveCore({ gateway });
     const conv = core.startConversation();
-    expect(conv.messages).toEqual([{ role: 'system', content: SYSTEM_PROMPT }]);
+    expect(conv.messages).toEqual([{ role: 'system', content: TASK_FRAMING }]);
+  });
+
+  it('startConversation semeia identidade + tarefa quando há personaPrompt', () => {
+    const { gateway } = stubGateway(async () => ({ text: '' }));
+    const core = createCognitiveCore({ gateway, personaPrompt: 'Você é Jarvis.' });
+    const conv = core.startConversation();
+    expect(conv.messages).toEqual([
+      { role: 'system', content: `Você é Jarvis.\n\n${TASK_FRAMING}` },
+    ]);
   });
 
   it('respond monta [historico, user], chama generate uma vez e anexa a resposta', async () => {
@@ -35,11 +44,11 @@ describe('createCognitiveCore conversa', () => {
     expect(reply).toBe('oi de volta');
     expect(calls).toHaveLength(1);
     expect(calls[0]!.messages).toEqual([
-      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'system', content: TASK_FRAMING },
       { role: 'user', content: 'oi' },
     ]);
     expect(conversation.messages).toEqual([
-      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'system', content: TASK_FRAMING },
       { role: 'user', content: 'oi' },
       { role: 'assistant', content: 'oi de volta' },
     ]);
@@ -50,7 +59,7 @@ describe('createCognitiveCore conversa', () => {
     const core = createCognitiveCore({ gateway });
     const conv0 = core.startConversation();
     await core.respond(conv0, 'oi');
-    expect(conv0.messages).toEqual([{ role: 'system', content: SYSTEM_PROMPT }]);
+    expect(conv0.messages).toEqual([{ role: 'system', content: TASK_FRAMING }]);
   });
 
   it('multi-turno acumula o histórico', async () => {
@@ -61,7 +70,7 @@ describe('createCognitiveCore conversa', () => {
     const turn1 = await core.respond(core.startConversation(), 'primeira');
     const turn2 = await core.respond(turn1.conversation, 'segunda');
     expect(turn2.conversation.messages).toEqual([
-      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'system', content: TASK_FRAMING },
       { role: 'user', content: 'primeira' },
       { role: 'assistant', content: 'resp:primeira' },
       { role: 'user', content: 'segunda' },

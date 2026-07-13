@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GenerateRequest, GenerateResult, ModelGateway } from '@atlas/contracts';
-import { createCognitiveCore, SYSTEM_PROMPT } from '../src/index.js';
+import { createCognitiveCore, TASK_FRAMING } from '../src/index.js';
 
 function stubGateway(impl: (request: GenerateRequest) => Promise<GenerateResult>): {
   gateway: ModelGateway;
@@ -19,7 +19,7 @@ function stubGateway(impl: (request: GenerateRequest) => Promise<GenerateResult>
 }
 
 describe('createCognitiveCore.ask', () => {
-  it('monta system + user e devolve o texto do gateway', async () => {
+  it('sem personaPrompt usa só o enquadramento de tarefa', async () => {
     const { gateway, calls } = stubGateway(async () => ({ text: 'resposta do modelo' }));
     const core = createCognitiveCore({ gateway });
 
@@ -28,9 +28,21 @@ describe('createCognitiveCore.ask', () => {
     expect(answer).toBe('resposta do modelo');
     expect(calls).toHaveLength(1);
     expect(calls[0]!.messages).toEqual([
-      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'system', content: TASK_FRAMING },
       { role: 'user', content: 'resuma este texto' },
     ]);
+  });
+
+  it('com personaPrompt compõe identidade + tarefa no system message', async () => {
+    const { gateway, calls } = stubGateway(async () => ({ text: 'x' }));
+    const core = createCognitiveCore({ gateway, personaPrompt: 'Você é Jarvis.' });
+
+    await core.ask('oi');
+
+    expect(calls[0]!.messages[0]).toEqual({
+      role: 'system',
+      content: `Você é Jarvis.\n\n${TASK_FRAMING}`,
+    });
   });
 
   it('propaga erro do gateway sem mascarar', async () => {

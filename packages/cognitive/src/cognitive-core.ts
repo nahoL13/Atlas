@@ -6,23 +6,25 @@ import type {
   ModelGateway,
 } from '@atlas/contracts';
 
-export const SYSTEM_PROMPT =
-  'Você é o núcleo cognitivo do Atlas, um assistente de IA pessoal. ' +
+export const TASK_FRAMING =
   'Responda ao objetivo do usuário de forma clara, correta e objetiva, ' +
   'no mesmo idioma em que ele escreveu. ' +
   'Se faltar informação essencial, diga o que precisa saber em vez de supor.';
 
 export interface CognitiveCoreDeps {
   gateway: ModelGateway;
+  personaPrompt?: string;
 }
 
 export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
-  const { gateway } = deps;
+  const { gateway, personaPrompt } = deps;
+  const systemPrompt = personaPrompt ? `${personaPrompt}\n\n${TASK_FRAMING}` : TASK_FRAMING;
+
   return {
     async ask(objective: string): Promise<string> {
       const result = await gateway.generate({
         messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'system', content: systemPrompt },
           { role: 'user', content: objective },
         ],
       });
@@ -30,7 +32,7 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
     },
 
     startConversation(): Conversation {
-      return { messages: [{ role: 'system', content: SYSTEM_PROMPT }] };
+      return { messages: [{ role: 'system', content: systemPrompt }] };
     },
 
     async respond(conversation: Conversation, input: string): Promise<ConversationTurn> {
