@@ -43,4 +43,20 @@ describe('createAtlas', () => {
 
     await atlas.shutdown();
   });
+
+  it('expõe a Persona ativa (default jarvis) e injeta sua identidade no cognitive', async () => {
+    const atlas = await createAtlas({ config: { model: { provider: 'fake' } } });
+    expect(atlas.persona.id).toBe('jarvis');
+    const conv = atlas.cognitive.startConversation();
+    expect(conv.messages[0]!.content).toContain('Jarvis');
+    await atlas.shutdown();
+  });
+
+  it('seleciona a persona neutral por config', async () => {
+    const atlas = await createAtlas({
+      config: { persona: 'neutral', model: { provider: 'fake' } },
+    });
+    expect(atlas.persona.id).toBe('neutral');
+    await atlas.shutdown();
+  });
 });

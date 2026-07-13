@@ -6,6 +6,7 @@ export function defaultConfig(): AtlasConfig {
   return {
     logLevel: 'info',
     dataDir: join(homedir(), '.atlas'),
+    persona: 'jarvis',
     model: {
       provider: 'local',
       model: 'llama3.2',

@@ -2,6 +2,7 @@ import type { AtlasConfigOverride, AtlasPlatform } from '@atlas/contracts';
 import { createModelGateway } from '@atlas/model-gateway';
 import { createCognitiveCore } from '@atlas/cognitive';
 import { createContextService } from '@atlas/context';
+import { createPersonaService } from '@atlas/persona';
 import { loadConfig } from './config/load-config.js';
 import { createLifecycle } from './lifecycle/lifecycle.js';
 
@@ -18,8 +19,13 @@ export async function createAtlas(
   deps: CreateAtlasDeps = {},
 ): Promise<AtlasPlatform> {
   const config = loadConfig(options.config);
+  const personaService = createPersonaService();
+  const persona = personaService.get(config.persona);
   const gateway = createModelGateway(config.model, { fetch: deps.fetch ?? globalThis.fetch });
-  const cognitive = createCognitiveCore({ gateway });
+  const cognitive = createCognitiveCore({
+    gateway,
+    personaPrompt: personaService.systemPrompt(persona),
+  });
   const context = createContextService();
   const lifecycle = createLifecycle();
   await lifecycle.start();
@@ -29,6 +35,7 @@ export async function createAtlas(
       return lifecycle.state;
     },
     config,
+    persona,
     cognitive,
     context,
     shutdown: () => lifecycle.shutdown(),

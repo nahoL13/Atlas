@@ -21,7 +21,19 @@ describe('runStatus', () => {
       config: {
         logLevel: 'info',
         dataDir: '/home/x/.atlas',
+        persona: 'jarvis',
         model: { provider: 'local', model: 'llama3.2' },
+      },
+      persona: {
+        id: 'jarvis',
+        name: 'Jarvis',
+        tone: 'profissional',
+        formality: 'informal-respeitoso',
+        language: 'espelhe o idioma',
+        style: 'objetivo',
+        communicationRules: [],
+        voice: '',
+        emotion: '',
       },
       cognitive: {
         ask: async () => '',

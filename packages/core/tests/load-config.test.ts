@@ -45,6 +45,18 @@ describe('loadConfig', () => {
     expect(config.model).toEqual({ provider: 'local', model: 'llama3.2' });
   });
 
+  it('persona default é jarvis', () => {
+    expect(loadConfig().persona).toBe('jarvis');
+  });
+
+  it('aceita persona conhecida (neutral)', () => {
+    expect(loadConfig({ persona: 'neutral' }).persona).toBe('neutral');
+  });
+
+  it('rejeita persona desconhecida', () => {
+    expect(() => loadConfig({ persona: 'batman' })).toThrow(InvalidConfigError);
+  });
+
   it('mescla model parcialmente preservando os defaults', () => {
     const config = loadConfig({ model: { provider: 'fake' } });
     expect(config.model).toEqual({ provider: 'fake', model: 'llama3.2' });

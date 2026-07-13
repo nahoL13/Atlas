@@ -7,6 +7,7 @@ import {
   type ProviderName,
 } from '@atlas/contracts';
 import { defaultConfig } from './defaults.js';
+import { PERSONA_IDS } from '@atlas/persona';
 
 const PROVIDERS: readonly ProviderName[] = ['fake', 'local', 'remote'];
 
@@ -16,6 +17,7 @@ export function loadConfig(override: AtlasConfigOverride = {}): AtlasConfig {
   const merged: AtlasConfig = {
     logLevel: override.logLevel ?? defaults.logLevel,
     dataDir: override.dataDir ?? defaults.dataDir,
+    persona: override.persona ?? defaults.persona,
     model,
   };
 
@@ -29,6 +31,12 @@ export function loadConfig(override: AtlasConfigOverride = {}): AtlasConfig {
 
   if (typeof merged.dataDir !== 'string' || merged.dataDir.trim() === '') {
     issues.push('dataDir deve ser uma string não vazia');
+  }
+
+  if (!PERSONA_IDS.includes(merged.persona)) {
+    issues.push(
+      `persona deve ser um de: ${PERSONA_IDS.join(', ')} (recebido: ${String(merged.persona)})`,
+    );
   }
 
   if (!PROVIDERS.includes(model.provider)) {

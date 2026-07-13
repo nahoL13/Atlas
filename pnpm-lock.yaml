@@ -73,6 +73,9 @@ importers:
       '@atlas/model-gateway':
         specifier: workspace:*
         version: link:../model-gateway
+      '@atlas/persona':
+        specifier: workspace:*
+        version: link:../persona
 
   packages/model-gateway:
     dependencies:
