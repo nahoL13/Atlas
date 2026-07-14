@@ -4,6 +4,8 @@ import { createCognitiveCore } from '@atlas/cognitive';
 import { createContextService } from '@atlas/context';
 import { createPersonaService } from '@atlas/persona';
 import { createFileMemoryStorage, createMemoryService, type MemoryStorage } from '@atlas/memory';
+import { createRuntime } from '@atlas/runtime';
+import { createToolRegistry, createClockTool, createCalcTool } from '@atlas/tools';
 import { loadConfig } from './config/load-config.js';
 import { createLifecycle } from './lifecycle/lifecycle.js';
 
@@ -27,8 +29,13 @@ export async function createAtlas(
   const memory = await createMemoryService({ storage });
   const memoryPrompt = memory.prompt();
   const gateway = createModelGateway(config.model, { fetch: deps.fetch ?? globalThis.fetch });
+  const registry = createToolRegistry();
+  registry.register(createClockTool());
+  registry.register(createCalcTool());
+  const runtime = createRuntime({ registry });
   const cognitive = createCognitiveCore({
     gateway,
+    runtime,
     personaPrompt: personaService.systemPrompt(persona),
     ...(memoryPrompt !== undefined ? { memoryPrompt } : {}),
   });

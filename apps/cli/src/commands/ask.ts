@@ -6,6 +6,15 @@ export async function runAsk(
   objective: string,
   output: OutputGateway,
 ): Promise<void> {
-  const answer = await atlas.cognitive.ask(objective);
-  output.write(`${answer}\n`);
+  const result = await atlas.cognitive.ask(objective);
+  if (result.steps !== undefined && result.steps.length > 0) {
+    for (const step of result.steps) {
+      const outcome = step.result.ok
+        ? (step.result.output ?? '')
+        : `erro: ${step.result.error ?? ''}`;
+      output.write(`🔧 ${step.tool} → ${outcome}\n`);
+    }
+    output.write('\n');
+  }
+  output.write(`${result.text}\n`);
 }

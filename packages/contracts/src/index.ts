@@ -11,7 +11,7 @@ export type {
   ModelGatewayConfig,
   ProviderName,
 } from './model.js';
-export type { CognitiveCore, Conversation, ConversationTurn } from './cognitive.js';
+export type { AskResult, CognitiveCore, Conversation, ConversationTurn } from './cognitive.js';
 export type { ContextService, SessionId } from './context.js';
 export type { Persona, PersonaService } from './persona.js';
 export type { Fact, MemoryService } from './memory.js';

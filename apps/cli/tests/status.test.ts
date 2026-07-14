@@ -37,7 +37,7 @@ describe('runStatus', () => {
         emotion: '',
       },
       cognitive: {
-        ask: async () => '',
+        ask: async () => ({ text: '' }),
         startConversation: () => ({ messages: [] }),
         respond: async () => ({ reply: '', conversation: { messages: [] } }),
       },

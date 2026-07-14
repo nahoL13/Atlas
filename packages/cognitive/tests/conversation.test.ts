@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { GenerateRequest, GenerateResult, ModelGateway } from '@atlas/contracts';
+import type { GenerateRequest, GenerateResult, ModelGateway, Runtime } from '@atlas/contracts';
 import { createCognitiveCore, TASK_FRAMING } from '../src/index.js';
 
 function stubGateway(impl: (request: GenerateRequest) => Promise<GenerateResult>): {
@@ -18,17 +18,27 @@ function stubGateway(impl: (request: GenerateRequest) => Promise<GenerateResult>
   };
 }
 
+// A conversa (respond/startConversation) não usa o runtime; um runtime vazio basta.
+const emptyRuntime: Runtime = {
+  tools: () => [],
+  execute: async () => ({ steps: [] }),
+};
+
 describe('createCognitiveCore conversa', () => {
   it('startConversation semeia o system prompt de tarefa (sem persona)', () => {
     const { gateway } = stubGateway(async () => ({ text: '' }));
-    const core = createCognitiveCore({ gateway });
+    const core = createCognitiveCore({ gateway, runtime: emptyRuntime });
     const conv = core.startConversation();
     expect(conv.messages).toEqual([{ role: 'system', content: TASK_FRAMING }]);
   });
 
   it('startConversation semeia identidade + tarefa quando há personaPrompt', () => {
     const { gateway } = stubGateway(async () => ({ text: '' }));
-    const core = createCognitiveCore({ gateway, personaPrompt: 'Você é Jarvis.' });
+    const core = createCognitiveCore({
+      gateway,
+      runtime: emptyRuntime,
+      personaPrompt: 'Você é Jarvis.',
+    });
     const conv = core.startConversation();
     expect(conv.messages).toEqual([
       { role: 'system', content: `Você é Jarvis.\n\n${TASK_FRAMING}` },
@@ -37,7 +47,7 @@ describe('createCognitiveCore conversa', () => {
 
   it('respond monta [historico, user], chama generate uma vez e anexa a resposta', async () => {
     const { gateway, calls } = stubGateway(async () => ({ text: 'oi de volta' }));
-    const core = createCognitiveCore({ gateway });
+    const core = createCognitiveCore({ gateway, runtime: emptyRuntime });
 
     const { reply, conversation } = await core.respond(core.startConversation(), 'oi');
 
@@ -56,7 +66,7 @@ describe('createCognitiveCore conversa', () => {
 
   it('respond é pura: não muta a conversa de entrada', async () => {
     const { gateway } = stubGateway(async () => ({ text: 'x' }));
-    const core = createCognitiveCore({ gateway });
+    const core = createCognitiveCore({ gateway, runtime: emptyRuntime });
     const conv0 = core.startConversation();
     await core.respond(conv0, 'oi');
     expect(conv0.messages).toEqual([{ role: 'system', content: TASK_FRAMING }]);
@@ -66,7 +76,7 @@ describe('createCognitiveCore conversa', () => {
     const { gateway, calls } = stubGateway(async (req) => ({
       text: `resp:${req.messages.at(-1)!.content}`,
     }));
-    const core = createCognitiveCore({ gateway });
+    const core = createCognitiveCore({ gateway, runtime: emptyRuntime });
     const turn1 = await core.respond(core.startConversation(), 'primeira');
     const turn2 = await core.respond(turn1.conversation, 'segunda');
     expect(turn2.conversation.messages).toEqual([
@@ -83,7 +93,7 @@ describe('createCognitiveCore conversa', () => {
     const { gateway } = stubGateway(async () => {
       throw new Error('modelo indisponível');
     });
-    const core = createCognitiveCore({ gateway });
+    const core = createCognitiveCore({ gateway, runtime: emptyRuntime });
     await expect(core.respond(core.startConversation(), 'oi')).rejects.toThrow(
       'modelo indisponível',
     );

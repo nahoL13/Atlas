@@ -47,7 +47,7 @@ describe('createAtlas', () => {
       { memoryStorage: fakeStorage() },
     );
     const answer = await atlas.cognitive.ask('olá');
-    expect(answer).toBe('[fake] olá');
+    expect(answer.text).toBe('[fake] olá');
     await atlas.shutdown();
   });
 

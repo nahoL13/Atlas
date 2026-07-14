@@ -79,6 +79,12 @@ importers:
       '@atlas/persona':
         specifier: workspace:*
         version: link:../persona
+      '@atlas/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      '@atlas/tools':
+        specifier: workspace:*
+        version: link:../tools
 
   packages/memory:
     dependencies:

@@ -1,10 +1,13 @@
 import type {
+  AskResult,
   CognitiveCore,
   Conversation,
   ConversationTurn,
   Message,
   ModelGateway,
+  Runtime,
 } from '@atlas/contracts';
+import { createPlanner } from './planner.js';
 
 export const TASK_FRAMING =
   'Responda ao objetivo do usuário de forma clara, correta e objetiva, ' +
@@ -13,25 +16,56 @@ export const TASK_FRAMING =
 
 export interface CognitiveCoreDeps {
   gateway: ModelGateway;
+  runtime: Runtime;
   personaPrompt?: string;
   memoryPrompt?: string;
 }
 
 export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
-  const { gateway, personaPrompt, memoryPrompt } = deps;
+  const { gateway, runtime, personaPrompt, memoryPrompt } = deps;
   const systemPrompt = [personaPrompt, memoryPrompt, TASK_FRAMING]
     .filter((part): part is string => part !== undefined && part !== '')
     .join('\n\n');
+  const planner = createPlanner();
 
   return {
-    async ask(objective: string): Promise<string> {
-      const result = await gateway.generate({
+    async ask(objective: string): Promise<AskResult> {
+      const instruction = planner.instruction(runtime.tools());
+      const planningSystem = [systemPrompt, instruction].filter((part) => part !== '').join('\n\n');
+      const first = await gateway.generate({
         messages: [
-          { role: 'system', content: systemPrompt },
+          { role: 'system', content: planningSystem },
           { role: 'user', content: objective },
         ],
       });
-      return result.text;
+
+      const plan = planner.parse(first.text);
+      if (plan === null) {
+        return { text: first.text };
+      }
+
+      const execution = await runtime.execute(plan);
+      const results = execution.steps
+        .map((step) => {
+          const outcome = step.result.ok
+            ? (step.result.output ?? '')
+            : `ERRO: ${step.result.error ?? ''}`;
+          return `- ${step.tool}(${JSON.stringify(step.args)}) → ${outcome}`;
+        })
+        .join('\n');
+      const composed = await gateway.generate({
+        messages: [
+          { role: 'system', content: systemPrompt },
+          {
+            role: 'user',
+            content:
+              `${objective}\n\n` +
+              `Resultados das ferramentas executadas:\n${results}\n\n` +
+              'Responda ao objetivo usando esses resultados.',
+          },
+        ],
+      });
+      return { text: composed.text, steps: execution.steps };
     },
 
     startConversation(): Conversation {
