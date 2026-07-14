@@ -25,8 +25,8 @@ Espinha de execução: Planner produz plano, Runtime executa Tools reais (`clock
 - [ ] Draft
 - [ ] Ready
 - [ ] In Progress
-- [x] Review
-- [ ] Done
+- [ ] Review
+- [x] Done
 
 ---
 
