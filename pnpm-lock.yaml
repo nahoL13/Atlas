@@ -102,6 +102,12 @@ importers:
         specifier: workspace:*
         version: link:../contracts
 
+  packages/tools:
+    dependencies:
+      '@atlas/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+
 packages:
 
   '@emnapi/core@1.11.1':

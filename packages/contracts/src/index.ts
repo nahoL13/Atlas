@@ -15,3 +15,4 @@ export type { CognitiveCore, Conversation, ConversationTurn } from './cognitive.
 export type { ContextService, SessionId } from './context.js';
 export type { Persona, PersonaService } from './persona.js';
 export type { Fact, MemoryService } from './memory.js';
+export type { Tool, ToolResult, ToolDescriptor, ToolRegistry } from './execution.js';
