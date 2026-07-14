@@ -53,6 +53,24 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## SPEC-0009 — Memory Service (fatos/preferências explícitos) (2026-07-13)
+
+**Descobrimos que...**
+
+O primeiro efeito de disco da plataforma coube no mesmo molde de injeção já usado para rede e terminal: uma **porta injetável** `MemoryStorage` (`load`/`save`) interna a `@atlas/memory`, com `createFileMemoryStorage(path)` (JSON) como default e um fake em memória nos testes. Os testes de unidade do serviço não tocam disco; o IO real fica isolado no teste do file adapter e nos testes de comando da CLI, ambos em `tmpdir` (`os.tmpdir()` + `mkdtemp`), nunca no `~/.atlas` real. `createMemoryService` é **assíncrono** (carrega os fatos uma vez na criação — load-once), o que encaixou naturalmente no `createAtlas` já assíncrono; `list()`/`prompt()` ficam síncronos e `remember`/`forget` persistem por write-through. A memória chegou à resposta pelo mesmo caminho da Persona (ADR-0011 estende ADR-0010): `memory.prompt()` vira `memoryPrompt?: string` no Cognitive, que compõe identidade → memória → tarefa via `[personaPrompt, memoryPrompt, TASK_FRAMING].filter(Boolean).join('\n\n')` sem conhecer o conceito de Memory. A CLI isolou disco por `--memory-path` (tmpdir) em vez de importar `@atlas/memory`, mantendo a app acoplada só a `@atlas/contracts` + `@atlas/core`; a porta de storage foi injetável só no `createAtlas` (para os testes de core), não na CLI.
+
+**A arquitetura ajudou porque...**
+
+O padrão "efeito colateral atrás de porta injetável + composição escolhe o adapter" (ADR-0004) já estava consolidado (`fetch`, `LineReader`), então persistir sem acoplar o módulo ao disco nem tocar disco nos testes foi mecânico. A separação Memória (persistente) × Contexto (temporário) do Glossary deu limites claros: o Memory Service só guarda/recupera fatos, sem decidir estratégia nem chamar o Gateway. Injetar identidade e memória como strings opcionais manteve o Cognitive sem estado e desacoplado de ambos os conceitos.
+
+**A arquitetura atrapalhou porque...**
+
+Adicionar um campo obrigatório a `AtlasConfig` (`memory.path`) e a `AtlasPlatform` (`memory`) exigiu atualizar **atomicamente** todos os literais/mocks que os constroem — em `apps/cli/tests/status.test.ts` foram dois pontos (o objeto `config` e o objeto `atlas`), e o do `config` não estava previsto no plano, aparecendo só no `typecheck` (TS2741). Config aninhada (`memory?: { path?: string }`) precisa de merge campo-a-campo e cuidado com `exactOptionalPropertyTypes` na composição condicional do `memoryPrompt`.
+
+**Precisamos mudar... (encaminhamento: ADR, documentação ou nova SPEC)**
+
+Leitura de memória no **startup**: gravar um fato não afeta uma sessão `chat` já aberta (documentado no ADR-0011; troca/leitura ao vivo é candidata a SPEC futura). Os fatos entram no system prompt de toda geração — sem retenção/seleção/busca, o prompt cresce com a memória (fatias futuras do Memory Service: episódica, projetos, busca, retenção). Probe do TS 7 (sexto, 2026-07-14): **falhou** de novo — `TypeError: Cannot read properties of undefined (reading 'Cjs')` em `@typescript-eslint/typescript-estree@8.63.0` com `typescript@7.0.2`, idêntico aos cinco anteriores. Revertido para `typescript@^5`. Encaminhamento mantido: parar de re-probar por hábito a cada SPEC; vincular a um release do typescript-eslint que declare suporte ao TS 7.
+
 ## SPEC-0008 — Persona Service (Jarvis) (2026-07-13)
 
 **Descobrimos que...**

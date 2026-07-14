@@ -22,10 +22,10 @@ Memory Service — fatos/preferências persistentes, injetados na geração cogn
 
 **Status**
 
-- [x] Draft
+- [ ] Draft
 - [ ] Ready
 - [ ] In Progress
-- [ ] Review
+- [x] Review
 - [ ] Done
 
 ---
