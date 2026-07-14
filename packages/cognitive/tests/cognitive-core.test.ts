@@ -45,6 +45,34 @@ describe('createCognitiveCore.ask', () => {
     });
   });
 
+  it('com memoryPrompt inclui o bloco de memória entre identidade e tarefa', async () => {
+    const { gateway, calls } = stubGateway(async () => ({ text: 'x' }));
+    const core = createCognitiveCore({
+      gateway,
+      personaPrompt: 'Você é Jarvis.',
+      memoryPrompt: 'Fatos: o nome do usuário é Lohan.',
+    });
+
+    await core.ask('oi');
+
+    expect(calls[0]!.messages[0]).toEqual({
+      role: 'system',
+      content: `Você é Jarvis.\n\nFatos: o nome do usuário é Lohan.\n\n${TASK_FRAMING}`,
+    });
+  });
+
+  it('com memoryPrompt e sem personaPrompt compõe memória + tarefa', async () => {
+    const { gateway, calls } = stubGateway(async () => ({ text: 'x' }));
+    const core = createCognitiveCore({ gateway, memoryPrompt: 'Fatos: X.' });
+
+    await core.ask('oi');
+
+    expect(calls[0]!.messages[0]).toEqual({
+      role: 'system',
+      content: `Fatos: X.\n\n${TASK_FRAMING}`,
+    });
+  });
+
   it('propaga erro do gateway sem mascarar', async () => {
     const { gateway } = stubGateway(async () => {
       throw new Error('modelo indisponível');

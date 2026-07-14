@@ -14,11 +14,14 @@ export const TASK_FRAMING =
 export interface CognitiveCoreDeps {
   gateway: ModelGateway;
   personaPrompt?: string;
+  memoryPrompt?: string;
 }
 
 export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
-  const { gateway, personaPrompt } = deps;
-  const systemPrompt = personaPrompt ? `${personaPrompt}\n\n${TASK_FRAMING}` : TASK_FRAMING;
+  const { gateway, personaPrompt, memoryPrompt } = deps;
+  const systemPrompt = [personaPrompt, memoryPrompt, TASK_FRAMING]
+    .filter((part): part is string => part !== undefined && part !== '')
+    .join('\n\n');
 
   return {
     async ask(objective: string): Promise<string> {
