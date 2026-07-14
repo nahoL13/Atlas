@@ -8,6 +8,7 @@ export interface AtlasConfig {
   readonly logLevel: LogLevel;
   readonly dataDir: string;
   readonly persona: string;
+  readonly memory: { readonly path: string };
   readonly model: ModelGatewayConfig;
 }
 
@@ -15,5 +16,6 @@ export interface AtlasConfigOverride {
   logLevel?: LogLevel;
   dataDir?: string;
   persona?: string;
+  memory?: { path?: string };
   model?: Partial<ModelGatewayConfig>;
 }

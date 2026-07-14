@@ -57,6 +57,20 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ persona: 'batman' })).toThrow(InvalidConfigError);
   });
 
+  it('memory.path default termina em .atlas/memory.json', () => {
+    expect(loadConfig().memory.path).toMatch(/[/\\]\.atlas[/\\]memory\.json$/);
+  });
+
+  it('aceita override de memory.path', () => {
+    expect(loadConfig({ memory: { path: '/tmp/custom/mem.json' } }).memory.path).toBe(
+      '/tmp/custom/mem.json',
+    );
+  });
+
+  it('rejeita memory.path vazio', () => {
+    expect(() => loadConfig({ memory: { path: '  ' } })).toThrow(InvalidConfigError);
+  });
+
   it('mescla model parcialmente preservando os defaults', () => {
     const config = loadConfig({ model: { provider: 'fake' } });
     expect(config.model).toEqual({ provider: 'fake', model: 'llama3.2' });

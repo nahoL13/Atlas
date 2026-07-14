@@ -16,6 +16,7 @@
     "@atlas/cognitive": "workspace:*",
     "@atlas/context": "workspace:*",
     "@atlas/contracts": "workspace:*",
+    "@atlas/memory": "workspace:*",
     "@atlas/model-gateway": "workspace:*",
     "@atlas/persona": "workspace:*"
   }

@@ -14,10 +14,12 @@ const PROVIDERS: readonly ProviderName[] = ['fake', 'local', 'remote'];
 export function loadConfig(override: AtlasConfigOverride = {}): AtlasConfig {
   const defaults = defaultConfig();
   const model: ModelGatewayConfig = { ...defaults.model, ...override.model };
+  const memory = { path: override.memory?.path ?? defaults.memory.path };
   const merged: AtlasConfig = {
     logLevel: override.logLevel ?? defaults.logLevel,
     dataDir: override.dataDir ?? defaults.dataDir,
     persona: override.persona ?? defaults.persona,
+    memory,
     model,
   };
 
@@ -37,6 +39,10 @@ export function loadConfig(override: AtlasConfigOverride = {}): AtlasConfig {
     issues.push(
       `persona deve ser um de: ${PERSONA_IDS.join(', ')} (recebido: ${String(merged.persona)})`,
     );
+  }
+
+  if (typeof memory.path !== 'string' || memory.path.trim() === '') {
+    issues.push('memory.path deve ser uma string não vazia');
   }
 
   if (!PROVIDERS.includes(model.provider)) {

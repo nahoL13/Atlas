@@ -22,6 +22,7 @@ describe('runStatus', () => {
         logLevel: 'info',
         dataDir: '/home/x/.atlas',
         persona: 'jarvis',
+        memory: { path: '/home/x/.atlas/memory.json' },
         model: { provider: 'local', model: 'llama3.2' },
       },
       persona: {
@@ -45,6 +46,12 @@ describe('runStatus', () => {
         getConversation: () => ({ messages: [] }),
         updateConversation: () => {},
         closeSession: () => {},
+      },
+      memory: {
+        remember: async () => ({ id: 'x', text: '', createdAt: '' }),
+        forget: async () => false,
+        list: () => [],
+        prompt: () => undefined,
       },
       shutdown: async () => {},
     };

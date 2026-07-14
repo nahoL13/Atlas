@@ -3,6 +3,7 @@ import { createModelGateway } from '@atlas/model-gateway';
 import { createCognitiveCore } from '@atlas/cognitive';
 import { createContextService } from '@atlas/context';
 import { createPersonaService } from '@atlas/persona';
+import { createFileMemoryStorage, createMemoryService, type MemoryStorage } from '@atlas/memory';
 import { loadConfig } from './config/load-config.js';
 import { createLifecycle } from './lifecycle/lifecycle.js';
 
@@ -12,6 +13,7 @@ export interface CreateAtlasOptions {
 
 export interface CreateAtlasDeps {
   fetch?: typeof fetch;
+  memoryStorage?: MemoryStorage;
 }
 
 export async function createAtlas(
@@ -21,10 +23,14 @@ export async function createAtlas(
   const config = loadConfig(options.config);
   const personaService = createPersonaService();
   const persona = personaService.get(config.persona);
+  const storage = deps.memoryStorage ?? createFileMemoryStorage(config.memory.path);
+  const memory = await createMemoryService({ storage });
+  const memoryPrompt = memory.prompt();
   const gateway = createModelGateway(config.model, { fetch: deps.fetch ?? globalThis.fetch });
   const cognitive = createCognitiveCore({
     gateway,
     personaPrompt: personaService.systemPrompt(persona),
+    ...(memoryPrompt !== undefined ? { memoryPrompt } : {}),
   });
   const context = createContextService();
   const lifecycle = createLifecycle();
@@ -38,6 +44,7 @@ export async function createAtlas(
     persona,
     cognitive,
     context,
+    memory,
     shutdown: () => lifecycle.shutdown(),
   };
 }
