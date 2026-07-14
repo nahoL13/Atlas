@@ -21,5 +21,6 @@ Objetivo: plataforma mínima operável + primeira interface executável (CLI) + 
 | SPEC-0007 | Context Service (detentor de sessão) | Done |
 | SPEC-0008 | Persona Service (Jarvis) | Done |
 | SPEC-0009 | Memory Service (fatos explícitos) | Done |
+| SPEC-0010 | Planner + Runtime + Tools (execução ponta a ponta) | Review |
 
 Detalhes de retomada: `docs/05-context/NEXT_CONTEXT.md`.

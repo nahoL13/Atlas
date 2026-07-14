@@ -22,10 +22,10 @@ Espinha de execução: Planner produz plano, Runtime executa Tools reais (`clock
 
 **Status**
 
-- [x] Draft
+- [ ] Draft
 - [ ] Ready
 - [ ] In Progress
-- [ ] Review
+- [x] Review
 - [ ] Done
 
 ---

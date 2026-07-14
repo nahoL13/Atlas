@@ -53,6 +53,36 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## SPEC-0010 — Planner + Runtime + Tools (execução ponta a ponta) (2026-07-14)
+
+**Descobrimos que...**
+
+A espinha de execução coube numa fatia fina porque o modelo produz o plano em **JSON** via o `generate()` atual e o Runtime o executa (Planner-driven) — o Model Gateway ficou **intacto**. Evitar tool-calling nativo manteve as fronteiras de autoridade limpas (Cognitive decide/orquestra → Planner transforma → Runtime executa) e não amarrou a plataforma ao suporte de tool-calling do provedor local.
+
+Separar "chamar o modelo" (Cognitive) de "definir schema + parsear" (Planner) deixou o **Planner puro, sem gateway** — totalmente testável sem stub de modelo. Fazer `instruction([])` retornar string vazia preservou o caminho de **1 chamada** para objetivos que não precisam de Tool (sem regressão de comportamento nem custo) e manteve os testes de system prompt existentes válidos sem alteração.
+
+A máquina já é **multi-tool de graça**: Tool Registry (`Map`) + plano-como-lista + Runtime-como-loop. Entregar **duas** Tools puras (`clock`/`calc`) exercitou a seleção do Planner de verdade, sem tocar em permissões/filesystem (o Permission Service não existe). Manter os passos **independentes** (sem dependência de dados) e o Runtime sem fila/retry/timeout evitou um Task Manager completo prematuro (YAGNI); o Runtime **nunca lança** por falha de Tool (falhas estruturadas), então nem `code` de erro próprio foi preciso nesta fatia.
+
+Mudar o **tipo de um contrato** (`ask: Promise<string>` → `Promise<AskResult>`) não é aditivo/inerte como acrescentar um campo: acopla `contracts` + `cognitive` + `core` + `cli` num typecheck atômico, então tudo precisou landar na mesma task (Task 4), ao contrário das adições de contrato das Tasks 1–2 que fecharam verdes isoladas.
+
+O `calc` foi implementado com **descida recursiva própria** (tokenizer + parser para `+ - * /`, parênteses, unário, decimais), sem `eval`/`Function` — seguro contra execução arbitrária a partir de saída do modelo, e limpo sob `noUncheckedIndexedAccess` (asserções `!` onde o índice é comprovadamente válido).
+
+**A arquitetura ajudou porque...**
+
+A Matriz de Autoridade do Module Catalog deu o desenho pronto: cada papel (Cognitive orquestra/responde, Planner transforma, Runtime executa, Tools adaptam) virou uma unidade pequena, injetada por parâmetro e testável isoladamente. O padrão de injeção (o `runtime` chega ao Cognitive via `@atlas/core`, único a importar implementações) manteve o Cognitive dependente só de contratos — nunca de `@atlas/runtime`/`@atlas/tools`.
+
+Expor o catálogo de Tools por `runtime.tools()` (fonte única, dona do registry) deixou o Planner montar a instrução sem o Cognitive tocar `@atlas/tools`, e impediu o Cognitive de chamar `tool.run` direto (só via `runtime.execute`), honrando "o Cognitive não executa Tools".
+
+**A arquitetura atrapalhou porque...**
+
+Nada estrutural. O único atrito foi de plano: o PLAN-0010 não previu `packages/cognitive/tests/conversation.test.ts` (6 chamadas a `createCognitiveCore` sem `runtime`), que passavam em runtime (usam só `respond`/`startConversation`) mas quebravam o `pnpm typecheck` ao tornar `runtime` obrigatório. Lição: ao mudar a assinatura de uma factory, `grep` por **todos** os chamadores (inclusive testes de outros aspectos do mesmo módulo) antes de fechar a task, não só os que o plano lista.
+
+**Precisamos mudar...**
+
+Nada no processo além do reforço acima (varrer chamadores ao mudar assinaturas). Próximas fatias naturais: primeira Tool com efeito colateral → Permission Service; Skills; dependência de dados entre passos; Task Manager completo; Observação/replanejamento; Aprendizado automático. O 7º probe do TS 7 falhou igual aos anteriores (`Cannot read properties of undefined (reading 'Cjs')`) — manter o encaminhamento de vincular a um gatilho externo (release do typescript-eslint) em vez de re-probar por hábito.
+
+---
+
 ## SPEC-0009 — Memory Service (fatos/preferências explícitos) (2026-07-13)
 
 **Descobrimos que...**
