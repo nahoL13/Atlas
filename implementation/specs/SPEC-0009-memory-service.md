@@ -25,8 +25,8 @@ Memory Service — fatos/preferências persistentes, injetados na geração cogn
 - [ ] Draft
 - [ ] Ready
 - [ ] In Progress
-- [x] Review
-- [ ] Done
+- [ ] Review
+- [x] Done
 
 ---
 

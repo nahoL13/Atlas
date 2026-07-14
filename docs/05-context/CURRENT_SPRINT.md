@@ -20,6 +20,6 @@ Objetivo: plataforma mínima operável + primeira interface executável (CLI) + 
 | SPEC-0006 | atlas chat (conversa multi-turno) | Done |
 | SPEC-0007 | Context Service (detentor de sessão) | Done |
 | SPEC-0008 | Persona Service (Jarvis) | Done |
-| SPEC-0009 | Memory Service (fatos explícitos) | Review |
+| SPEC-0009 | Memory Service (fatos explícitos) | Done |
 
 Detalhes de retomada: `docs/05-context/NEXT_CONTEXT.md`.
