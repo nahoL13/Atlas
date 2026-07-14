@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createCliInputGateway } from '../src/gateway/input-gateway.js';
 import type { OutputGateway } from '../src/gateway/output-gateway.js';
 import type { LineReader } from '../src/gateway/line-reader.js';
@@ -28,6 +31,11 @@ function scriptedReader(lines: string[]): LineReader {
     next: async () => (i < lines.length ? lines[i++]! : null),
     close: () => {},
   };
+}
+
+async function tmpMemoryPath(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), 'atlas-cli-mem-'));
+  return join(dir, 'memory.json');
 }
 
 describe('run (integração apps → core)', () => {
@@ -170,5 +178,92 @@ describe('run (integração apps → core)', () => {
     const code = await run(['status', '--persona', 'batman'], {}, h.gateways, '0.1.0');
     expect(code).toBe(1);
     expect(h.err()).toContain('persona');
+  });
+
+  it('remember grava um fato e memory list o mostra (persistido em disco)', async () => {
+    const path = await tmpMemoryPath();
+    const h1 = harness();
+    const code1 = await run(
+      ['remember', 'meu nome é Lohan', '--provider', 'fake', '--memory-path', path],
+      {},
+      h1.gateways,
+      '0.1.0',
+    );
+    expect(code1).toBe(0);
+    expect(h1.out()).toMatch(/^Lembrado \[[^\]]+\]: meu nome é Lohan\n$/);
+
+    const h2 = harness();
+    const code2 = await run(
+      ['memory', 'list', '--provider', 'fake', '--memory-path', path],
+      {},
+      h2.gateways,
+      '0.1.0',
+    );
+    expect(code2).toBe(0);
+    expect(h2.out()).toContain('meu nome é Lohan');
+  });
+
+  it('forget remove um fato previamente lembrado', async () => {
+    const path = await tmpMemoryPath();
+    const h1 = harness();
+    await run(
+      ['remember', 'fato temporário', '--provider', 'fake', '--memory-path', path],
+      {},
+      h1.gateways,
+      '0.1.0',
+    );
+    const id = h1.out().match(/^Lembrado \[([^\]]+)\]:/)![1]!;
+
+    const h2 = harness();
+    const code = await run(
+      ['forget', id, '--provider', 'fake', '--memory-path', path],
+      {},
+      h2.gateways,
+      '0.1.0',
+    );
+    expect(code).toBe(0);
+    expect(h2.out()).toContain(`Esquecido [${id}]`);
+
+    const h3 = harness();
+    await run(
+      ['memory', 'list', '--provider', 'fake', '--memory-path', path],
+      {},
+      h3.gateways,
+      '0.1.0',
+    );
+    expect(h3.out()).toContain('Nenhum fato memorizado');
+  });
+
+  it('memory list vazio informa que não há fatos', async () => {
+    const path = await tmpMemoryPath();
+    const h = harness();
+    const code = await run(
+      ['memory', 'list', '--provider', 'fake', '--memory-path', path],
+      {},
+      h.gateways,
+      '0.1.0',
+    );
+    expect(code).toBe(0);
+    expect(h.out()).toContain('Nenhum fato memorizado');
+  });
+
+  it('remember sem fato retorna 2 e escreve o uso em stderr', async () => {
+    const h = harness();
+    const code = await run(['remember'], {}, h.gateways, '0.1.0');
+    expect(code).toBe(2);
+    expect(h.err()).toContain('fato');
+  });
+
+  it('forget de id inexistente informa e retorna 0', async () => {
+    const path = await tmpMemoryPath();
+    const h = harness();
+    const code = await run(
+      ['forget', 'zzzzzzzz', '--provider', 'fake', '--memory-path', path],
+      {},
+      h.gateways,
+      '0.1.0',
+    );
+    expect(code).toBe(0);
+    expect(h.out()).toContain('Nenhum fato com id zzzzzzzz');
   });
 });

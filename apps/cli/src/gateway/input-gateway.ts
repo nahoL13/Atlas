@@ -7,9 +7,11 @@ import type {
 } from '@atlas/contracts';
 
 export interface ParsedInput {
-  command: 'status' | 'help' | 'version' | 'ask' | 'chat';
+  command: 'status' | 'help' | 'version' | 'ask' | 'chat' | 'remember' | 'forget' | 'memory';
   configOverride: AtlasConfigOverride;
   objective?: string;
+  factText?: string;
+  factId?: string;
 }
 
 export interface InputGateway {
@@ -27,6 +29,7 @@ interface CliValues {
   'log-level'?: string | undefined;
   'data-dir'?: string | undefined;
   persona?: string | undefined;
+  'memory-path'?: string | undefined;
   provider?: string | undefined;
   model?: string | undefined;
   'base-url'?: string | undefined;
@@ -56,6 +59,17 @@ function resolveConfigOverride(values: CliValues, env: NodeJS.ProcessEnv): Atlas
   }
   if (values.persona !== undefined) {
     override.persona = values.persona;
+  }
+
+  let memoryPath: string | undefined;
+  if (env.ATLAS_MEMORY_PATH !== undefined) {
+    memoryPath = env.ATLAS_MEMORY_PATH;
+  }
+  if (values['memory-path'] !== undefined) {
+    memoryPath = values['memory-path'];
+  }
+  if (memoryPath !== undefined) {
+    override.memory = { path: memoryPath };
   }
 
   const model: Partial<ModelGatewayConfig> = {};
@@ -104,6 +118,7 @@ function parseArgvOrThrow(argv: string[]) {
         'log-level': { type: 'string' },
         'data-dir': { type: 'string' },
         persona: { type: 'string' },
+        'memory-path': { type: 'string' },
         provider: { type: 'string' },
         model: { type: 'string' },
         'base-url': { type: 'string' },
@@ -145,6 +160,40 @@ export function createCliInputGateway(): InputGateway {
           throw new CliUsageError('o comando "ask" exige um objetivo: atlas ask "<objetivo>"');
         }
         return { command: 'ask', configOverride: resolveConfigOverride(values, env), objective };
+      }
+
+      if (command === 'remember') {
+        const text = positionals[1];
+        if (text === undefined || text.trim() === '') {
+          throw new CliUsageError('o comando "remember" exige um fato: atlas remember "<fato>"');
+        }
+        return {
+          command: 'remember',
+          configOverride: resolveConfigOverride(values, env),
+          factText: text,
+        };
+      }
+
+      if (command === 'forget') {
+        const id = positionals[1];
+        if (id === undefined || id.trim() === '') {
+          throw new CliUsageError('o comando "forget" exige um id: atlas forget <id>');
+        }
+        return {
+          command: 'forget',
+          configOverride: resolveConfigOverride(values, env),
+          factId: id,
+        };
+      }
+
+      if (command === 'memory') {
+        const sub = positionals[1];
+        if (sub !== undefined && sub !== 'list') {
+          throw new CliUsageError(
+            `subcomando de memory desconhecido: ${sub} (use: atlas memory list)`,
+          );
+        }
+        return { command: 'memory', configOverride: resolveConfigOverride(values, env) };
       }
 
       if (command === 'chat') {
