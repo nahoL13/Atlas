@@ -77,6 +77,12 @@ importers:
         specifier: workspace:*
         version: link:../persona
 
+  packages/memory:
+    dependencies:
+      '@atlas/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+
   packages/model-gateway:
     dependencies:
       '@atlas/contracts':
