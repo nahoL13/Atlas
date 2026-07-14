@@ -86,7 +86,6 @@ Documentos originadores: **CognitiveLifecycle** (etapas Planejamento/Execução)
   - `createCalcTool(): Tool` — `name: 'calc'`; `run({ expression })` avalia aritmética (`+ - * /`, parênteses, números decimais) de forma **segura** (parser próprio, **sem `eval`/`Function`**); expressão inválida → `ToolResult` de erro.
 - Criar o package `packages/runtime` (`@atlas/runtime`):
   - `createRuntime({ registry }): Runtime` com `execute(plan)` (executa passos em ordem; resolve Tool no registry; falha estruturada quando a Tool não existe ou lança; **nunca lança** por falha de Tool) e `tools()` (descritores das Tools do registry).
-  - `RuntimeError` (`code: 'ATLAS_RUNTIME'`) para falhas internas excepcionais (não para falhas de Tool, que são estruturadas).
 - Consolidar o **Planner** em `packages/cognitive`:
   - `createPlanner(): Planner` **puro** (sem gateway): `instruction(tools)` (framing que lista as Tools e o schema JSON de plano) e `parse(modelOutput): Plan | null` (extrai/valida o plano; `null` = resposta direta).
 - Alterar o **Cognitive Core** (`packages/cognitive`):
@@ -148,7 +147,6 @@ Cada item é verificável.
 - Contratos `Tool`/`ToolResult`/`ToolDescriptor`/`ToolRegistry`/`Plan`/`PlanStep`/`ExecutedStep`/`ExecutionResult`/`Runtime`/`AskResult` vivem em `@atlas/contracts`; `CognitiveCore.ask` retorna `Promise<AskResult>`.
 - `@atlas/core` compõe registry (`clock`+`calc`) + `createRuntime` + injeta `runtime` no Cognitive; `atlas.cognitive.ask` funciona ponta a ponta com fakes.
 - CLI: `atlas ask "<objetivo>"` imprime o traço dos passos (Tool + resultado/erro) quando há execução e sempre a resposta final; sem execução, imprime só a resposta (como hoje).
-- Erro interno de runtime → `AtlasError` com `code: 'ATLAS_RUNTIME'`.
 - ADR-0012 criado e aceito.
 - `pnpm lint && pnpm format:check && pnpm typecheck && pnpm test` verdes.
 - Documentação atualizada; lições registradas em `implementation/LESSONS_LEARNED.md`.
@@ -179,7 +177,6 @@ packages/runtime/
   src/
     index.ts            # createRuntime
     runtime.ts          # execute(plan) + tools()
-    errors.ts           # RuntimeError (ATLAS_RUNTIME)
   tests/
     runtime.test.ts     # registry fake: multi-passo, tool inexistente, tool que lança
 
@@ -367,7 +364,7 @@ Autoridade (Module Catalog): Cognitive Core **orquestra e responde**; Planner **
 - **Regras de Dependência** (Module Catalog / Project Structure): Tools (`@atlas/tools`) e Runtime (`@atlas/runtime`) dependem **só** de `@atlas/contracts`; **não** dependem do Cognitive Core (Regra 5). Planner não coordena execução (Regra 7). Runtime não redefine o objetivo estratégico (Regra 8). Só `@atlas/core` importa implementações (Regra 11).
 - O **Model Gateway** permanece intacto (sem tool-calling nativo).
 - As Tools desta fatia são **puras** (sem rede, disco, filesystem, efeitos colaterais), pois o Permission Service ainda não existe.
-- O Runtime **nunca lança** por falha de Tool — falhas são `ToolResult`/`ExecutedStep` estruturados; `ATLAS_RUNTIME` é só para falhas internas excepcionais.
+- O Runtime **nunca lança** por falha de Tool — falhas são `ToolResult`/`ExecutedStep` estruturados; o Plan já vem validado pelo Planner, então esta fatia não introduz erro/`code` próprio de runtime.
 - `calc` **não** pode usar `eval`/`Function` — parser aritmético próprio e restrito.
 - Passos de um plano são **independentes**; nenhum consome a saída de outro nesta fatia.
 - `respond`/`chat` não recebem planejamento; `respond` segue função pura.
