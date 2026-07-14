@@ -102,6 +102,12 @@ importers:
         specifier: workspace:*
         version: link:../contracts
 
+  packages/runtime:
+    dependencies:
+      '@atlas/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+
   packages/tools:
     dependencies:
       '@atlas/contracts':

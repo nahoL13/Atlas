@@ -21,3 +21,27 @@ export interface ToolRegistry {
   has(name: string): boolean;
   list(): readonly Tool[];
 }
+
+export interface PlanStep {
+  readonly tool: string;
+  readonly args: Record<string, unknown>;
+}
+
+export interface Plan {
+  readonly steps: readonly PlanStep[];
+}
+
+export interface ExecutedStep {
+  readonly tool: string;
+  readonly args: Record<string, unknown>;
+  readonly result: ToolResult;
+}
+
+export interface ExecutionResult {
+  readonly steps: readonly ExecutedStep[];
+}
+
+export interface Runtime {
+  tools(): readonly ToolDescriptor[];
+  execute(plan: Plan): Promise<ExecutionResult>;
+}
