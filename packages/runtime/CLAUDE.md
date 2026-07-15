@@ -1,7 +1,8 @@
 # @atlas/runtime
 
-Runtime (Execution) — coordena a execução de um Plan sobre o Tool Registry (ADR-0012).
+Runtime (Execution) — coordena a execução de um Plan sobre o Tool Registry, aplicando o veredicto do Permission Service (ADR-0012/0013).
 
-- `createRuntime({ registry })` → `execute(plan)` (executa os passos em ordem; resolve cada Tool no registry; **nunca lança** por falha de Tool — Tool inexistente ou que lança vira `ExecutedStep` com `ToolResult` de erro; continua nos demais passos) e `tools()` (descritores nome+descrição das Tools, consumido pelo Planner via Cognitive).
+- `createRuntime({ registry, permissions })` → `execute(plan)` (executa os passos em ordem; resolve cada Tool no registry; **nunca lança** por falha de Tool — Tool inexistente ou que lança vira `ExecutedStep` com `ToolResult` de erro; continua nos demais passos) e `tools()` (descritores nome+descrição das Tools, consumido pelo Planner via Cognitive).
+- **Portão de permissão por passo** (ADR-0013): antes de rodar, consulta `tool.requirements?.(args)`. Sem requisito (`null`/ausente) → executa direto, **sem** chamar `permissions.evaluate` (Tool livre). Com requisito → `permissions.evaluate(requirement)`; veredicto `allowed` executa a Tool normalmente; qualquer outro veredicto (`blocked`, ou `confirm` tratado como não-executável nesta fatia) vira `ExecutedStep` **negado** com o motivo — a Tool **não roda** (porta de fs/rede não é tocada) — e a execução **nunca lança**, continuando nos demais passos.
 - Passos são **independentes** nesta fatia (sem dependência de dados entre Tools). Task Manager completo (fila/retry/timeout/cancelamento) é fatia futura.
-- **Não** redefine o objetivo estratégico (Regra 8) nem decide estratégia. Depende só de `@atlas/contracts`. Contratos `Plan`/`PlanStep`/`ExecutedStep`/`ExecutionResult`/`Runtime` vivem em `@atlas/contracts`.
+- **Não** redefine o objetivo estratégico (Regra 8), nem decide estratégia, nem julga permissão — só **aplica** o veredicto que `@atlas/permissions` produz. Depende de `@atlas/contracts` (contratos `Plan`/`PlanStep`/`ExecutedStep`/`ExecutionResult`/`Runtime`/`PermissionService`/`ActionRequest`); recebe o Permission Service por injeção, sem importar `@atlas/permissions` diretamente (a implementação é escolhida por `@atlas/core`).

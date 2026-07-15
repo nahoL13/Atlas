@@ -2,7 +2,7 @@
 
 > **Project Atlas — Estado do Trabalho Atual**
 
-Atualizado em: 2026-07-13
+Atualizado em: 2026-07-15
 
 ---
 
@@ -22,5 +22,6 @@ Objetivo: plataforma mínima operável + primeira interface executável (CLI) + 
 | SPEC-0008 | Persona Service (Jarvis) | Done |
 | SPEC-0009 | Memory Service (fatos explícitos) | Done |
 | SPEC-0010 | Planner + Runtime + Tools (execução ponta a ponta) | Done |
+| SPEC-0011 | Permission Service + Tools de leitura de sistema de arquivos | Review |
 
 Detalhes de retomada: `docs/05-context/NEXT_CONTEXT.md`.

@@ -22,10 +22,10 @@ Portão de permissão na execução: primeiras Tools com efeito (`read_file`/`li
 
 **Status**
 
-- [x] Draft
+- [ ] Draft
 - [ ] Ready
 - [ ] In Progress
-- [ ] Review
+- [x] Review
 - [ ] Done
 
 ---

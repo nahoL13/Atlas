@@ -53,6 +53,34 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## SPEC-0011 — Permission Service + Tools de leitura de sistema de arquivos (2026-07-15)
+
+**Descobrimos que...**
+
+Manter um avaliador de Support **puro** (sem IO) coube inteiramente em `node:path`: `createPermissionService({ readRoots })` resolve o `path` da ação para absoluto e testa contenção lexical (prefixo com fronteira de separador) contra as `readRoots` — nenhum `fs`, nenhum `realpath`. Seguir symlink exigiria IO na própria avaliação (ou uma porta de resolução injetável), o que quebraria a invariante "Permission Service sem IO"; foi adiado e documentado como limitação conhecida (ADR-0013). A pureza tornou o serviço trivialmente testável: nenhum fake de disco, só strings de path e arrays de raízes.
+
+Fazer as Tools declararem `requirements(args) → ActionRequest | null` como **dado** — em vez de o Permission Service conhecer nomes de Tool (`read_file`, `list_dir`) — manteve o serviço genérico: ele nunca importa `@atlas/tools` nem sabe que `read_file` existe. `clock`/`calc` seguem sem `requirements`, permanecendo livres sem qualquer mudança nelas. Essa separação de autoridades (Tool descreve o que toca; Permission julga; Runtime aplica) foi o eixo central da SPEC e evitou qualquer acoplamento cruzado entre os três packages.
+
+Mudar a assinatura de `createRuntime` (de `{ registry }` para `{ registry, permissions }`, campo obrigatório) teve que **mover na mesma task/commit** que seu único chamador de produção (`@atlas/core`, que passou a compor `createPermissionService` e injetar no `createRuntime`) — o mesmo padrão de risco já registrado na lição da SPEC-0010 (mudança de tipo de contrato não é aditiva). Como desta vez o plano já sabia disso (Task 6 tratou runtime+core juntos), não houve surpresa no `tsc`.
+
+Tornar `permissions.readRoots` **obrigatório** em `AtlasConfig` repetiu, pela sexta vez nas SPECs deste projeto, a mesma classe de atrito: literais de `AtlasConfig` montados à mão em testes (`apps/cli/tests/status.test.ts`) quebram com TS2741 até ganharem o campo novo — o `vitest` (transpila, não faz typecheck) passa verde enquanto só o `tsc` acusa. O padrão de correção (atualizar os literais na mesma task que torna o campo obrigatório, rodando `pnpm typecheck` a cada task, não só no final) já estava incorporado ao plano e não gerou atrito real na execução — mas o padrão em si segue recorrente o suficiente para valer registrar de novo.
+
+`AccessMode = 'read' | 'write'` incluiu `'write'` **reservado** deliberadamente, mesmo sem nenhuma Tool de escrita existir ainda — isso tornou o veredicto "acesso reservado bloqueado" (`access !== 'read'` → `blocked`) testável hoje, com um `ActionRequest` construído à mão no teste, sem esperar pela fatia de escrita.
+
+**A arquitetura ajudou porque...**
+
+O Module Catalog já cravava os quatro veredictos (`free`/`allowed`/`confirm`/`blocked`) e a proibição de presumir consentimento para ações destrutivas — a decisão de começar por leitura (read-only) saiu quase automática: exercita o portão real (livre × bloqueada por raiz) sem precisar do fluxo interativo de confirmação, que só faz sentido diante de uma ação destrutiva de verdade. O padrão de porta injetável (ADR-0004/0011: `fetch`, `MemoryStorage`) se repetiu sem fricção para o `FsReadPort` — o primeiro IO das Tools nasceu testável sem disco desde o primeiro commit.
+
+**A arquitetura atrapalhou porque...**
+
+Nada estrutural. O único atrito foi o already-conhecido TS2741 em literais de config de teste, já absorvido pelo processo de tasks.
+
+**Precisamos mudar...**
+
+Nada novo no processo além do reforço já registrado (mover mudança de assinatura de factory junto do único chamador; atualizar literais de `AtlasConfig` na mesma task que torna um campo obrigatório). Próximas fatias naturais: Tools de **escrita** + o fluxo interativo de **`confirm`** (hoje só reservado no vocabulário do contrato); **endurecimento de symlink** (`realpath` ou porta de resolução injetável) contra o escape documentado da contenção lexical. Não rodamos um novo probe do TS7 nesta SPEC — a Pendência já registrada em NEXT_CONTEXT pede para parar de re-probar por hábito e vincular a um gatilho externo (release do typescript-eslint com suporte ao TS7); nada mudou nesse encaminhamento.
+
+---
+
 ## SPEC-0010 — Planner + Runtime + Tools (execução ponta a ponta) (2026-07-14)
 
 **Descobrimos que...**
