@@ -217,7 +217,7 @@ export interface ResourceRef {
   readonly path: string;
 }
 
-export type AccessMode = 'read';   // 'write' reservado para fatia futura
+export type AccessMode = 'read' | 'write';   // 'write' reservado (bloqueado nesta fatia)
 
 export interface ActionRequest {
   readonly resource: ResourceRef;
