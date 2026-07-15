@@ -6,3 +6,5 @@ export { createReadFileTool } from './read-file.js';
 export type { ReadFileDeps } from './read-file.js';
 export { nodeFsReadPort } from './fs-port.js';
 export type { FsReadPort } from './fs-port.js';
+export { createListDirTool } from './list-dir.js';
+export type { ListDirDeps } from './list-dir.js';
