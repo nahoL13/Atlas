@@ -9,6 +9,7 @@ export function runStatus(atlas: AtlasPlatform, output: OutputGateway): void {
       `logLevel: ${config.logLevel}`,
       `dataDir: ${config.dataDir}`,
       `persona: ${persona.name} (${persona.id})`,
+      `readRoots: ${config.permissions.readRoots.join(', ')}`,
       '',
     ].join('\n'),
   );

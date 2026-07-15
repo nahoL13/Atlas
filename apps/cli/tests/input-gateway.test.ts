@@ -88,4 +88,26 @@ describe('CliInputGateway.normalize', () => {
     });
     expect(parsed.configOverride).toEqual({ model: { provider: 'fake' } });
   });
+
+  it('mapeia ATLAS_ALLOW_READ para permissions.readRoots', () => {
+    const gateway = createCliInputGateway();
+    const parsed = gateway.normalize(['status'], {
+      ATLAS_ALLOW_READ: '/env/dir',
+    } as NodeJS.ProcessEnv);
+    expect(parsed.configOverride.permissions).toEqual({ readRoots: ['/env/dir'] });
+  });
+
+  it('--allow-read tem precedência sobre ATLAS_ALLOW_READ', () => {
+    const gateway = createCliInputGateway();
+    const parsed = gateway.normalize(['status', '--allow-read', '/flag/dir'], {
+      ATLAS_ALLOW_READ: '/env/dir',
+    } as NodeJS.ProcessEnv);
+    expect(parsed.configOverride.permissions).toEqual({ readRoots: ['/flag/dir'] });
+  });
+
+  it('sem flag/env, não define permissions no override', () => {
+    const gateway = createCliInputGateway();
+    const parsed = gateway.normalize(['status'], {} as NodeJS.ProcessEnv);
+    expect(parsed.configOverride.permissions).toBeUndefined();
+  });
 });

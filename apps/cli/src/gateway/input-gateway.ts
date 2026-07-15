@@ -30,6 +30,7 @@ interface CliValues {
   'data-dir'?: string | undefined;
   persona?: string | undefined;
   'memory-path'?: string | undefined;
+  'allow-read'?: string | undefined;
   provider?: string | undefined;
   model?: string | undefined;
   'base-url'?: string | undefined;
@@ -70,6 +71,17 @@ function resolveConfigOverride(values: CliValues, env: NodeJS.ProcessEnv): Atlas
   }
   if (memoryPath !== undefined) {
     override.memory = { path: memoryPath };
+  }
+
+  let readRoot: string | undefined;
+  if (env.ATLAS_ALLOW_READ !== undefined) {
+    readRoot = env.ATLAS_ALLOW_READ;
+  }
+  if (values['allow-read'] !== undefined) {
+    readRoot = values['allow-read'];
+  }
+  if (readRoot !== undefined) {
+    override.permissions = { readRoots: [readRoot] };
   }
 
   const model: Partial<ModelGatewayConfig> = {};
@@ -119,6 +131,7 @@ function parseArgvOrThrow(argv: string[]) {
         'data-dir': { type: 'string' },
         persona: { type: 'string' },
         'memory-path': { type: 'string' },
+        'allow-read': { type: 'string' },
         provider: { type: 'string' },
         model: { type: 'string' },
         'base-url': { type: 'string' },
