@@ -25,8 +25,8 @@ Portão de permissão na execução: primeiras Tools com efeito (`read_file`/`li
 - [ ] Draft
 - [ ] Ready
 - [ ] In Progress
-- [x] Review
-- [ ] Done
+- [ ] Review
+- [x] Done
 
 ---
 
