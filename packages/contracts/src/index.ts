@@ -26,3 +26,12 @@ export type {
   ExecutionResult,
   Runtime,
 } from './execution.js';
+export type {
+  ResourceType,
+  ResourceRef,
+  AccessMode,
+  ActionRequest,
+  PermissionVerdict,
+  PermissionDecision,
+  PermissionService,
+} from './permission.js';

@@ -1,3 +1,5 @@
+import type { ActionRequest } from './permission.js';
+
 export interface ToolResult {
   readonly ok: boolean;
   readonly output?: string;
@@ -7,6 +9,8 @@ export interface ToolResult {
 export interface Tool {
   readonly name: string;
   readonly description: string;
+  /** Descreve, como dado, o recurso que esta invocação tocaria. null/ausente = não toca nada (livre). */
+  requirements?(args: Record<string, unknown>): ActionRequest | null;
   run(args: Record<string, unknown>): Promise<ToolResult>;
 }
 
