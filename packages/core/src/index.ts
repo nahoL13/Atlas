@@ -4,8 +4,17 @@ import { createCognitiveCore } from '@atlas/cognitive';
 import { createContextService } from '@atlas/context';
 import { createPersonaService } from '@atlas/persona';
 import { createFileMemoryStorage, createMemoryService, type MemoryStorage } from '@atlas/memory';
+import { createPermissionService } from '@atlas/permissions';
 import { createRuntime } from '@atlas/runtime';
-import { createToolRegistry, createClockTool, createCalcTool } from '@atlas/tools';
+import {
+  createToolRegistry,
+  createClockTool,
+  createCalcTool,
+  createReadFileTool,
+  createListDirTool,
+  nodeFsReadPort,
+  type FsReadPort,
+} from '@atlas/tools';
 import { loadConfig } from './config/load-config.js';
 import { createLifecycle } from './lifecycle/lifecycle.js';
 
@@ -16,6 +25,7 @@ export interface CreateAtlasOptions {
 export interface CreateAtlasDeps {
   fetch?: typeof fetch;
   memoryStorage?: MemoryStorage;
+  fsRead?: FsReadPort;
 }
 
 export async function createAtlas(
@@ -29,10 +39,14 @@ export async function createAtlas(
   const memory = await createMemoryService({ storage });
   const memoryPrompt = memory.prompt();
   const gateway = createModelGateway(config.model, { fetch: deps.fetch ?? globalThis.fetch });
+  const fsRead = deps.fsRead ?? nodeFsReadPort();
+  const permissions = createPermissionService({ readRoots: config.permissions.readRoots });
   const registry = createToolRegistry();
   registry.register(createClockTool());
   registry.register(createCalcTool());
-  const runtime = createRuntime({ registry });
+  registry.register(createReadFileTool({ fs: fsRead }));
+  registry.register(createListDirTool({ fs: fsRead }));
+  const runtime = createRuntime({ registry, permissions });
   const cognitive = createCognitiveCore({
     gateway,
     runtime,

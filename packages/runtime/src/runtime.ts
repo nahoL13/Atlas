@@ -1,6 +1,7 @@
 import type {
   ExecutedStep,
   ExecutionResult,
+  PermissionService,
   Plan,
   Runtime,
   ToolDescriptor,
@@ -9,10 +10,11 @@ import type {
 
 export interface RuntimeDeps {
   registry: ToolRegistry;
+  permissions: PermissionService;
 }
 
 export function createRuntime(deps: RuntimeDeps): Runtime {
-  const { registry } = deps;
+  const { registry, permissions } = deps;
   return {
     tools(): readonly ToolDescriptor[] {
       return registry.list().map((tool) => ({ name: tool.name, description: tool.description }));
@@ -29,6 +31,21 @@ export function createRuntime(deps: RuntimeDeps): Runtime {
             result: { ok: false, error: `ferramenta desconhecida: ${step.tool}` },
           });
           continue;
+        }
+        const requirement = tool.requirements?.(step.args) ?? null;
+        if (requirement !== null) {
+          const decision = permissions.evaluate(requirement);
+          if (decision.verdict !== 'allowed') {
+            steps.push({
+              tool: step.tool,
+              args: step.args,
+              result: {
+                ok: false,
+                error: decision.reason ?? `ação não permitida (${decision.verdict})`,
+              },
+            });
+            continue;
+          }
         }
         try {
           const result = await tool.run(step.args);

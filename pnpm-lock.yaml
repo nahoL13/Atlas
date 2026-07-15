@@ -76,6 +76,9 @@ importers:
       '@atlas/model-gateway':
         specifier: workspace:*
         version: link:../model-gateway
+      '@atlas/permissions':
+        specifier: workspace:*
+        version: link:../permissions
       '@atlas/persona':
         specifier: workspace:*
         version: link:../persona

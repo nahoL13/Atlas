@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { InvalidConfigError } from '@atlas/contracts';
 import type { Fact } from '@atlas/contracts';
 import type { MemoryStorage } from '@atlas/memory';
+import { createPermissionService } from '@atlas/permissions';
+import { createRuntime } from '@atlas/runtime';
+import { createReadFileTool, createToolRegistry } from '@atlas/tools';
+import type { FsReadPort } from '@atlas/tools';
 import { createAtlas } from '../src/index.js';
 
 function fakeStorage(initial: Fact[] = []): MemoryStorage {
@@ -121,5 +125,45 @@ describe('createAtlas', () => {
     await atlas.memory.remember('prefiro respostas curtas');
     expect(atlas.memory.list().map((fact) => fact.text)).toContain('prefiro respostas curtas');
     await atlas.shutdown();
+  });
+
+  it('compõe com fsRead e permissions.readRoots injetados sem erro', async () => {
+    const fsRead: FsReadPort = {
+      readFile: async (path: string) =>
+        path === '/repo/README.md' ? '# Projeto' : Promise.reject(new Error('ENOENT')),
+      readdir: async () => [],
+    };
+    const atlas = await createAtlas(
+      { config: { model: { provider: 'fake' }, permissions: { readRoots: ['/repo'] } } },
+      { memoryStorage: fakeStorage(), fsRead },
+    );
+    expect(atlas.state).toBe('ready');
+    await atlas.shutdown();
+  });
+
+  it('read_file lê dentro da raiz permitida e é bloqueada fora dela, sem tocar o fs', async () => {
+    const calls: string[] = [];
+    const fsRead: FsReadPort = {
+      readFile: async (path: string) => {
+        calls.push(path);
+        return path === '/repo/README.md' ? '# Projeto' : Promise.reject(new Error('ENOENT'));
+      },
+      readdir: async () => [],
+    };
+    const permissions = createPermissionService({ readRoots: ['/repo'] });
+    const registry = createToolRegistry();
+    registry.register(createReadFileTool({ fs: fsRead }));
+    const runtime = createRuntime({ registry, permissions });
+
+    const ok = await runtime.execute({
+      steps: [{ tool: 'read_file', args: { path: '/repo/README.md' } }],
+    });
+    expect(ok.steps[0]!.result).toEqual({ ok: true, output: '# Projeto' });
+
+    const blocked = await runtime.execute({
+      steps: [{ tool: 'read_file', args: { path: '/etc/passwd' } }],
+    });
+    expect(blocked.steps[0]!.result.ok).toBe(false);
+    expect(calls).toEqual(['/repo/README.md']);
   });
 });

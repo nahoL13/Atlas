@@ -18,6 +18,7 @@
     "@atlas/contracts": "workspace:*",
     "@atlas/memory": "workspace:*",
     "@atlas/model-gateway": "workspace:*",
+    "@atlas/permissions": "workspace:*",
     "@atlas/persona": "workspace:*",
     "@atlas/runtime": "workspace:*",
     "@atlas/tools": "workspace:*"
