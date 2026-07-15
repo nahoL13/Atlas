@@ -63,6 +63,6 @@ describe('runStatus', () => {
     expect(text).toContain('logLevel: info');
     expect(text).toContain('dataDir: /home/x/.atlas');
     expect(text).toContain('persona: Jarvis (jarvis)');
-    expect(text).toContain('readRoots: ');
+    expect(text).toContain('readRoots: /home/x/project');
   });
 });

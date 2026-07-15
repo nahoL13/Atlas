@@ -40,6 +40,11 @@ describe('createPermissionService.evaluate', () => {
     expect(service.evaluate(read('/b/file')).verdict).toBe('allowed');
   });
 
+  it('trata a raiz do sistema (/) sem duplicar o separador', () => {
+    const service = createPermissionService({ readRoots: ['/'] });
+    expect(service.evaluate(read('/etc/hosts')).verdict).toBe('allowed');
+  });
+
   it('bloqueia access reservado (write)', () => {
     const service = createPermissionService({ readRoots: ['/work/repo'] });
     const decision = service.evaluate({

@@ -21,7 +21,11 @@ export function createPermissionService(deps: PermissionServiceDeps): Permission
         };
       }
       const target = resolve(action.resource.path);
-      const allowed = roots.some((root) => target === root || target.startsWith(root + sep));
+      const allowed = roots.some((root) => {
+        if (target === root) return true;
+        const prefix = root.endsWith(sep) ? root : root + sep;
+        return target.startsWith(prefix);
+      });
       if (allowed) {
         return { verdict: 'allowed' };
       }

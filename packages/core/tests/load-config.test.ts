@@ -105,10 +105,10 @@ describe('loadConfig', () => {
   });
 
   it('rejeita readRoots vazio', () => {
-    expect(() => loadConfig({ permissions: { readRoots: [] } })).toThrow();
+    expect(() => loadConfig({ permissions: { readRoots: [] } })).toThrow(InvalidConfigError);
   });
 
   it('rejeita readRoots com caminho vazio', () => {
-    expect(() => loadConfig({ permissions: { readRoots: ['  '] } })).toThrow();
+    expect(() => loadConfig({ permissions: { readRoots: ['  '] } })).toThrow(InvalidConfigError);
   });
 });
