@@ -23,6 +23,7 @@ describe('runStatus', () => {
         dataDir: '/home/x/.atlas',
         persona: 'jarvis',
         memory: { path: '/home/x/.atlas/memory.json' },
+        permissions: { readRoots: ['/home/x/project'] },
         model: { provider: 'local', model: 'llama3.2' },
       },
       persona: {

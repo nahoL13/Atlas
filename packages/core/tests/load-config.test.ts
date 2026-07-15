@@ -93,4 +93,22 @@ describe('loadConfig', () => {
       InvalidConfigError,
     );
   });
+
+  it('usa [cwd] como readRoots padrão', () => {
+    const config = loadConfig();
+    expect(config.permissions.readRoots).toEqual([process.cwd()]);
+  });
+
+  it('override.permissions.readRoots substitui o default', () => {
+    const config = loadConfig({ permissions: { readRoots: ['/allowed'] } });
+    expect(config.permissions.readRoots).toEqual(['/allowed']);
+  });
+
+  it('rejeita readRoots vazio', () => {
+    expect(() => loadConfig({ permissions: { readRoots: [] } })).toThrow();
+  });
+
+  it('rejeita readRoots com caminho vazio', () => {
+    expect(() => loadConfig({ permissions: { readRoots: ['  '] } })).toThrow();
+  });
 });
