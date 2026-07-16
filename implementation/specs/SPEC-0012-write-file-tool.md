@@ -25,8 +25,8 @@ Primeira Tool de escrita (`write_file`) sob política de raízes de escrita (`wr
 - [ ] Draft
 - [ ] Ready
 - [ ] In Progress
-- [x] Review
-- [ ] Done
+- [ ] Review
+- [x] Done
 
 ---
 

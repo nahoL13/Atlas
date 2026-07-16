@@ -23,6 +23,6 @@ Objetivo: plataforma mínima operável + primeira interface executável (CLI) + 
 | SPEC-0009 | Memory Service (fatos explícitos) | Done |
 | SPEC-0010 | Planner + Runtime + Tools (execução ponta a ponta) | Done |
 | SPEC-0011 | Permission Service + Tools de leitura de sistema de arquivos | Done |
-| SPEC-0012 | Tool de escrita (`write_file`) + política `writeRoots` | Review |
+| SPEC-0012 | Tool de escrita (`write_file`) + política `writeRoots` | Done |
 
 Detalhes de retomada: `docs/05-context/NEXT_CONTEXT.md`.
