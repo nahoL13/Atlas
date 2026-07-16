@@ -6,3 +6,9 @@ coverage/
 .env
 .env.*
 !.env.example
+
+# Obsidian: docs/ é vault — versiona config compartilhada (app.json, plugins),
+# ignora estado local de sessão/máquina
+docs/.obsidian/workspace.json
+docs/.obsidian/workspace-mobile.json
+docs/.obsidian/cache
