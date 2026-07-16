@@ -5,7 +5,7 @@ export interface ResourceRef {
   readonly path: string;
 }
 
-/** 'write' é reservado para uma fatia futura; nesta versão só 'read' é produzido. */
+/** 'read' e 'write' são ambos produzidos: 'read' contra readRoots, 'write' contra writeRoots. */
 export type AccessMode = 'read' | 'write';
 
 export interface ActionRequest {

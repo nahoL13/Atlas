@@ -3,35 +3,47 @@ import type { ActionRequest, PermissionDecision, PermissionService } from '@atla
 
 export interface PermissionServiceDeps {
   readonly readRoots: readonly string[];
+  readonly writeRoots: readonly string[];
+}
+
+/** Contenção lexical: path resolvido igual à raiz ou sob ela (com fronteira de separador). */
+function within(target: string, roots: readonly string[]): boolean {
+  return roots.some((root) => {
+    if (target === root) return true;
+    const prefix = root.endsWith(sep) ? root : root + sep;
+    return target.startsWith(prefix);
+  });
 }
 
 /**
- * Avaliador puro/síncrono. Contenção lexical: resolve o path da ação e o
- * compara com cada raiz (igual à raiz ou sob ela, com fronteira de separador).
- * Não faz IO e não segue symlinks.
+ * Avaliador puro/síncrono. Roteia por access: 'read' contra readRoots,
+ * 'write' contra writeRoots. Não faz IO e não segue symlinks.
  */
 export function createPermissionService(deps: PermissionServiceDeps): PermissionService {
-  const roots = deps.readRoots.map((root) => resolve(root));
+  const readRoots = deps.readRoots.map((root) => resolve(root));
+  const writeRoots = deps.writeRoots.map((root) => resolve(root));
   return {
     evaluate(action: ActionRequest): PermissionDecision {
-      if (action.access !== 'read') {
-        return {
-          verdict: 'blocked',
-          reason: `acesso "${action.access}" não autorizado nesta versão (apenas leitura)`,
-        };
-      }
       const target = resolve(action.resource.path);
-      const allowed = roots.some((root) => {
-        if (target === root) return true;
-        const prefix = root.endsWith(sep) ? root : root + sep;
-        return target.startsWith(prefix);
-      });
-      if (allowed) {
-        return { verdict: 'allowed' };
+      if (action.access === 'read') {
+        return within(target, readRoots)
+          ? { verdict: 'allowed' }
+          : {
+              verdict: 'blocked',
+              reason: `fora do diretório permitido para leitura: ${action.resource.path}`,
+            };
+      }
+      if (action.access === 'write') {
+        return within(target, writeRoots)
+          ? { verdict: 'allowed' }
+          : {
+              verdict: 'blocked',
+              reason: `fora do diretório permitido para escrita: ${action.resource.path}`,
+            };
       }
       return {
         verdict: 'blocked',
-        reason: `fora do diretório permitido para leitura: ${action.resource.path}`,
+        reason: `acesso "${action.access}" não suportado`,
       };
     },
   };

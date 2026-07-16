@@ -9,7 +9,10 @@ export interface AtlasConfig {
   readonly dataDir: string;
   readonly persona: string;
   readonly memory: { readonly path: string };
-  readonly permissions: { readonly readRoots: readonly string[] };
+  readonly permissions: {
+    readonly readRoots: readonly string[];
+    readonly writeRoots: readonly string[];
+  };
   readonly model: ModelGatewayConfig;
 }
 
@@ -18,6 +21,6 @@ export interface AtlasConfigOverride {
   dataDir?: string;
   persona?: string;
   memory?: { path?: string };
-  permissions?: { readRoots?: readonly string[] };
+  permissions?: { readRoots?: readonly string[]; writeRoots?: readonly string[] };
   model?: Partial<ModelGatewayConfig>;
 }
