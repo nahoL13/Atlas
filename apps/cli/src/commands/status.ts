@@ -10,6 +10,11 @@ export function runStatus(atlas: AtlasPlatform, output: OutputGateway): void {
       `dataDir: ${config.dataDir}`,
       `persona: ${persona.name} (${persona.id})`,
       `readRoots: ${config.permissions.readRoots.join(', ')}`,
+      `writeRoots: ${
+        config.permissions.writeRoots.length > 0
+          ? config.permissions.writeRoots.join(', ')
+          : '(nenhuma)'
+      }`,
       '',
     ].join('\n'),
   );

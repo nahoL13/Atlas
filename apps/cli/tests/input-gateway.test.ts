@@ -105,6 +105,34 @@ describe('CliInputGateway.normalize', () => {
     expect(parsed.configOverride.permissions).toEqual({ readRoots: ['/flag/dir'] });
   });
 
+  it('mapeia ATLAS_ALLOW_WRITE para permissions.writeRoots', () => {
+    const gateway = createCliInputGateway();
+    const parsed = gateway.normalize(['status'], {
+      ATLAS_ALLOW_WRITE: '/env/out',
+    } as NodeJS.ProcessEnv);
+    expect(parsed.configOverride.permissions).toEqual({ writeRoots: ['/env/out'] });
+  });
+
+  it('--allow-write tem precedência sobre ATLAS_ALLOW_WRITE', () => {
+    const gateway = createCliInputGateway();
+    const parsed = gateway.normalize(['status', '--allow-write', '/flag/out'], {
+      ATLAS_ALLOW_WRITE: '/env/out',
+    } as NodeJS.ProcessEnv);
+    expect(parsed.configOverride.permissions).toEqual({ writeRoots: ['/flag/out'] });
+  });
+
+  it('read e write coexistem no mesmo override.permissions', () => {
+    const gateway = createCliInputGateway();
+    const parsed = gateway.normalize(
+      ['status', '--allow-read', '/in', '--allow-write', '/out'],
+      {} as NodeJS.ProcessEnv,
+    );
+    expect(parsed.configOverride.permissions).toEqual({
+      readRoots: ['/in'],
+      writeRoots: ['/out'],
+    });
+  });
+
   it('sem flag/env, não define permissions no override', () => {
     const gateway = createCliInputGateway();
     const parsed = gateway.normalize(['status'], {} as NodeJS.ProcessEnv);

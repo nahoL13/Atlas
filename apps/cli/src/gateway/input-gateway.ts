@@ -31,6 +31,7 @@ interface CliValues {
   persona?: string | undefined;
   'memory-path'?: string | undefined;
   'allow-read'?: string | undefined;
+  'allow-write'?: string | undefined;
   provider?: string | undefined;
   model?: string | undefined;
   'base-url'?: string | undefined;
@@ -80,8 +81,22 @@ function resolveConfigOverride(values: CliValues, env: NodeJS.ProcessEnv): Atlas
   if (values['allow-read'] !== undefined) {
     readRoot = values['allow-read'];
   }
-  if (readRoot !== undefined) {
-    override.permissions = { readRoots: [readRoot] };
+  let writeRoot: string | undefined;
+  if (env.ATLAS_ALLOW_WRITE !== undefined) {
+    writeRoot = env.ATLAS_ALLOW_WRITE;
+  }
+  if (values['allow-write'] !== undefined) {
+    writeRoot = values['allow-write'];
+  }
+  if (readRoot !== undefined || writeRoot !== undefined) {
+    const permissions: { readRoots?: readonly string[]; writeRoots?: readonly string[] } = {};
+    if (readRoot !== undefined) {
+      permissions.readRoots = [readRoot];
+    }
+    if (writeRoot !== undefined) {
+      permissions.writeRoots = [writeRoot];
+    }
+    override.permissions = permissions;
   }
 
   const model: Partial<ModelGatewayConfig> = {};
@@ -132,6 +147,7 @@ function parseArgvOrThrow(argv: string[]) {
         persona: { type: 'string' },
         'memory-path': { type: 'string' },
         'allow-read': { type: 'string' },
+        'allow-write': { type: 'string' },
         provider: { type: 'string' },
         model: { type: 'string' },
         'base-url': { type: 'string' },

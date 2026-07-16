@@ -40,6 +40,7 @@ Options:
       --persona <id>   Persona ativa (jarvis|neutral)
       --memory-path <p> Caminho do arquivo de memória
       --allow-read <p> Diretório permitido para leitura (default: cwd)
+      --allow-write <p> Diretório permitido para escrita (default: nenhum)
       --provider <p>   Provedor de modelo (local|remote|fake)
       --model <m>      Nome do modelo
       --base-url <u>   Base URL do provedor de modelo
