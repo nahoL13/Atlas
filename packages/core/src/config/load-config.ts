@@ -62,7 +62,9 @@ export function loadConfig(override: AtlasConfigOverride = {}): AtlasConfig {
     !Array.isArray(permissions.writeRoots) ||
     permissions.writeRoots.some((root) => typeof root !== 'string' || root.trim() === '')
   ) {
-    issues.push('permissions.writeRoots deve ser uma lista de caminhos não vazios (pode ser vazia)');
+    issues.push(
+      'permissions.writeRoots deve ser uma lista de caminhos não vazios (pode ser vazia)',
+    );
   }
 
   if (!PROVIDERS.includes(model.provider)) {

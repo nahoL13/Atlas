@@ -53,6 +53,32 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## SPEC-0012 — Tool de escrita (`write_file`) + política `writeRoots` (2026-07-16)
+
+**Descobrimos que...**
+
+O portão de permissão da SPEC-0011 provou ser **genérico de verdade**: adicionar a primeira ação de escrita **não tocou o Runtime** — nenhuma linha. O portão já aplicava "veredicto ≠ `allowed` → `ExecutedStep` negado, Tool não roda"; como ele nunca olhou o `access`, uma escrita bloqueada percorreu exatamente o caminho de uma leitura bloqueada. A fatia inteira coube em: rotear por `access` no Permission Service, uma Tool nova, uma porta nova, e config/CLI. O melhor sinal de um bom limite é uma capacidade nova entrando sem mexer no coordenador.
+
+Rotear `read`/`write` para políticas **separadas** (`readRoots`/`writeRoots`) com a contenção lexical **fatorada** (`within(target, roots)`) foi uma mudança de baixo risco: a lógica de fronteira de separador (já testada para leitura) passou a valer para escrita sem duplicação, e os testes de "não confunde `/proj` com `/proj-evil`" viraram só mais um caso, agora também para escrita.
+
+`writeRoots` com **default `[]`** (diferente de `readRoots`, que exige lista não vazia) exigiu uma regra de validação distinta: "lista de caminhos não vazios, **podendo ser vazia**". O vazio não é erro — é a postura segura ("não escreve"). Foi o primeiro campo de config do projeto cuja lista vazia é válida e significativa, e o `status` ganhou um placeholder legível (`writeRoots: (nenhuma)`) em vez de imprimir string vazia.
+
+Tornar `writeRoots` **obrigatório** em `PermissionServiceDeps` repetiu, pela sétima vez, o atrito já catalogado: o único chamador de produção (`@atlas/core`) e todas as construções diretas em teste (`create-atlas.test.ts`) tiveram que ganhar o campo na mesma task — o `vitest` (transpila, não faz typecheck) passa verde enquanto só o `tsc` acusa. Sem novidade; o plano já previa e a execução não teve surpresa.
+
+**A arquitetura ajudou porque...**
+
+Manter a decisão como uma **nota de atualização no ADR-0013** (em vez de um ADR-0014) refletiu a realidade: nada estrutural mudou — a SPEC apenas concretizou o `access: 'write'` que aquele ADR deixou reservado. O padrão de porta injetável (`FsReadPort` → `FsWritePort` separada, por menor privilégio) se repetiu sem fricção; a Tool de escrita nasceu testável sem disco desde o primeiro commit.
+
+**A arquitetura atrapalhou porque...**
+
+Nada estrutural. Único atrito operacional: os comandos `pnpm --filter <pkg> test` escritos no plano não existem (os packages não têm script `test`; a suíte roda pela raiz via `vitest.config.ts`) — corrigido em execução usando `pnpm exec vitest run <path>`. Encaminhamento: planos futuros devem escrever os comandos de teste por caminho a partir da raiz, não por `--filter ... test`.
+
+**Precisamos mudar...**
+
+Nada novo no processo além do reforço já registrado (campo obrigatório + chamadores na mesma task; comandos de teste pela raiz). Próxima fatia natural: o fluxo interativo de **`confirm`** (ainda só reservado) + ações **destrutivas** (`delete_file`, `mkdir`), que farão o `atlas ask` deixar de ser tiro único; e o **endurecimento de symlink** na contenção (vale igual para escrita agora).
+
+---
+
 ## SPEC-0011 — Permission Service + Tools de leitura de sistema de arquivos (2026-07-15)
 
 **Descobrimos que...**

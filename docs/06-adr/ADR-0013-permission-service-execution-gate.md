@@ -54,3 +54,14 @@ Custos e riscos:
 **Implementar o fluxo interativo de `confirm` já nesta fatia.** Maior a fatia (exigiria `atlas ask` deixar de ser tiro único, com um passo intermediário de prompt) e não há ainda nenhuma Tool destrutiva que o justifique. Rejeitada nesta fatia; `confirm` entra apenas no vocabulário do contrato, reservado para quando existir uma Tool de escrita.
 
 **Seguir symlinks/`realpath` desde já.** Endureceria contra o escape documentado, mas introduziria IO na avaliação — quebraria a invariante "Permission Service sem IO" desta decisão, ou exigiria uma porta de resolução injetável adicional. Rejeitada por ora; registrada como limitação conhecida e candidata a fatia futura.
+
+---
+
+# Atualização (SPEC-0012)
+
+A SPEC-0012 concretizou o `access: 'write'` que esta decisão deixou **reservado**, sem alterar a estrutura aqui registrada:
+
+- **`write` passou de reservado a produzido.** O `evaluate` agora roteia por `access`: `read` julgado contra `readRoots`, `write` contra uma política **separada** `writeRoots`. A checagem de contenção lexical foi **fatorada** numa função interna (`within(target, roots)`) e é reusada pelos dois modos — a garantia de fronteira de separador (não confundir `/proj` com `/proj-evil`) vale igual para escrita.
+- **Política de escrita separada, com default `[]`.** Grants de leitura e escrita são independentes (ter leitura não concede escrita). O default vazio significa "não escreve em lugar nenhum" — escrever exige **opt-in explícito** (`--allow-write`/`ATLAS_ALLOW_WRITE`). Isso materializa "não presumir consentimento para ações destrutivas": enquanto o `confirm` interativo não existe como segunda barreira, o consentimento é o gesto deliberado de conceder a raiz.
+- **O Runtime não mudou uma linha.** O portão registrado nesta ADR já era agnóstico ao `access` — transforma qualquer veredicto ≠ `allowed` em `ExecutedStep` negado sem tocar a Tool. A primeira Tool de escrita (`write_file`, via `FsWritePort` injetável) fluiu pelo mesmo caminho da leitura.
+- **`confirm` segue reservado.** O fluxo interativo de confirmação continua fora — é a próxima fatia. Symlink/`realpath` seguem não seguidos (a limitação conhecida vale igual para escrita).
