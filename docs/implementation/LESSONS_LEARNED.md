@@ -53,11 +53,11 @@ A ausência de atrito também é informação.
 
 # Registro
 
-## SPEC-0012 — Tool de escrita (`write_file`) + política `writeRoots` (2026-07-16)
+## [SPEC-0012](specs/SPEC-0012-write-file-tool.md) — Tool de escrita (`write_file`) + política `writeRoots` (2026-07-16)
 
 **Descobrimos que...**
 
-O portão de permissão da SPEC-0011 provou ser **genérico de verdade**: adicionar a primeira ação de escrita **não tocou o Runtime** — nenhuma linha. O portão já aplicava "veredicto ≠ `allowed` → `ExecutedStep` negado, Tool não roda"; como ele nunca olhou o `access`, uma escrita bloqueada percorreu exatamente o caminho de uma leitura bloqueada. A fatia inteira coube em: rotear por `access` no Permission Service, uma Tool nova, uma porta nova, e config/CLI. O melhor sinal de um bom limite é uma capacidade nova entrando sem mexer no coordenador.
+O portão de permissão da [SPEC-0011](specs/SPEC-0011-permission-service-fs-read.md) provou ser **genérico de verdade**: adicionar a primeira ação de escrita **não tocou o Runtime** — nenhuma linha. O portão já aplicava "veredicto ≠ `allowed` → `ExecutedStep` negado, Tool não roda"; como ele nunca olhou o `access`, uma escrita bloqueada percorreu exatamente o caminho de uma leitura bloqueada. A fatia inteira coube em: rotear por `access` no Permission Service, uma Tool nova, uma porta nova, e config/CLI. O melhor sinal de um bom limite é uma capacidade nova entrando sem mexer no coordenador.
 
 Rotear `read`/`write` para políticas **separadas** (`readRoots`/`writeRoots`) com a contenção lexical **fatorada** (`within(target, roots)`) foi uma mudança de baixo risco: a lógica de fronteira de separador (já testada para leitura) passou a valer para escrita sem duplicação, e os testes de "não confunde `/proj` com `/proj-evil`" viraram só mais um caso, agora também para escrita.
 
@@ -67,7 +67,7 @@ Tornar `writeRoots` **obrigatório** em `PermissionServiceDeps` repetiu, pela s�
 
 **A arquitetura ajudou porque...**
 
-Manter a decisão como uma **nota de atualização no ADR-0013** (em vez de um ADR-0014) refletiu a realidade: nada estrutural mudou — a SPEC apenas concretizou o `access: 'write'` que aquele ADR deixou reservado. O padrão de porta injetável (`FsReadPort` → `FsWritePort` separada, por menor privilégio) se repetiu sem fricção; a Tool de escrita nasceu testável sem disco desde o primeiro commit.
+Manter a decisão como uma **nota de atualização no [ADR-0013](../06-adr/ADR-0013-permission-service-execution-gate.md)** (em vez de um ADR-0014) refletiu a realidade: nada estrutural mudou — a SPEC apenas concretizou o `access: 'write'` que aquele ADR deixou reservado. O padrão de porta injetável (`FsReadPort` → `FsWritePort` separada, por menor privilégio) se repetiu sem fricção; a Tool de escrita nasceu testável sem disco desde o primeiro commit.
 
 **A arquitetura atrapalhou porque...**
 
@@ -87,7 +87,7 @@ Manter um avaliador de Support **puro** (sem IO) coube inteiramente em `node:pat
 
 Fazer as Tools declararem `requirements(args) → ActionRequest | null` como **dado** — em vez de o Permission Service conhecer nomes de Tool (`read_file`, `list_dir`) — manteve o serviço genérico: ele nunca importa `@atlas/tools` nem sabe que `read_file` existe. `clock`/`calc` seguem sem `requirements`, permanecendo livres sem qualquer mudança nelas. Essa separação de autoridades (Tool descreve o que toca; Permission julga; Runtime aplica) foi o eixo central da SPEC e evitou qualquer acoplamento cruzado entre os três packages.
 
-Mudar a assinatura de `createRuntime` (de `{ registry }` para `{ registry, permissions }`, campo obrigatório) teve que **mover na mesma task/commit** que seu único chamador de produção (`@atlas/core`, que passou a compor `createPermissionService` e injetar no `createRuntime`) — o mesmo padrão de risco já registrado na lição da SPEC-0010 (mudança de tipo de contrato não é aditiva). Como desta vez o plano já sabia disso (Task 6 tratou runtime+core juntos), não houve surpresa no `tsc`.
+Mudar a assinatura de `createRuntime` (de `{ registry }` para `{ registry, permissions }`, campo obrigatório) teve que **mover na mesma task/commit** que seu único chamador de produção (`@atlas/core`, que passou a compor `createPermissionService` e injetar no `createRuntime`) — o mesmo padrão de risco já registrado na lição da [SPEC-0010](specs/SPEC-0010-planner-runtime-tools.md) (mudança de tipo de contrato não é aditiva). Como desta vez o plano já sabia disso (Task 6 tratou runtime+core juntos), não houve surpresa no `tsc`.
 
 Tornar `permissions.readRoots` **obrigatório** em `AtlasConfig` repetiu, pela sexta vez nas SPECs deste projeto, a mesma classe de atrito: literais de `AtlasConfig` montados à mão em testes (`apps/cli/tests/status.test.ts`) quebram com TS2741 até ganharem o campo novo — o `vitest` (transpila, não faz typecheck) passa verde enquanto só o `tsc` acusa. O padrão de correção (atualizar os literais na mesma task que torna o campo obrigatório, rodando `pnpm typecheck` a cada task, não só no final) já estava incorporado ao plano e não gerou atrito real na execução — mas o padrão em si segue recorrente o suficiente para valer registrar de novo.
 
@@ -95,7 +95,7 @@ Tornar `permissions.readRoots` **obrigatório** em `AtlasConfig` repetiu, pela s
 
 **A arquitetura ajudou porque...**
 
-O Module Catalog já cravava os quatro veredictos (`free`/`allowed`/`confirm`/`blocked`) e a proibição de presumir consentimento para ações destrutivas — a decisão de começar por leitura (read-only) saiu quase automática: exercita o portão real (livre × bloqueada por raiz) sem precisar do fluxo interativo de confirmação, que só faz sentido diante de uma ação destrutiva de verdade. O padrão de porta injetável (ADR-0004/0011: `fetch`, `MemoryStorage`) se repetiu sem fricção para o `FsReadPort` — o primeiro IO das Tools nasceu testável sem disco desde o primeiro commit.
+O Module Catalog já cravava os quatro veredictos (`free`/`allowed`/`confirm`/`blocked`) e a proibição de presumir consentimento para ações destrutivas — a decisão de começar por leitura (read-only) saiu quase automática: exercita o portão real (livre × bloqueada por raiz) sem precisar do fluxo interativo de confirmação, que só faz sentido diante de uma ação destrutiva de verdade. O padrão de porta injetável ([ADR-0004](../06-adr/ADR-0004-manual-composition.md)/0011: `fetch`, `MemoryStorage`) se repetiu sem fricção para o `FsReadPort` — o primeiro IO das Tools nasceu testável sem disco desde o primeiro commit.
 
 **A arquitetura atrapalhou porque...**
 
@@ -129,7 +129,7 @@ Expor o catálogo de Tools por `runtime.tools()` (fonte única, dona do registry
 
 **A arquitetura atrapalhou porque...**
 
-Nada estrutural. O único atrito foi de plano: o PLAN-0010 não previu `packages/cognitive/tests/conversation.test.ts` (6 chamadas a `createCognitiveCore` sem `runtime`), que passavam em runtime (usam só `respond`/`startConversation`) mas quebravam o `pnpm typecheck` ao tornar `runtime` obrigatório. Lição: ao mudar a assinatura de uma factory, `grep` por **todos** os chamadores (inclusive testes de outros aspectos do mesmo módulo) antes de fechar a task, não só os que o plano lista.
+Nada estrutural. O único atrito foi de plano: o [PLAN-0010](plans/PLAN-0010-planner-runtime-tools.md) não previu `packages/cognitive/tests/conversation.test.ts` (6 chamadas a `createCognitiveCore` sem `runtime`), que passavam em runtime (usam só `respond`/`startConversation`) mas quebravam o `pnpm typecheck` ao tornar `runtime` obrigatório. Lição: ao mudar a assinatura de uma factory, `grep` por **todos** os chamadores (inclusive testes de outros aspectos do mesmo módulo) antes de fechar a task, não só os que o plano lista.
 
 **Precisamos mudar...**
 
@@ -137,11 +137,11 @@ Nada no processo além do reforço acima (varrer chamadores ao mudar assinaturas
 
 ---
 
-## SPEC-0009 — Memory Service (fatos/preferências explícitos) (2026-07-13)
+## [SPEC-0009](specs/SPEC-0009-memory-service.md) — Memory Service (fatos/preferências explícitos) (2026-07-13)
 
 **Descobrimos que...**
 
-O primeiro efeito de disco da plataforma coube no mesmo molde de injeção já usado para rede e terminal: uma **porta injetável** `MemoryStorage` (`load`/`save`) interna a `@atlas/memory`, com `createFileMemoryStorage(path)` (JSON) como default e um fake em memória nos testes. Os testes de unidade do serviço não tocam disco; o IO real fica isolado no teste do file adapter e nos testes de comando da CLI, ambos em `tmpdir` (`os.tmpdir()` + `mkdtemp`), nunca no `~/.atlas` real. `createMemoryService` é **assíncrono** (carrega os fatos uma vez na criação — load-once), o que encaixou naturalmente no `createAtlas` já assíncrono; `list()`/`prompt()` ficam síncronos e `remember`/`forget` persistem por write-through. A memória chegou à resposta pelo mesmo caminho da Persona (ADR-0011 estende ADR-0010): `memory.prompt()` vira `memoryPrompt?: string` no Cognitive, que compõe identidade → memória → tarefa via `[personaPrompt, memoryPrompt, TASK_FRAMING].filter(Boolean).join('\n\n')` sem conhecer o conceito de Memory. A CLI isolou disco por `--memory-path` (tmpdir) em vez de importar `@atlas/memory`, mantendo a app acoplada só a `@atlas/contracts` + `@atlas/core`; a porta de storage foi injetável só no `createAtlas` (para os testes de core), não na CLI.
+O primeiro efeito de disco da plataforma coube no mesmo molde de injeção já usado para rede e terminal: uma **porta injetável** `MemoryStorage` (`load`/`save`) interna a `@atlas/memory`, com `createFileMemoryStorage(path)` (JSON) como default e um fake em memória nos testes. Os testes de unidade do serviço não tocam disco; o IO real fica isolado no teste do file adapter e nos testes de comando da CLI, ambos em `tmpdir` (`os.tmpdir()` + `mkdtemp`), nunca no `~/.atlas` real. `createMemoryService` é **assíncrono** (carrega os fatos uma vez na criação — load-once), o que encaixou naturalmente no `createAtlas` já assíncrono; `list()`/`prompt()` ficam síncronos e `remember`/`forget` persistem por write-through. A memória chegou à resposta pelo mesmo caminho da Persona ([ADR-0011](../06-adr/ADR-0011-memory-service-persistence.md) estende [ADR-0010](../06-adr/ADR-0010-persona-injected-generation.md)): `memory.prompt()` vira `memoryPrompt?: string` no Cognitive, que compõe identidade → memória → tarefa via `[personaPrompt, memoryPrompt, TASK_FRAMING].filter(Boolean).join('\n\n')` sem conhecer o conceito de Memory. A CLI isolou disco por `--memory-path` (tmpdir) em vez de importar `@atlas/memory`, mantendo a app acoplada só a `@atlas/contracts` + `@atlas/core`; a porta de storage foi injetável só no `createAtlas` (para os testes de core), não na CLI.
 
 **A arquitetura ajudou porque...**
 
@@ -155,7 +155,7 @@ Adicionar um campo obrigatório a `AtlasConfig` (`memory.path`) e a `AtlasPlatfo
 
 Leitura de memória no **startup**: gravar um fato não afeta uma sessão `chat` já aberta (documentado no ADR-0011; troca/leitura ao vivo é candidata a SPEC futura). Os fatos entram no system prompt de toda geração — sem retenção/seleção/busca, o prompt cresce com a memória (fatias futuras do Memory Service: episódica, projetos, busca, retenção). Probe do TS 7 (sexto, 2026-07-14): **falhou** de novo — `TypeError: Cannot read properties of undefined (reading 'Cjs')` em `@typescript-eslint/typescript-estree@8.63.0` com `typescript@7.0.2`, idêntico aos cinco anteriores. Revertido para `typescript@^5`. Encaminhamento mantido: parar de re-probar por hábito a cada SPEC; vincular a um release do typescript-eslint que declare suporte ao TS 7.
 
-## SPEC-0008 — Persona Service (Jarvis) (2026-07-13)
+## [SPEC-0008](specs/SPEC-0008-persona-service.md) — Persona Service (Jarvis) (2026-07-13)
 
 **Descobrimos que...**
 
@@ -163,7 +163,7 @@ A identidade pôde ser injetada na **geração** sem acoplar o Cognitive ao conc
 
 Validar `config.persona` importando `PERSONA_IDS` de `@atlas/persona` em `packages/core/src/config/load-config.ts` foi seguro porque o **core é composition root** (Regra 11) e pode importar implementações, diferente de `@atlas/cognitive`/`@atlas/contracts`, que não podem. Isso evitou duplicar a lista de ids conhecidos (o registro embutido de Personas continua a única fonte da verdade) sem promover `PersonaService` a um contrato mais amplo do que o necessário.
 
-Adicionar um campo obrigatório a `AtlasConfig`/`AtlasPlatform` (`persona`) voltou a exigir atualização atômica dos literais/mocks manuais em `apps/cli/tests/status.test.ts` no mesmo commit que estendeu o contrato e a composição — a mesma classe de atrito já registrada nas lições da SPEC-0005/0006/0007 (o `vitest` transpila e não pega o campo ausente; só o `tsc` acusa). Reforça, pela quarta vez, a mesma lição: listar os stubs manuais de `AtlasPlatform`/contratos como arquivos a atualizar e rodar `pnpm typecheck` a cada task.
+Adicionar um campo obrigatório a `AtlasConfig`/`AtlasPlatform` (`persona`) voltou a exigir atualização atômica dos literais/mocks manuais em `apps/cli/tests/status.test.ts` no mesmo commit que estendeu o contrato e a composição — a mesma classe de atrito já registrada nas lições da [SPEC-0005](specs/SPEC-0005-cognitive-core.md)/0006/0007 (o `vitest` transpila e não pega o campo ausente; só o `tsc` acusa). Reforça, pela quarta vez, a mesma lição: listar os stubs manuais de `AtlasPlatform`/contratos como arquivos a atualizar e rodar `pnpm typecheck` a cada task.
 
 Voz (`voice`) e emoção simulada (`emotion`) entraram no modelo de dados da `Persona` como slots **declarativos e inertes**: fazem parte do tipo e dos dados embutidos (`jarvis`/`neutral`), mas propositalmente **não** entram em `systemPrompt(persona)` — não há canal de áudio/afeto que os consuma hoje. Documentá-los explicitamente (CLAUDE.md do `@atlas/persona`, ADR-0010) evita que alguém os trate como já ativos ou os remova por engano por parecerem mortos.
 
@@ -181,19 +181,19 @@ Nada estrutural. O único atrito foi de sequenciamento de tasks (stub manual de 
 
 TypeScript segue pinado na série 5. Encaminhamento revisado: parar de repetir o probe do TS7 a cada SPEC (cinco tentativas seguidas com o mesmo erro estrutural não geram sinal novo); retomar quando houver um gatilho externo — release do `typescript-eslint` que declare suporte ao compilador nativo do TS7 — em vez de por hábito de SPEC.
 
-Troca de Persona em runtime (ex.: `/persona <nome>` no `atlas chat`) ficou fora do escopo (encaminhamento: SPEC futura; exigiria re-semear a conversa com o novo `personaPrompt`). Voz e emoção simulada permanecem inertes até existir um canal de áudio/afeto que os consuma (encaminhamento: SPEC futura). Personas por arquivo de configuração externo dependem do slot `arquivo` do ADR-0006, ainda não implementado.
+Troca de Persona em runtime (ex.: `/persona <nome>` no `atlas chat`) ficou fora do escopo (encaminhamento: SPEC futura; exigiria re-semear a conversa com o novo `personaPrompt`). Voz e emoção simulada permanecem inertes até existir um canal de áudio/afeto que os consuma (encaminhamento: SPEC futura). Personas por arquivo de configuração externo dependem do slot `arquivo` do [ADR-0006](../06-adr/ADR-0006-config-source-precedence.md), ainda não implementado.
 
 ---
 
-## SPEC-0007 — Context Service (detentor de sessão) (2026-07-13)
+## [SPEC-0007](specs/SPEC-0007-context-service.md) — Context Service (detentor de sessão) (2026-07-13)
 
 **Descobrimos que...**
 
-O Context Service pôde nascer como **store de valor**, não orquestrador (ADR-0009): `openSession/getConversation/updateConversation/closeSession` guardam uma `Conversation` por sessão num `Map` em memória, sem decidir estratégia nem chamar o Cognitive Core. Isso resolveu a tensão documental entre o Module Catalog ("Context é utilizado pelo Cognitive Core") e o ADR-0008 (`respond` função pura): a leitura do catálogo passou a se referir ao contexto de ambiente futuro (cwd/repo/arquivos), não ao buffer de conversa. A **app** (`atlas chat`) virou a mediadora — lê a conversa do Context, chama `respond` puro, grava o resultado de volta — exatamente como o ADR-0008 previu ("migração é troca de detentor, não de contrato"): o diff não tocou `packages/cognitive/src/cognitive-core.ts` nem `packages/contracts/src/cognitive.ts`.
+O Context Service pôde nascer como **store de valor**, não orquestrador ([ADR-0009](../06-adr/ADR-0009-context-service-value-store.md)): `openSession/getConversation/updateConversation/closeSession` guardam uma `Conversation` por sessão num `Map` em memória, sem decidir estratégia nem chamar o Cognitive Core. Isso resolveu a tensão documental entre o Module Catalog ("Context é utilizado pelo Cognitive Core") e o [ADR-0008](../06-adr/ADR-0008-conversation-as-data.md) (`respond` função pura): a leitura do catálogo passou a se referir ao contexto de ambiente futuro (cwd/repo/arquivos), não ao buffer de conversa. A **app** (`atlas chat`) virou a mediadora — lê a conversa do Context, chama `respond` puro, grava o resultado de volta — exatamente como o ADR-0008 previu ("migração é troca de detentor, não de contrato"): o diff não tocou `packages/cognitive/src/cognitive-core.ts` nem `packages/contracts/src/cognitive.ts`.
 
 Um package novo (`@atlas/context`) precisa de `pnpm install` para linkar no workspace **antes** do primeiro teste rodar — sem isso, `vitest`/`tsc` não resolvem `@atlas/context` a partir de `packages/core`/`apps/cli`, e o erro lido de fora (module not found) engana como se fosse import errado em vez de link de workspace pendente.
 
-Adicionar um campo obrigatório em `AtlasPlatform` (`context: ContextService`) precisa ser **atômico** com o fornecimento em `createAtlas`: um `tsc` limpo entre tasks só existe se o contrato, a composição no core **e** qualquer stub manual de `AtlasPlatform` nos testes (ex.: `apps/cli/tests/status.test.ts`) mudarem no mesmo commit — foi assim que a task de composição no core evitou o mesmo atrito já registrado na SPEC-0006 com `startConversation`/`respond` (contrato estendido sem o stub manual acompanhar, pego só pelo `tsc`, não pelo `vitest`). Reforça a lição anterior: listar os stubs manuais de contrato como arquivos a atualizar e rodar `pnpm typecheck` a cada task, não só ao final.
+Adicionar um campo obrigatório em `AtlasPlatform` (`context: ContextService`) precisa ser **atômico** com o fornecimento em `createAtlas`: um `tsc` limpo entre tasks só existe se o contrato, a composição no core **e** qualquer stub manual de `AtlasPlatform` nos testes (ex.: `apps/cli/tests/status.test.ts`) mudarem no mesmo commit — foi assim que a task de composição no core evitou o mesmo atrito já registrado na [SPEC-0006](specs/SPEC-0006-atlas-chat.md) com `startConversation`/`respond` (contrato estendido sem o stub manual acompanhar, pego só pelo `tsc`, não pelo `vitest`). Reforça a lição anterior: listar os stubs manuais de contrato como arquivos a atualizar e rodar `pnpm typecheck` a cada task, não só ao final.
 
 O probe do TS7 (encaminhamento herdado) falhou novamente em 2026-07-13, com o mesmo `TypeError: Cannot read properties of undefined (reading 'Cjs')` em `@typescript-eslint/typescript-estree@8.63.0` sob `typescript@7.0.2`; revertido para a série 5 com a suíte verde e sem resíduo em `package.json`/`pnpm-lock.yaml`. Quarto probe consecutivo com a mesma falha exata — sinal de que a incompatibilidade é estrutural (o typescript-estree ainda não suporta o compilador nativo do TS7), não intermitente.
 
@@ -231,7 +231,7 @@ O probe do TS7 (encaminhamento herdado) falhou de novo em 2026-07-13 (mesmo `Typ
 
 **A arquitetura ajudou porque...**
 
-O módulo já existia e o contrato `CognitiveCore` já vivia em `@atlas/contracts` (ADR-0007): estender a conversa foi acrescentar operações ao contrato + implementá-las, sem novo módulo nem promoção. A composição manual (ADR-0004) deixou o loop de chat testável com `gateway` (via provider `fake`) e `LineReader` stub, sem rede nem TTY. Mapear o erro de modelo por `AtlasError.code` permitiu tratá-lo **dentro** do loop (chat sobrevive à falha) reusando a mesma mensagem amigável do `ask`, sem a CLI conhecer `@atlas/model-gateway`.
+O módulo já existia e o contrato `CognitiveCore` já vivia em `@atlas/contracts` ([ADR-0007](../06-adr/ADR-0007-model-gateway-contract-promotion.md)): estender a conversa foi acrescentar operações ao contrato + implementá-las, sem novo módulo nem promoção. A composição manual (ADR-0004) deixou o loop de chat testável com `gateway` (via provider `fake`) e `LineReader` stub, sem rede nem TTY. Mapear o erro de modelo por `AtlasError.code` permitiu tratá-lo **dentro** do loop (chat sobrevive à falha) reusando a mesma mensagem amigável do `ask`, sem a CLI conhecer `@atlas/model-gateway`.
 
 **A arquitetura atrapalhou porque...**
 
@@ -277,7 +277,7 @@ Próximas etapas do ciclo cognitivo (Planejamento, Execução, Observação, Apr
 
 ---
 
-## SPEC-0004 — Model Gateway (2026-07-12)
+## [SPEC-0004](specs/SPEC-0004-model-gateway.md) — Model Gateway (2026-07-12)
 
 **Descobrimos que...**
 
@@ -309,11 +309,11 @@ Provedor nativo da Anthropic (API Messages própria) e streaming/tool-use ficara
 
 ---
 
-## SPEC-0003 — CLI Foundation (2026-07-12)
+## [SPEC-0003](specs/SPEC-0003-cli-foundation.md) — CLI Foundation (2026-07-12)
 
 **Descobrimos que...**
 
-A rota de execução escolhida no design (Node nativo via _type stripping_) não funciona com a convenção de imports `.js` (NodeNext) do repositório: o Node ≥ 24 não remapeia `.js` → `.ts`, e como todo o repo usa `.js`, nem `@atlas/core` carrega. Adotamos `tsx` (`devDependency`) — registrado no ADR-0005. Lição: uma decisão de execução deve ser verificada empiricamente antes de virar recomendação no brainstorming; a recomendação original ("Node nativo estende o padrão sem-`dist` naturalmente") não considerou a interação `.js`/type-stripping.
+A rota de execução escolhida no design (Node nativo via _type stripping_) não funciona com a convenção de imports `.js` (NodeNext) do repositório: o Node ≥ 24 não remapeia `.js` → `.ts`, e como todo o repo usa `.js`, nem `@atlas/core` carrega. Adotamos `tsx` (`devDependency`) — registrado no [ADR-0005](../06-adr/ADR-0005-app-typescript-execution.md). Lição: uma decisão de execução deve ser verificada empiricamente antes de virar recomendação no brainstorming; a recomendação original ("Node nativo estende o padrão sem-`dist` naturalmente") não considerou a interação `.js`/type-stripping.
 
 O pnpm 11 não lê mais o campo `pnpm` do `package.json`; a aprovação de build de dependências (o `esbuild`, motor do `tsx`) vive em `pnpm-workspace.yaml` (`allowBuilds`). Sem isso, `pnpm install` sai com código 1 (`ERR_PNPM_IGNORED_BUILDS`) e trava a verificação de deps dos scripts do pnpm.
 
@@ -321,7 +321,7 @@ O `@atlas/core` não re-exporta os tipos de `@atlas/contracts`; consumidores (a 
 
 `AtlasConfig` tem propriedades `readonly` e `Partial<AtlasConfig>` as preserva — o override de config precisa ser construído num objeto local mutável antes de retornar.
 
-O probe do TS7 (encaminhamento da SPEC-0002) falhou de novo: em 2026-07-12 o typescript-eslint 8.63 continua quebrando com o TS 7.0.2; revertido para a série 5 com a suíte verde. Durante o revert, o executor de comandos ficou temporariamente indisponível e foi destravado com o prefixo `!` (usuário rodou a suíte).
+O probe do TS7 (encaminhamento da [SPEC-0002](specs/SPEC-0002-core-bootstrap.md)) falhou de novo: em 2026-07-12 o typescript-eslint 8.63 continua quebrando com o TS 7.0.2; revertido para a série 5 com a suíte verde. Durante o revert, o executor de comandos ficou temporariamente indisponível e foi destravado com o prefixo `!` (usuário rodou a suíte).
 
 **A arquitetura ajudou porque...**
 
@@ -349,7 +349,7 @@ Distribuição/empacotamento da CLI (bin publicável fora do workspace) continua
 
 O padrão exports → `./src/index.ts` (sem `dist/`) funcionou sem atrito: Vitest e `tsc` resolvem os packages do workspace direto do fonte, e o dev loop é instantâneo.
 
-O probe do TS7 (encaminhamento da SPEC-0001) falhou novamente: em 2026-07-11 o typescript-eslint 8.63 ainda quebra com o compilador nativo; revertido para a série 5 com a suíte verde.
+O probe do TS7 (encaminhamento da [SPEC-0001](specs/SPEC-0001-workspace-bootstrap.md)) falhou novamente: em 2026-07-11 o typescript-eslint 8.63 ainda quebra com o compilador nativo; revertido para a série 5 com a suíte verde.
 
 Erros fatais do ESLint chegam mascarados pelo proxy de output (RTK); o log completo fica em `~/Library/Application Support/rtk/tee/`.
 
@@ -397,4 +397,4 @@ Nada a registrar — nenhum componente arquitetural em uso ainda nesta SPEC.
 
 Voltar o TypeScript para a série 7 quando o typescript-eslint suportar o compilador nativo (encaminhamento: verificação registrada como observação da SPEC-0002; remover a nota de pin do CLAUDE.md quando resolvido).
 
-Planos devem verificar versões reais na máquina em vez de assumi-las (encaminhamento: PLAN-0001 corrigido nesta entrega; prática incorporada aos próximos planos).
+Planos devem verificar versões reais na máquina em vez de assumi-las (encaminhamento: [PLAN-0001](plans/PLAN-0001-workspace-bootstrap.md) corrigido nesta entrega; prática incorporada aos próximos planos).

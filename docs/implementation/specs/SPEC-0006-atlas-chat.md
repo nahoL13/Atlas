@@ -36,7 +36,7 @@ Dar ao Atlas uma **conversa interativa** no terminal: um comando `atlas chat` qu
 
 Ao final desta SPEC deve existir:
 
-- no `CognitiveCore`, além do `ask(objetivo)` atual (inalterado), duas operações que tratam a conversa como **dado** (ADR-0008): `startConversation(): Conversation` e `respond(conversation, input): Promise<{ reply, conversation }>` — ambas sem estado;
+- no `CognitiveCore`, além do `ask(objetivo)` atual (inalterado), duas operações que tratam a conversa como **dado** ([ADR-0008](../../06-adr/ADR-0008-conversation-as-data.md)): `startConversation(): Conversation` e `respond(conversation, input): Promise<{ reply, conversation }>` — ambas sem estado;
 - um comando novo na CLI — `atlas chat` — que sobe a plataforma, mantém um `Conversation` ao longo do loop, imprime cada resposta e desliga com segurança ao sair;
 - tratamento amigável de erro de modelo **dentro** do loop (o chat sobrevive a uma falha e permite tentar de novo).
 
@@ -46,7 +46,7 @@ Trocar o modelo por trás do chat (local grátis ↔ pago) deve continuar sendo 
 
 # Motivação
 
-Depois da SPEC-0005, o Atlas responde, mas só em tiro único (`atlas ask "<objetivo>"`): cada pergunta é independente e o usuário reescreve o contexto toda vez. Para um assistente pessoal, conversar — com o histórico da sessão preservado — é a interação natural. `atlas chat` entrega essa experiência com custo baixo, reaproveitando o Model Gateway e o Cognitive Core já existentes.
+Depois da [SPEC-0005](SPEC-0005-cognitive-core.md), o Atlas responde, mas só em tiro único (`atlas ask "<objetivo>"`): cada pergunta é independente e o usuário reescreve o contexto toda vez. Para um assistente pessoal, conversar — com o histórico da sessão preservado — é a interação natural. `atlas chat` entrega essa experiência com custo baixo, reaproveitando o Model Gateway e o Cognitive Core já existentes.
 
 O desenho evita as duas armadilhas de escopo: **não** torna o Cognitive Core stateful e **não** cria prematuramente o Context Service. A conversa é um valor imutável que flui pelo sistema (ADR-0008); o Cognitive Core continua uma função pura sobre esse valor; o detentor do valor entre as voltas é o loop da CLI, de forma interina até o Context Service existir.
 
@@ -112,7 +112,7 @@ Origem: pedido do usuário por um fluxo conversável no terminal (2026-07-13), m
 
 # Pré-requisitos
 
-SPEC-0001 a SPEC-0004 (Done); SPEC-0005 (Review/Done).
+[SPEC-0001](SPEC-0001-workspace-bootstrap.md) a [SPEC-0004](SPEC-0004-model-gateway.md) (Done); SPEC-0005 (Review/Done).
 
 ADRs 0001–0007 aceitos; ADR-0008 aceito (esta SPEC).
 
@@ -227,7 +227,7 @@ main.ts
     → atlas.shutdown() → exit 0
 ```
 
-Precedência de config dos campos de `model` (ADR-0006): `flags > env > defaults`.
+Precedência de config dos campos de `model` ([ADR-0006](../../06-adr/ADR-0006-config-source-precedence.md)): `flags > env > defaults`.
 
 ---
 
@@ -244,7 +244,7 @@ Precedência de config dos campos de `model` (ADR-0006): `flags > env > defaults
 
 # Estratégia de Testes
 
-- sem rede e sem mocks de framework: `gateway` stub e, quando preciso, `fetch` injetado que rejeita (ADR-0004); o `LineReader` é stubado por um array de linhas roteirizado;
+- sem rede e sem mocks de framework: `gateway` stub e, quando preciso, `fetch` injetado que rejeita ([ADR-0004](../../06-adr/ADR-0004-manual-composition.md)); o `LineReader` é stubado por um array de linhas roteirizado;
 - **cognitive:** `startConversation` semeia o system prompt; `respond` monta o histórico correto, é pura, acumula no multi-turno e propaga `ModelGatewayError`;
 - **cli (input gateway):** parse de `chat` + precedência de model;
 - **cli (run):** conversa `fake` com roteiro de linhas termina em `/sair` com saída na ordem e contexto preservado (exit 0); turno com `ModelGatewayError` imprime mensagem amigável, não encerra o loop, exit 0 ao sair;

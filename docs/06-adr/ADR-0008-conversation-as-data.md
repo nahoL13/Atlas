@@ -10,9 +10,9 @@ Data: 2026-07-13
 
 # Contexto
 
-A SPEC-0005 entregou o Cognitive Core **sem estado**: `ask(objective)` monta `[system, user]` do zero a cada chamada e não guarda histórico. Isso atende o `atlas ask` de tiro único, mas não um chat multi-turno, em que cada resposta depende das mensagens anteriores da sessão.
+A [SPEC-0005](../implementation/specs/SPEC-0005-cognitive-core.md) entregou o Cognitive Core **sem estado**: `ask(objective)` monta `[system, user]` do zero a cada chamada e não guarda histórico. Isso atende o `atlas ask` de tiro único, mas não um chat multi-turno, em que cada resposta depende das mensagens anteriores da sessão.
 
-A SPEC-0006 introduz `atlas chat` — um loop de conversa que **lembra o histórico enquanto a sessão está aberta** (e esquece ao fechar; persistência entre sessões é do Memory Service, inexistente).
+A [SPEC-0006](../implementation/specs/SPEC-0006-atlas-chat.md) introduz `atlas chat` — um loop de conversa que **lembra o histórico enquanto a sessão está aberta** (e esquece ao fechar; persistência entre sessões é do Memory Service, inexistente).
 
 O Module Catalog atribui "representar o estado atual e temporário" ao **Context Service** (`packages/context`, consolidado em `packages/memory`), que **ainda não existe**. Um buffer de conversa de sessão é exatamente esse "estado temporário". Surge então a pergunta: onde vive esse histórico sem (a) violar a responsabilidade catalogada do Context Service, nem (b) tornar o Cognitive Core stateful, nem (c) forçar a criação prematura de um módulo cujo escopo real é mais amplo do que "guardar mensagens de chat"?
 
@@ -30,7 +30,7 @@ Tratar a conversa como **dado (valor)**, não como estado de um serviço:
 - O Cognitive Core permanece **sem estado**: recebe e devolve o histórico; não o armazena.
 - O **detentor** do valor `Conversation` entre as voltas é o **chamador**. No `atlas chat`, é a variável do loop `readline`. Isso é **interino e explícito**: quando o Context Service existir, ele passa a ser o detentor do estado temporário de conversa, sem alterar o contrato `respond` (que continua puro).
 
-  > **Realizado na SPEC-0007 / ADR-0009:** o detentor passou a ser o `@atlas/context` (`atlas.context`); `respond` permaneceu puro.
+  > **Realizado na [SPEC-0007](../implementation/specs/SPEC-0007-context-service.md) / [ADR-0009](ADR-0009-context-service-value-store.md):** o detentor passou a ser o `@atlas/context` (`atlas.context`); `respond` permaneceu puro.
 
 ---
 

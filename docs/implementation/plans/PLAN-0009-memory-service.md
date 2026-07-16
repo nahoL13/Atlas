@@ -1,10 +1,10 @@
-# SPEC-0009 Memory Service (fatos/preferências explícitos) — Implementation Plan
+# [SPEC-0009](../specs/SPEC-0009-memory-service.md) Memory Service (fatos/preferências explícitos) — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Criar `@atlas/memory` (autoridade de conhecimento persistente — fatia mínima: fatos/preferências explícitos, persistidos em arquivo JSON atrás de uma porta injetável) e injetar esses fatos na geração do Cognitive Core, dando ao Atlas memória entre sessões, gerenciável por comandos de CLI.
 
-**Architecture:** Fatos são **dados**. `createMemoryService({ storage })` carrega os fatos **uma vez** na criação (leitura síncrona via `list()`/`prompt()`) e persiste por **write-through** (`remember`/`forget` chamam `storage.save`). A persistência fica atrás de uma **porta injetável** `MemoryStorage` (interna a `@atlas/memory`), com `createFileMemoryStorage(path)` (JSON) como default e um fake em memória nos testes — mesmo padrão de `fetch` (Model Gateway) e `LineReader` (CLI). `@atlas/core` cria o serviço, injeta `memory.prompt()` no Cognitive como `memoryPrompt` (o Cognitive **não conhece o conceito de Memory**, estende ADR-0010) e expõe `atlas.memory`. A CLI ganha `remember`/`forget`/`memory list` e seleciona o arquivo por `--memory-path`/`ATLAS_MEMORY_PATH`. Memória (persistente) e Contexto (temporário) seguem conceitos distintos; `respond` permanece função pura.
+**Architecture:** Fatos são **dados**. `createMemoryService({ storage })` carrega os fatos **uma vez** na criação (leitura síncrona via `list()`/`prompt()`) e persiste por **write-through** (`remember`/`forget` chamam `storage.save`). A persistência fica atrás de uma **porta injetável** `MemoryStorage` (interna a `@atlas/memory`), com `createFileMemoryStorage(path)` (JSON) como default e um fake em memória nos testes — mesmo padrão de `fetch` (Model Gateway) e `LineReader` (CLI). `@atlas/core` cria o serviço, injeta `memory.prompt()` no Cognitive como `memoryPrompt` (o Cognitive **não conhece o conceito de Memory**, estende [ADR-0010](../../06-adr/ADR-0010-persona-injected-generation.md)) e expõe `atlas.memory`. A CLI ganha `remember`/`forget`/`memory list` e seleciona o arquivo por `--memory-path`/`ATLAS_MEMORY_PATH`. Memória (persistente) e Contexto (temporário) seguem conceitos distintos; `respond` permanece função pura.
 
 **Tech Stack:** TypeScript 5.x (strict, NodeNext, `verbatimModuleSyntax`, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`), Vitest, `tsx` (dev), `node:fs/promises`.
 
@@ -18,13 +18,13 @@
 - **IO de disco atrás da porta injetável** `MemoryStorage`; testes de unidade não tocam disco real (exceto o teste dedicado do file adapter e os testes de comando da CLI, ambos em `tmpdir` isolado — nunca no `~` real).
 - `@atlas/memory` depende **apenas** de `@atlas/contracts`. Só `@atlas/core` importa implementações de packages (Regra de Dependência 11) — inclusive `@atlas/memory`. A **CLI não importa `@atlas/memory`** (isola disco por `--memory-path`, não por injeção de objeto).
 - A porta `MemoryStorage` **não sobe** a `@atlas/contracts` (fica no package dono, como `HttpDeps` no Model Gateway). Só `Fact`/`MemoryService` sobem a contracts.
-- Precedência de config `flags > env > arquivo > defaults` (ADR-0006; `arquivo` reservado). Caminho default via `os.homedir()` → `~/.atlas/memory.json`.
+- Precedência de config `flags > env > arquivo > defaults` ([ADR-0006](../../06-adr/ADR-0006-config-source-precedence.md); `arquivo` reservado). Caminho default via `os.homedir()` → `~/.atlas/memory.json`.
 - Erro de memória: `AtlasError` com `code: 'ATLAS_MEMORY'`, via subclasse `MemoryError` (espelha `ModelGatewayError`/`ContextError`/`PersonaError`).
 - Imports internos com sufixo `.js` (NodeNext). Sem path aliases. Sem `dist/`.
 - `verbatimModuleSyntax`: `import type`/`export type` para tipos; `import`/`export` para valores.
 - `exactOptionalPropertyTypes`: nunca atribuir `undefined` a propriedade opcional; construir objetos condicionalmente (spread condicional).
 - `noUncheckedIndexedAccess`: acesso indexado retorna `T | undefined` — tratar explicitamente.
-- Sem mocks de framework: dependências injetadas por parâmetro; stubs à mão (ADR-0004).
+- Sem mocks de framework: dependências injetadas por parâmetro; stubs à mão ([ADR-0004](../../06-adr/ADR-0004-manual-composition.md)).
 - `typescript` permanece pinado em `^5` (probe do TS 7 na última task).
 - Commits: conventional commits em português; cada commit termina com o trailer `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>` (usar dois `-m`).
 
@@ -1216,7 +1216,7 @@ git commit -m "feat(cli): comandos remember/forget/memory list e selecao do arqu
 
 ---
 
-### Task 5: ADR-0011, documentação, lições e probe do TS 7
+### Task 5: [ADR-0011](../../06-adr/ADR-0011-memory-service-persistence.md), documentação, lições e probe do TS 7
 
 Registra a decisão de persistência (ADR-0011), atualiza a documentação viva, registra lições, roda o probe do TS 7 e fecha a Definition of Done deixando a SPEC em `Review`.
 
@@ -1318,7 +1318,7 @@ READ o arquivo primeiro. Ajustar o bullet do system prompt composto: além de `p
 - Mover a SPEC-0009 para o "Estado Imediato" como `Review`, descrevendo a entrega (`@atlas/memory`, porta injetável + adapter JSON, `memory.prompt()` injetado, `atlas.memory`, comandos CLI `remember`/`forget`/`memory list`, `--memory-path`/`ATLAS_MEMORY_PATH`, ADR-0011; Cognitive compõe identidade → memória → tarefa; Memória × Contexto distintos).
 - Atualizar a contagem de testes após a suíte (Step 7) e o resultado do probe do TS 7 (Step 6) nas Pendências.
 - Atualizar o "Mapa Rápido" com o Memory Service e o ADR-0011.
-- Trocar a seção "Próximo Trabalho" para SPEC-0010 (a definir), removendo a fatia entregue do Memory Service das candidatas e mantendo as demais (Planner/Runtime, demais fatias do Memory — episódica/projetos/busca/retenção, aprendizado automático, troca ao vivo de memória no chat, contexto de ambiente, provedor Anthropic, config por arquivo, distribuição da CLI).
+- Trocar a seção "Próximo Trabalho" para [SPEC-0010](../specs/SPEC-0010-planner-runtime-tools.md) (a definir), removendo a fatia entregue do Memory Service das candidatas e mantendo as demais (Planner/Runtime, demais fatias do Memory — episódica/projetos/busca/retenção, aprendizado automático, troca ao vivo de memória no chat, contexto de ambiente, provedor Anthropic, config por arquivo, distribuição da CLI).
 
 - [ ] **Step 6: Atualizar `docs/05-context/CURRENT_SPRINT.md`**
 

@@ -46,7 +46,7 @@ Trocar o modelo por trás do `ask` (local grátis ↔ pago) deve ser apenas conf
 
 # Motivação
 
-O Model Gateway (SPEC-0004) existe mas está **sem consumidor** — o Atlas ainda não produz nenhuma resposta de fato. O Cognitive Core é o componente que falta para fechar o ciclo: é o único autorizado a decidir estratégia (Module Catalog, Matriz de Autoridade) e o primeiro consumidor previsto do Model Gateway. Implementá-lo, ainda que mínimo, destrava a **primeira resposta ponta a ponta** e dá à CLI o comando `atlas ask`, tornando a plataforma efetivamente utilizável.
+O Model Gateway ([SPEC-0004](SPEC-0004-model-gateway.md)) existe mas está **sem consumidor** — o Atlas ainda não produz nenhuma resposta de fato. O Cognitive Core é o componente que falta para fechar o ciclo: é o único autorizado a decidir estratégia (Module Catalog, Matriz de Autoridade) e o primeiro consumidor previsto do Model Gateway. Implementá-lo, ainda que mínimo, destrava a **primeira resposta ponta a ponta** e dá à CLI o comando `atlas ask`, tornando a plataforma efetivamente utilizável.
 
 O módulo já está previsto no Module Catalog (`Cognitive Core → packages/cognitive`, camada Intelligence) — não há criação de módulo novo, apenas a primeira implementação de um módulo já aprovado. O desenho respeita o Cognitive Lifecycle: as etapas 1–2 e 7 (Compreensão, Raciocínio, Resposta) são honradas de forma colapsada; as demais (Planejamento, Execução, Observação, Aprendizado) dependem de módulos que ainda não existem e ficam explicitamente fora de escopo.
 
@@ -82,7 +82,7 @@ Origem: `docs/05-context/NEXT_CONTEXT.md` (SPEC-0005 candidata "Cognitive Core (
 - dependência `@atlas/contracts: workspace:*` (contrato `ModelGateway`/`CognitiveCore`); **nenhuma** dependência de runtime além dessa;
 - testes unitários em `packages/cognitive/tests/`, todos com um `gateway` **stub** (sem rede).
 
-**Promoção de contrato (ADR-0007) em `@atlas/contracts`:**
+**Promoção de contrato ([ADR-0007](../../06-adr/ADR-0007-model-gateway-contract-promotion.md)) em `@atlas/contracts`:**
 
 - mover para `@atlas/contracts` os tipos do gateway hoje locais: `Role`, `Message`, `GenerateRequest`, `GenerateResult`, `ModelGateway`, `ModelGatewayConfig`, `ProviderName`;
 - adicionar o contrato `CognitiveCore` (`{ ask(objective: string): Promise<string> }`);
@@ -97,7 +97,7 @@ Origem: `docs/05-context/NEXT_CONTEXT.md` (SPEC-0005 candidata "Cognitive Core (
 **Composição em `@atlas/core`:**
 
 - `createAtlas` passa a instanciar `createModelGateway(config.model, { fetch })` e `createCognitiveCore({ gateway })`, expondo `cognitive` na plataforma;
-- `createAtlas` aceita um `deps` opcional `{ fetch?: typeof fetch }` (default: `fetch` global) para injeção em testes, coerente com o padrão do gateway (ADR-0004);
+- `createAtlas` aceita um `deps` opcional `{ fetch?: typeof fetch }` (default: `fetch` global) para injeção em testes, coerente com o padrão do gateway ([ADR-0004](../../06-adr/ADR-0004-manual-composition.md));
 - `loadConfig`/`defaults` passam a resolver e validar `config.model` (merge aninhado do sub-objeto `model`);
 - declarar dependências `@atlas/model-gateway: workspace:*` e `@atlas/cognitive: workspace:*` no `@atlas/core`.
 
@@ -132,7 +132,7 @@ Origem: `docs/05-context/NEXT_CONTEXT.md` (SPEC-0005 candidata "Cognitive Core (
 
 # Pré-requisitos
 
-SPEC-0001, SPEC-0002, SPEC-0003 e SPEC-0004 (todas Done).
+[SPEC-0001](SPEC-0001-workspace-bootstrap.md), [SPEC-0002](SPEC-0002-core-bootstrap.md), [SPEC-0003](SPEC-0003-cli-foundation.md) e SPEC-0004 (todas Done).
 
 ADRs 0001–0006 aceitos; ADR-0007 aceito (esta SPEC).
 
@@ -276,7 +276,7 @@ Erro do modelo (ex.: Ollama fora do ar):
     → run() captura → mensagem amigável no stderr → exit 1
 ```
 
-Precedência de config dos campos de `model` (ADR-0006): `flags > env > defaults`.
+Precedência de config dos campos de `model` ([ADR-0006](../../06-adr/ADR-0006-config-source-precedence.md)): `flags > env > defaults`.
 
 ---
 

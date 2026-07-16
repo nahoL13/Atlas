@@ -1,8 +1,8 @@
-# SPEC-0007 Context Service — Implementation Plan
+# [SPEC-0007](../specs/SPEC-0007-context-service.md) Context Service — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Criar `packages/context` (`@atlas/context`) — um store de sessão em memória que passa a ser o detentor do estado temporário de conversa — e migrar `atlas chat` para usá-lo, pagando a dívida do ADR-0008 sem alterar o contrato do Cognitive Core.
+**Goal:** Criar `packages/context` (`@atlas/context`) — um store de sessão em memória que passa a ser o detentor do estado temporário de conversa — e migrar `atlas chat` para usá-lo, pagando a dívida do [ADR-0008](../../06-adr/ADR-0008-conversation-as-data.md) sem alterar o contrato do Cognitive Core.
 
 **Architecture:** O Context Service é um **store de valor**: guarda uma `Conversation` (valor imutável, ADR-0008) por sessão num `Map<SessionId, Conversation>` em memória. Expõe `openSession/getConversation/updateConversation/closeSession`. O contrato vive em `@atlas/contracts`; `@atlas/core` compõe o serviço e o expõe em `atlas.context`. A CLI `runChat` lê a conversa do Context, chama `cognitive.respond` (**função pura, inalterada**) e grava o resultado de volta — a app é a mediadora; o Context não orquestra nem conhece system prompt. Nada em rede, nada persistido.
 
@@ -19,7 +19,7 @@
 - `verbatimModuleSyntax`: `import type`/`export type` para tipos; `import`/`export` para valores.
 - `exactOptionalPropertyTypes`: nunca atribuir `undefined` a propriedade opcional.
 - `noUncheckedIndexedAccess`: `Map.get()` retorna `T | undefined` — tratar explicitamente (nunca `!` sem garantia).
-- Sem mocks de framework: dependências injetadas por parâmetro; stubs à mão (ADR-0004).
+- Sem mocks de framework: dependências injetadas por parâmetro; stubs à mão ([ADR-0004](../../06-adr/ADR-0004-manual-composition.md)).
 - Erro de sessão inexistente: `AtlasError` com `code: 'ATLAS_CONTEXT'`, via subclasse `ContextError` (espelha `ModelGatewayError`).
 - `typescript` permanece pinado em `^5` (probe do TS 7 na última task).
 - Commits: conventional commits em português; cada commit termina com o trailer `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>` (usar dois `-m`).
@@ -467,7 +467,7 @@ git commit -m "refactor(cli): atlas chat usa Context Service como detentor da co
 
 ---
 
-### Task 4: ADR-0009, documentação, lições e probe do TS 7
+### Task 4: [ADR-0009](../../06-adr/ADR-0009-context-service-value-store.md), documentação, lições e probe do TS 7
 
 Registra a resolução arquitetural (ADR-0009), atualiza a documentação viva, registra lições e fecha a Definition of Done com a suíte completa e o probe do TypeScript 7.
 
@@ -557,11 +557,11 @@ No parágrafo de estado ("Estado em julho/2026..."), acrescentar `@atlas/context
 - Atualizar a contagem de testes após rodar a suíte (Step 8).
 - Registrar o resultado do probe do TS 7 (Step 7) nas Pendências Conhecidas.
 - Atualizar o "Mapa Rápido" com o Context Service e o ADR-0009.
-- Trocar a seção "Próximo Trabalho" para SPEC-0008 (a definir), removendo o Context Service das candidatas.
+- Trocar a seção "Próximo Trabalho" para [SPEC-0008](../specs/SPEC-0008-persona-service.md) (a definir), removendo o Context Service das candidatas.
 
 - [ ] **Step 5: Atualizar `docs/05-context/CURRENT_SPRINT.md`**
 
-Refletir a conclusão da implementação da SPEC-0007 (status Review) no estado do sprint, no mesmo formato usado para a SPEC-0006.
+Refletir a conclusão da implementação da SPEC-0007 (status Review) no estado do sprint, no mesmo formato usado para a [SPEC-0006](../specs/SPEC-0006-atlas-chat.md).
 
 - [ ] **Step 6: Atualizar `docs/06-adr/ADR-0008-conversation-as-data.md`**
 

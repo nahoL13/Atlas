@@ -34,7 +34,7 @@ Critical
 
 Estabelecer a fundação física do monorepo do Project Atlas: repositório Git, workspace pnpm, configuração TypeScript compartilhada, qualidade de base (lint, formatação, testes) e um pipeline de verificação executável.
 
-Ao final desta SPEC, o repositório deve estar pronto para receber a SPEC-0002 (core-bootstrap) sem nenhuma decisão de infraestrutura pendente.
+Ao final desta SPEC, o repositório deve estar pronto para receber a [SPEC-0002](SPEC-0002-core-bootstrap.md) (core-bootstrap) sem nenhuma decisão de infraestrutura pendente.
 
 ---
 

@@ -47,13 +47,13 @@ Concretamente, quando esta SPEC estiver concluída:
 - O **Runtime** passa a receber o Permission Service (`createRuntime({ registry, permissions })`) e, por passo: se a Tool declara um requisito, consulta `permissions.evaluate` antes de rodar; ação `blocked` vira um `ExecutedStep` **negado** (falha estruturada, com motivo), **sem lançar** e **sem parar** os demais passos.
 - Os contratos `ActionRequest`/`ResourceRef`/`AccessMode`/`PermissionVerdict`/`PermissionDecision`/`PermissionService` vivem em `@atlas/contracts`; `Tool` ganha `requirements?`.
 - `@atlas/core` compõe o Permission Service (raiz padrão `cwd`), registra `read_file`+`list_dir` e injeta `permissions` no Runtime. Config nova `permissions.readRoots` (default `[cwd]`, override `--allow-read`/`ATLAS_ALLOW_READ`, precedência `flags > env > defaults`).
-- ADR-0013 registra a decisão (Permission Service como portão puro; Tools declaram requisitos como dado; Runtime aplica; contenção lexical; `confirm` reservado).
+- [ADR-0013](../../06-adr/ADR-0013-permission-service-execution-gate.md) registra a decisão (Permission Service como portão puro; Tools declaram requisitos como dado; Runtime aplica; contenção lexical; `confirm` reservado).
 
 ---
 
 # Motivação
 
-O **Cognitive Lifecycle** e a **espinha de execução** (SPEC-0010) deixaram o Atlas capaz de planejar e executar Tools — mas apenas Tools **puras** (`clock`/`calc`), justamente porque o **Permission Service ainda não existia** (fronteira explícita da SPEC-0010: "Tools que exijam avaliação de risco ficam para depois do Permission Service"). O Atlas sabe fazer aritmética, mas não sabe **ler um arquivo** — não age sobre nenhum recurso externo.
+O **Cognitive Lifecycle** e a **espinha de execução** ([SPEC-0010](SPEC-0010-planner-runtime-tools.md)) deixaram o Atlas capaz de planejar e executar Tools — mas apenas Tools **puras** (`clock`/`calc`), justamente porque o **Permission Service ainda não existia** (fronteira explícita da SPEC-0010: "Tools que exijam avaliação de risco ficam para depois do Permission Service"). O Atlas sabe fazer aritmética, mas não sabe **ler um arquivo** — não age sobre nenhum recurso externo.
 
 O **Module Catalog** cataloga o **Permission Service** (`packages/permissions`, camada Support) com a responsabilidade de *"avaliar se uma ação pode ser executada de acordo com permissões, políticas e nível de risco"*, distinguindo no mínimo **ações livres / permitidas por política / que exigem confirmação / bloqueadas**, sendo consumido pelo **Runtime** (entre outros) e **não** sendo responsável por executar ações nem por **presumir consentimento para ações destrutivas**. A **Constituição** (Regra 5) define Tools como adaptadores sem lógica de negócio; a autoridade sobre "pode?" é do Permission Service (Regra 4/6 sobre separação de responsabilidades).
 
@@ -69,7 +69,7 @@ Documentos originadores: **Module Catalog** (Permission Service; Runtime consome
 - Cognitive Lifecycle (`docs/03-architecture/CognitiveLifecycle.md`) — Execução com avaliação de risco; transparência
 - Project Structure (`docs/03-architecture/ProjectStructure.md`) — `packages/permissions`, `packages/tools`; contratos em `@atlas/contracts`
 - ArchitectureConstitution — Regra 5 (Tools são adaptadores sem decisão), autoridade de permissão separada da execução
-- ADR-0006 (precedência de config `flags > env > defaults`), ADR-0011 (efeito colateral atrás de porta injetável — padrão reaproveitado para o fs das Tools), ADR-0012 (espinha de execução: falha estruturada por passo, nunca derruba a execução)
+- [ADR-0006](../../06-adr/ADR-0006-config-source-precedence.md) (precedência de config `flags > env > defaults`), [ADR-0011](../../06-adr/ADR-0011-memory-service-persistence.md) (efeito colateral atrás de porta injetável — padrão reaproveitado para o fs das Tools), [ADR-0012](../../06-adr/ADR-0012-planner-runtime-execution.md) (espinha de execução: falha estruturada por passo, nunca derruba a execução)
 - ADR-0013 — Permission Service como portão puro na execução (a ser criado por esta SPEC)
 - SPEC-0010 (Planner + Runtime + Tools) — pré-requisito direto
 

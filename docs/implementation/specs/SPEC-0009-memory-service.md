@@ -48,7 +48,7 @@ Concretamente, quando esta SPEC estiver concluída:
 - O Cognitive Core compõe o bloco de memória com identidade (Persona) e tarefa (`memoryPrompt` injetado por parâmetro); `respond` permanece **função pura**.
 - `@atlas/core` compõe o Memory Service (com o adapter de arquivo no caminho de config), injeta `memory.prompt()` no Cognitive e expõe `atlas.memory`.
 - A CLI ganha `atlas remember "<fato>"`, `atlas forget <id>` e `atlas memory list`; o caminho do arquivo é selecionável por `--memory-path`/`ATLAS_MEMORY_PATH`.
-- ADR-0011 registra a decisão (persistência por porta injetável + JSON; primeiro efeito de disco; memória injetada na geração, estendendo o princípio do ADR-0010).
+- [ADR-0011](../../06-adr/ADR-0011-memory-service-persistence.md) registra a decisão (persistência por porta injetável + JSON; primeiro efeito de disco; memória injetada na geração, estendendo o princípio do [ADR-0010](../../06-adr/ADR-0010-persona-injected-generation.md)).
 
 ---
 
@@ -56,7 +56,7 @@ Concretamente, quando esta SPEC estiver concluída:
 
 A Constituição e o Glossary tratam **memória** (conhecimento persistente) e **contexto** (estado temporário da execução) como conceitos **distintos e separados**; o Artigo de invariante 6 dá à Memória "autoridade exclusiva sobre estado persistente". O Module Catalog cataloga o **Memory Service** (`packages/memory`) como a única autoridade para armazenamento e recuperação de conhecimento permanente (preferências, fatos persistentes, memória de projetos, memória episódica, histórico, relações), usada pelo Cognitive Core.
 
-Até aqui a plataforma é **efêmera**: o Context Service (SPEC-0007) guarda a conversa apenas durante a sessão, em memória, por design (ADR-0009). Nada sobrevive ao encerramento do processo. Esta SPEC introduz o primeiro conhecimento **persistente** do Atlas — a fatia mínima que entrega valor visível ponta a ponta: o usuário grava um fato ("meu nome é X", "prefiro respostas curtas"), e o Atlas passa a levá-lo em conta nas próximas sessões. O amplo escopo do Memory Service (episódica, projetos, busca, classificação, retenção) é deliberadamente decomposto: esta SPEC entrega só fatos/preferências explícitos; o resto vira SPECs futuras.
+Até aqui a plataforma é **efêmera**: o Context Service ([SPEC-0007](SPEC-0007-context-service.md)) guarda a conversa apenas durante a sessão, em memória, por design ([ADR-0009](../../06-adr/ADR-0009-context-service-value-store.md)). Nada sobrevive ao encerramento do processo. Esta SPEC introduz o primeiro conhecimento **persistente** do Atlas — a fatia mínima que entrega valor visível ponta a ponta: o usuário grava um fato ("meu nome é X", "prefiro respostas curtas"), e o Atlas passa a levá-lo em conta nas próximas sessões. O amplo escopo do Memory Service (episódica, projetos, busca, classificação, retenção) é deliberadamente decomposto: esta SPEC entrega só fatos/preferências explícitos; o resto vira SPECs futuras.
 
 Documentos originadores: **ArchitectureConstitution** (memória como autoridade sobre estado persistente) + **Glossary** (Memory/Context distintos) + **Module Catalog / Project Structure** (Memory Service, `packages/memory`).
 
@@ -69,11 +69,11 @@ Documentos originadores: **ArchitectureConstitution** (memória como autoridade 
 - Module Catalog — Memory Service (`docs/03-architecture/ModuleCatalog.md`)
 - Project Structure — `packages/memory/` (`docs/03-architecture/ProjectStructure.md`)
 - Cognitive Lifecycle — etapa de Aprendizado (`docs/03-architecture/CognitiveLifecycle.md`)
-- ADR-0006 (precedência de config), ADR-0003 (composition root), ADR-0004 (composição manual por factory)
+- [ADR-0006](../../06-adr/ADR-0006-config-source-precedence.md) (precedência de config), [ADR-0003](../../06-adr/ADR-0003-core-composition-root.md) (composition root), [ADR-0004](../../06-adr/ADR-0004-manual-composition.md) (composição manual por factory)
 - ADR-0009 (Context como store de valor; leitura de ambiente fora de escopo) — contraste memória × contexto
 - ADR-0010 (Persona injetada na geração) — princípio de injeção reaproveitado
 - ADR-0011 — Memory Service: persistência por porta injetável + memória injetada na geração (a ser criado por esta SPEC)
-- SPEC-0005 (Cognitive Core), SPEC-0007 (Context Service), SPEC-0008 (Persona Service)
+- [SPEC-0005](SPEC-0005-cognitive-core.md) (Cognitive Core), SPEC-0007 (Context Service), [SPEC-0008](SPEC-0008-persona-service.md) (Persona Service)
 
 ---
 
@@ -114,7 +114,7 @@ Esta seção é obrigatória.
 
 # Pré-requisitos
 
-- SPEC-0004 (model-gateway) — Done
+- [SPEC-0004](SPEC-0004-model-gateway.md) (model-gateway) — Done
 - SPEC-0005 (cognitive-core) — Done
 - SPEC-0007 (context-service) — Done
 - SPEC-0008 (persona-service) — Done

@@ -1,10 +1,10 @@
-# SPEC-0002 Core Bootstrap — Implementation Plan
+# [SPEC-0002](../specs/SPEC-0002-core-bootstrap.md) Core Bootstrap — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Criar `@atlas/contracts` (contratos públicos) e `@atlas/core` (Configuration Service, Lifecycle Manager e composition root `createAtlas()`), com TDD por comportamento.
 
-**Architecture:** Contracts = tipos puros + classes de erro estruturado (único runtime permitido). Core = factory functions com dependências explícitas (ADR-0004), composto pelo `createAtlas()` (ADR-0003). Sem `dist/`: exports apontam para `./src/index.ts`.
+**Architecture:** Contracts = tipos puros + classes de erro estruturado (único runtime permitido). Core = factory functions com dependências explícitas ([ADR-0004](../../06-adr/ADR-0004-manual-composition.md)), composto pelo `createAtlas()` ([ADR-0003](../../06-adr/ADR-0003-core-composition-root.md)). Sem `dist/`: exports apontam para `./src/index.ts`.
 
 **Tech Stack:** TypeScript 5.9 strict (NodeNext/ESM), Vitest 4, pnpm workspace.
 
@@ -27,7 +27,7 @@
 - Test: `packages/contracts/tests/errors.test.ts`
 
 **Interfaces:**
-- Consumes: fundação da SPEC-0001.
+- Consumes: fundação da [SPEC-0001](../specs/SPEC-0001-workspace-bootstrap.md).
 - Produces: `@atlas/contracts` exportando `LifecycleState`, `AtlasPlatform`, `LogLevel`, `LOG_LEVELS`, `AtlasConfig`, `AtlasError`, `InvalidConfigError`, `LifecycleError` — os nomes exatos que as Tasks 2–4 importam.
 
 - [ ] **Step 1: Ajustar a infra raiz (vitest + typecheck) para enxergar packages**
@@ -619,7 +619,7 @@ git commit -m "feat: adiciona lifecycle manager ao @atlas/core" -m "Co-Authored-
 
 **Interfaces:**
 - Consumes: `loadConfig` (Task 2), `createLifecycle` (Task 3), `AtlasPlatform` de `@atlas/contracts`.
-- Produces: `createAtlas(options?: CreateAtlasOptions): Promise<AtlasPlatform>` e `CreateAtlasOptions { config?: Partial<AtlasConfig> }` — a superfície que a SPEC-0003 (CLI) consumirá.
+- Produces: `createAtlas(options?: CreateAtlasOptions): Promise<AtlasPlatform>` e `CreateAtlasOptions { config?: Partial<AtlasConfig> }` — a superfície que a [SPEC-0003](../specs/SPEC-0003-cli-foundation.md) (CLI) consumirá.
 
 - [ ] **Step 1: Escrever o teste do createAtlas (antes da implementação)**
 

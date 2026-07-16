@@ -10,7 +10,7 @@ Data: 2026-07-14
 
 # Contexto
 
-Até a SPEC-0009 o Atlas honrava o ciclo cognitivo de forma **colapsada**: Compreensão + Raciocínio + Resposta numa única chamada `generate()`, sem Planejamento nem Execução. O Atlas só sabia falar. O Module Catalog cataloga Planner (`packages/planner`, consolidável em `packages/cognitive`), Runtime (`packages/runtime`) e Tools (`packages/tools`) como componentes distintos, com autoridade separada. A SPEC-0010 introduz a menor fatia que faz Planejamento e Execução existirem, com Tools reais — e levanta a pergunta central: **como a decisão de usar uma Tool flui, e o modelo executa a Tool como?**
+Até a [SPEC-0009](../implementation/specs/SPEC-0009-memory-service.md) o Atlas honrava o ciclo cognitivo de forma **colapsada**: Compreensão + Raciocínio + Resposta numa única chamada `generate()`, sem Planejamento nem Execução. O Atlas só sabia falar. O Module Catalog cataloga Planner (`packages/planner`, consolidável em `packages/cognitive`), Runtime (`packages/runtime`) e Tools (`packages/tools`) como componentes distintos, com autoridade separada. A [SPEC-0010](../implementation/specs/SPEC-0010-planner-runtime-tools.md) introduz a menor fatia que faz Planejamento e Execução existirem, com Tools reais — e levanta a pergunta central: **como a decisão de usar uma Tool flui, e o modelo executa a Tool como?**
 
 ---
 

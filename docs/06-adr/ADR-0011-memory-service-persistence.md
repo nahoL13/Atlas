@@ -10,7 +10,7 @@ Data: 2026-07-13
 
 # Contexto
 
-Até a SPEC-0008 a plataforma era **efêmera**: o Context Service (ADR-0009) guarda a conversa apenas durante a sessão, em memória. A Constituição (invariante 6) dá à Memória autoridade exclusiva sobre estado persistente, e o Module Catalog cataloga o Memory Service (`packages/memory`) como a única autoridade de conhecimento permanente. A SPEC-0009 introduz a menor fatia disso — fatos/preferências explícitos — e levanta duas perguntas: (a) **como persistir** sem acoplar o módulo ao disco e sem tocar disco nos testes de unidade; (b) **como a memória chega à resposta** sem tornar o Cognitive Core stateful nem acoplá-lo ao conceito de Memory.
+Até a [SPEC-0008](../implementation/specs/SPEC-0008-persona-service.md) a plataforma era **efêmera**: o Context Service ([ADR-0009](ADR-0009-context-service-value-store.md)) guarda a conversa apenas durante a sessão, em memória. A Constituição (invariante 6) dá à Memória autoridade exclusiva sobre estado persistente, e o Module Catalog cataloga o Memory Service (`packages/memory`) como a única autoridade de conhecimento permanente. A [SPEC-0009](../implementation/specs/SPEC-0009-memory-service.md) introduz a menor fatia disso — fatos/preferências explícitos — e levanta duas perguntas: (a) **como persistir** sem acoplar o módulo ao disco e sem tocar disco nos testes de unidade; (b) **como a memória chega à resposta** sem tornar o Cognitive Core stateful nem acoplá-lo ao conceito de Memory.
 
 ---
 
@@ -20,7 +20,7 @@ Até a SPEC-0008 a plataforma era **efêmera**: o Context Service (ADR-0009) gua
 
 **Load-once + write-through.** `createMemoryService` carrega os fatos uma vez na criação (leitura síncrona via `list()`/`prompt()`); `remember`/`forget` mutam o estado em memória e persistem imediatamente (`storage.save`).
 
-**Memória injetada na geração (estende ADR-0010).** O `MemoryService.prompt()` produz uma string enquadrando os fatos (ou `undefined` se vazio). O `@atlas/core` injeta esse texto no Cognitive como `memoryPrompt`; o system prompt passa a compor **identidade (Persona) → memória → tarefa (Cognitive)**. O Cognitive **não conhece o conceito de Memory** — recebe apenas uma string, como já ocorre com a Persona. `respond` permanece função pura.
+**Memória injetada na geração (estende [ADR-0010](ADR-0010-persona-injected-generation.md)).** O `MemoryService.prompt()` produz uma string enquadrando os fatos (ou `undefined` se vazio). O `@atlas/core` injeta esse texto no Cognitive como `memoryPrompt`; o system prompt passa a compor **identidade (Persona) → memória → tarefa (Cognitive)**. O Cognitive **não conhece o conceito de Memory** — recebe apenas uma string, como já ocorre com a Persona. `respond` permanece função pura.
 
 **Leitura no startup.** Os fatos são lidos e injetados na criação da plataforma; a gravação é por comandos one-shot da CLI (`remember`/`forget`) — uma sessão `chat` já aberta não reflete gravações feitas durante ela. Aceito para esta fatia.
 

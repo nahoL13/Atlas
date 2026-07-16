@@ -1,4 +1,4 @@
-# SPEC-0011 — Permission Service + leitura de FS — Implementation Plan
+# [SPEC-0011](../specs/SPEC-0011-permission-service-fs-read.md) — Permission Service + leitura de FS — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -1169,7 +1169,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ---
 
-## Task 8: ADR-0013, documentação, lições e suíte completa
+## Task 8: [ADR-0013](../../06-adr/ADR-0013-permission-service-execution-gate.md), documentação, lições e suíte completa
 
 **Files:**
 - Create: `docs/06-adr/ADR-0013-permission-service-execution-gate.md`
@@ -1181,7 +1181,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 - [ ] **Step 1: Criar `docs/06-adr/ADR-0013-permission-service-execution-gate.md`**
 
 Seguir o formato dos ADRs existentes (Contexto / Decisão / Consequências / Alternativas consideradas). Conteúdo mínimo:
-- **Contexto:** SPEC-0010 entregou a execução só com Tools puras porque o Permission Service não existia; é hora do 1º efeito colateral (leitura).
+- **Contexto:** [SPEC-0010](../specs/SPEC-0010-planner-runtime-tools.md) entregou a execução só com Tools puras porque o Permission Service não existia; é hora do 1º efeito colateral (leitura).
 - **Decisão:** Permission Service **puro/síncrono** (sem IO) que julga `ActionRequest` contra `readRoots` por **contenção lexical**; as Tools **declaram** o que tocam (`requirements`) e leem por porta injetável; o **Runtime aplica** o veredicto (bloqueio → `ExecutedStep` negado, nunca lança, Tool não roda); `free` = ausência de requirement; `confirm` reservado ao fluxo interativo de escrita.
 - **Consequências:** 1º IO das Tools; separação de autoridades (Tool descreve, Permission julga, Runtime aplica); Planner/Cognitive/Gateway intactos; symlink não seguido (limitação) e escrita/confirmação adiadas.
 - **Alternativas consideradas:** tabela de política por-Tool no serviço (acopla); capacidade estática sem path (grossa demais, perde a raiz); confirmação interativa já nesta fatia (fatia grande, sem Tool destrutiva).

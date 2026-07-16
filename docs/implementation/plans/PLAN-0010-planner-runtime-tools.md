@@ -1,4 +1,4 @@
-# SPEC-0010 Planner + Runtime + Tools (execução ponta a ponta) — Implementation Plan
+# [SPEC-0010](../specs/SPEC-0010-planner-runtime-tools.md) Planner + Runtime + Tools (execução ponta a ponta) — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -23,7 +23,7 @@
 - `verbatimModuleSyntax`: `import type`/`export type` para tipos; `import`/`export` para valores.
 - `exactOptionalPropertyTypes`: nunca atribuir `undefined` a propriedade opcional; construir objetos condicionalmente. `AskResult.steps` só é definido no caminho com plano.
 - `noUncheckedIndexedAccess`: acesso indexado retorna `T | undefined` — tratar explicitamente (asserções `!` onde comprovadamente seguro).
-- Sem mocks de framework: dependências injetadas por parâmetro; stubs à mão (ADR-0004).
+- Sem mocks de framework: dependências injetadas por parâmetro; stubs à mão ([ADR-0004](../../06-adr/ADR-0004-manual-composition.md)).
 - `typescript` permanece pinado em `^5` (probe do TS 7 na última task — sétimo probe).
 - Commits: conventional commits em português; cada commit termina com o trailer `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>` (usar dois `-m`).
 
@@ -1425,7 +1425,7 @@ git commit -m "feat(cognitive): ask orquestra planner + runtime e retorna AskRes
 
 ---
 
-### Task 5: ADR-0012, documentação, lições e probe do TS 7
+### Task 5: [ADR-0012](../../06-adr/ADR-0012-planner-runtime-execution.md), documentação, lições e probe do TS 7
 
 Registra a decisão da espinha de execução (ADR-0012), atualiza a documentação viva, registra lições, roda o probe do TS 7 e fecha a Definition of Done deixando a SPEC em `Review`.
 
@@ -1544,7 +1544,7 @@ READ o arquivo primeiro. Ajustar:
 - Mover a SPEC-0010 para o "Estado Imediato" como `Review`, descrevendo a entrega (`@atlas/tools` registry + `clock`/`calc`; `@atlas/runtime` `execute`/`tools`; Planner puro consolidado em `@atlas/cognitive`; `ask` orquestra e retorna `AskResult`; composição no core; traço no `atlas ask`; contratos de execução em `@atlas/contracts`; ADR-0012; Model Gateway intacto; passos independentes; `respond` puro).
 - Atualizar a contagem de testes após a suíte (Step 8) e o resultado do probe do TS 7 (Step 7) nas Pendências (sétimo probe).
 - Atualizar o "Mapa Rápido" com Planner/Runtime/Tools e o ADR-0012.
-- Trocar a seção "Próximo Trabalho" para SPEC-0011 (a definir), removendo desta fatia entregue as candidatas já cobertas e mantendo as próximas fatias do ciclo (fatia 2: mais Tools/Skills/Permission Service e execução real com efeito colateral; dependência de dados entre passos; Task Manager completo; Observação/replanejamento; Aprendizado automático) e as demais candidatas (memória episódica/projetos/busca, provedor Anthropic, config por arquivo, distribuição da CLI, troca de persona em runtime).
+- Trocar a seção "Próximo Trabalho" para [SPEC-0011](../specs/SPEC-0011-permission-service-fs-read.md) (a definir), removendo desta fatia entregue as candidatas já cobertas e mantendo as próximas fatias do ciclo (fatia 2: mais Tools/Skills/Permission Service e execução real com efeito colateral; dependência de dados entre passos; Task Manager completo; Observação/replanejamento; Aprendizado automático) e as demais candidatas (memória episódica/projetos/busca, provedor Anthropic, config por arquivo, distribuição da CLI, troca de persona em runtime).
 
 - [ ] **Step 7: Atualizar `docs/05-context/CURRENT_SPRINT.md`**
 

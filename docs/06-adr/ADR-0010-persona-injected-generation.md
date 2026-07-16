@@ -10,7 +10,7 @@ Data: 2026-07-13
 
 # Contexto
 
-As SPECs 0005–0007 mantiveram o system prompt do Cognitive Core **neutro por design** — uma postura declaradamente provisória, justificada por o Persona Service ainda não existir. A SPEC-0008 cria o Persona Service (`@atlas/persona`), com Jarvis como primeira Persona oficial. Surge a pergunta: como a identidade da Persona chega à resposta sem (a) uma segunda chamada de modelo, (b) tornar o Cognitive Core stateful, nem (c) acoplar o Cognitive ao conceito de Persona?
+As SPECs 0005–0007 mantiveram o system prompt do Cognitive Core **neutro por design** — uma postura declaradamente provisória, justificada por o Persona Service ainda não existir. A [SPEC-0008](../implementation/specs/SPEC-0008-persona-service.md) cria o Persona Service (`@atlas/persona`), com Jarvis como primeira Persona oficial. Surge a pergunta: como a identidade da Persona chega à resposta sem (a) uma segunda chamada de modelo, (b) tornar o Cognitive Core stateful, nem (c) acoplar o Cognitive ao conceito de Persona?
 
 ---
 

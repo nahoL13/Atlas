@@ -10,7 +10,7 @@ Data: 2026-07-10
 
 # Contexto
 
-O ADR-0003 define `packages/core` como composition root da plataforma, mas não define o **mecanismo** de composição e injeção de dependências.
+O [ADR-0003](ADR-0003-core-composition-root.md) define `packages/core` como composition root da plataforma, mas não define o **mecanismo** de composição e injeção de dependências.
 
 Essa escolha é herdada por todos os packages futuros e afeta testes, legibilidade e acoplamento a frameworks.
 

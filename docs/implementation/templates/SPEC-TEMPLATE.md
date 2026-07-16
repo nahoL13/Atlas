@@ -115,9 +115,9 @@ Liste as SPECs que devem estar concluídas antes desta.
 
 Exemplo
 
-SPEC-0001
+[SPEC-0001](../specs/SPEC-0001-workspace-bootstrap.md)
 
-SPEC-0002
+[SPEC-0002](../specs/SPEC-0002-core-bootstrap.md)
 
 ---
 

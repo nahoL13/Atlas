@@ -38,7 +38,7 @@ Medium
 
 # Objetivo
 
-Ao concluir esta SPEC deverá existir o package `packages/context` (`@atlas/context`) com uma implementação **mínima** do Context Service catalogado, cuja única responsabilidade nesta SPEC é **guardar o estado temporário de conversa por sessão**. Ele passa a ser o **detentor** que o ADR-0008 previu: o comando `atlas chat` deixa de segurar a `Conversation` numa variável do loop `readline` e passa a lê-la/gravá-la no Context Service.
+Ao concluir esta SPEC deverá existir o package `packages/context` (`@atlas/context`) com uma implementação **mínima** do Context Service catalogado, cuja única responsabilidade nesta SPEC é **guardar o estado temporário de conversa por sessão**. Ele passa a ser o **detentor** que o [ADR-0008](../../06-adr/ADR-0008-conversation-as-data.md) previu: o comando `atlas chat` deixa de segurar a `Conversation` numa variável do loop `readline` e passa a lê-la/gravá-la no Context Service.
 
 Concretamente, quando esta SPEC estiver concluída:
 
@@ -46,7 +46,7 @@ Concretamente, quando esta SPEC estiver concluída:
 - O contrato `ContextService` (+ `SessionId`) vive em `@atlas/contracts`; `AtlasPlatform` expõe `context`.
 - `@atlas/core` compõe o Context Service e o expõe em `atlas.context`.
 - `apps/cli` `runChat` usa `atlas.context` como detentor da conversa; `CognitiveCore.respond` permanece **função pura e inalterada**.
-- ADR-0009 registra a resolução da tensão documental "quem medeia" (Catalog vs. ADR-0008).
+- [ADR-0009](../../06-adr/ADR-0009-context-service-value-store.md) registra a resolução da tensão documental "quem medeia" (Catalog vs. ADR-0008).
 
 ---
 
@@ -68,8 +68,8 @@ Documento originador: **ADR-0008** (dívida de detentor) + **Module Catalog** (C
 - ADR-0009 — Context Service como store de valor; a app medeia (a ser criado por esta SPEC)
 - Module Catalog — Context Service (`docs/03-architecture/ModuleCatalog.md`)
 - Project Structure — `packages/context/` e regra de consolidação aceitável (`docs/03-architecture/ProjectStructure.md`)
-- ADR-0003 (composition root) e ADR-0004 (composição manual por factory)
-- SPEC-0006 — atlas chat (consumidor a ser migrado)
+- [ADR-0003](../../06-adr/ADR-0003-core-composition-root.md) (composition root) e [ADR-0004](../../06-adr/ADR-0004-manual-composition.md) (composição manual por factory)
+- [SPEC-0006](SPEC-0006-atlas-chat.md) — atlas chat (consumidor a ser migrado)
 - Cognitive Lifecycle — etapa de Contexto (`docs/03-architecture/CognitiveLifecycle.md`)
 
 ---
@@ -104,9 +104,9 @@ Esta seção é obrigatória.
 
 # Pré-requisitos
 
-- SPEC-0002 (core) — Done
-- SPEC-0003 (cli) — Done
-- SPEC-0005 (cognitive-core) — Done
+- [SPEC-0002](SPEC-0002-core-bootstrap.md) (core) — Done
+- [SPEC-0003](SPEC-0003-cli-foundation.md) (cli) — Done
+- [SPEC-0005](SPEC-0005-cognitive-core.md) (cognitive-core) — Done
 - SPEC-0006 (atlas chat) — Done
 
 ---

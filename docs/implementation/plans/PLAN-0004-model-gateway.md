@@ -1,10 +1,10 @@
-# SPEC-0004 Model Gateway — Implementation Plan
+# [SPEC-0004](../specs/SPEC-0004-model-gateway.md) Model Gateway — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Criar `packages/model-gateway` (`@atlas/model-gateway`): uma interface única `generate()` com provedor de modelo selecionável por config — `fake` (testes), `local`/Ollama (grátis) e `remote` (pago, OpenAI-compatible) — verificável por testes sem rede e por um smoke script.
 
-**Architecture:** Um package adaptador sem estado (Module Catalog: Model Gateway, camada Extension). `createModelGateway(config)` seleciona um dos três provedores, todos implementando a mesma interface `ModelGateway`. Provedores de rede recebem `fetch` por parâmetro (ADR-0004) para serem testados sem tocar a rede. Zero dependências de runtime além de `@atlas/contracts` (para `AtlasError`).
+**Architecture:** Um package adaptador sem estado (Module Catalog: Model Gateway, camada Extension). `createModelGateway(config)` seleciona um dos três provedores, todos implementando a mesma interface `ModelGateway`. Provedores de rede recebem `fetch` por parâmetro ([ADR-0004](../../06-adr/ADR-0004-manual-composition.md)) para serem testados sem tocar a rede. Zero dependências de runtime além de `@atlas/contracts` (para `AtlasError`).
 
 **Tech Stack:** TypeScript 5.x (strict, NodeNext, `verbatimModuleSyntax`, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`), Vitest, `tsx` (dev), `fetch` global do Node 24.
 

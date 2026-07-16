@@ -1,4 +1,4 @@
-# SPEC-0008 Persona Service (Jarvis) — Implementation Plan
+# [SPEC-0008](../specs/SPEC-0008-persona-service.md) Persona Service (Jarvis) — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -16,13 +16,13 @@
 - **Cognitive desacoplado do conceito de Persona:** recebe `personaPrompt?: string` por parâmetro; nunca importa `@atlas/persona` nem o tipo `Persona`. `respond` permanece **função pura**; o Cognitive segue sem estado.
 - **Voz e emoção** são slots declarativos no tipo `Persona`, **sem efeito de runtime** (não entram no `systemPrompt`).
 - `@atlas/persona` depende **apenas** de `@atlas/contracts`. Só `@atlas/core` importa implementações de packages (Regra de Dependência 11) — inclusive `@atlas/persona` e `PERSONA_IDS`.
-- Precedência de config `flags > env > arquivo > defaults` (ADR-0006; `arquivo` reservado). Persona default: `jarvis`.
+- Precedência de config `flags > env > arquivo > defaults` ([ADR-0006](../../06-adr/ADR-0006-config-source-precedence.md); `arquivo` reservado). Persona default: `jarvis`.
 - Erro de Persona desconhecida: `AtlasError` com `code: 'ATLAS_PERSONA'`, via subclasse `PersonaError` (espelha `ModelGatewayError`/`ContextError`).
 - Imports internos com sufixo `.js` (NodeNext). Sem path aliases. Sem `dist/`.
 - `verbatimModuleSyntax`: `import type`/`export type` para tipos; `import`/`export` para valores.
 - `exactOptionalPropertyTypes`: nunca atribuir `undefined` a propriedade opcional; construir objetos condicionalmente.
 - `noUncheckedIndexedAccess`: acesso indexado retorna `T | undefined` — tratar explicitamente.
-- Sem mocks de framework: dependências injetadas por parâmetro; stubs à mão (ADR-0004).
+- Sem mocks de framework: dependências injetadas por parâmetro; stubs à mão ([ADR-0004](../../06-adr/ADR-0004-manual-composition.md)).
 - `typescript` permanece pinado em `^5` (probe do TS 7 na última task).
 - Commits: conventional commits em português; cada commit termina com o trailer `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>` (usar dois `-m`).
 
@@ -1013,7 +1013,7 @@ git commit -m "feat(cli): seleciona persona (--persona/env), exibe no status e s
 
 ---
 
-### Task 5: ADR-0010, documentação, lições e probe do TS 7
+### Task 5: [ADR-0010](../../06-adr/ADR-0010-persona-injected-generation.md), documentação, lições e probe do TS 7
 
 Registra a superação do "neutro por design" (ADR-0010), atualiza a documentação viva (incluindo o CLAUDE.md do `@atlas/cognitive`, que deixa de ser "neutro por design"), registra lições, roda o probe do TS 7 e fecha a Definition of Done.
 
@@ -1111,7 +1111,7 @@ No parágrafo de estado, acrescentar `@atlas/persona` à lista de packages, desc
 - Registrar que o Cognitive deixou de ser "neutro por design" (agora compõe persona + tarefa).
 - Atualizar a contagem de testes após a suíte (Step 8) e o resultado do probe do TS 7 (Step 7) nas Pendências.
 - Atualizar o "Mapa Rápido" com o Persona Service e o ADR-0010.
-- Trocar a seção "Próximo Trabalho" para SPEC-0009 (a definir), removendo o Persona Service das candidatas e mantendo as demais (Planner/Runtime/Memory, contexto de ambiente, provedor Anthropic, config por arquivo, distribuição da CLI, troca de persona em runtime como extensão desta).
+- Trocar a seção "Próximo Trabalho" para [SPEC-0009](../specs/SPEC-0009-memory-service.md) (a definir), removendo o Persona Service das candidatas e mantendo as demais (Planner/Runtime/Memory, contexto de ambiente, provedor Anthropic, config por arquivo, distribuição da CLI, troca de persona em runtime como extensão desta).
 
 - [ ] **Step 6: Atualizar `docs/05-context/CURRENT_SPRINT.md`**
 

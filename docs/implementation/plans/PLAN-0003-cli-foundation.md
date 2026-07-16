@@ -1,10 +1,10 @@
-# SPEC-0003 CLI Foundation — Implementation Plan
+# [SPEC-0003](../specs/SPEC-0003-cli-foundation.md) CLI Foundation — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Criar `apps/cli` (`@atlas/cli`) com o comando `atlas status` (+ `--help`/`--version`), consumindo `createAtlas()`, com Input/Output Gateway locais, precedência `flags > env` e execução via *type stripping* nativo do Node — tudo por TDD.
 
-**Architecture:** `main.ts` é uma casca de processo fina; toda a lógica vive em `run(argv, env, gateways, version)`, que recebe os gateways por parâmetro (ADR-0004). O Input Gateway normaliza `argv`+`env` em `ParsedInput`; o Output Gateway é o limite de escrita (stdout/stderr) com streams injetáveis; o comando `status` formata o conteúdo. A validação de config permanece no core. Sem `dist/`: `bin` aponta para `./src/main.ts`.
+**Architecture:** `main.ts` é uma casca de processo fina; toda a lógica vive em `run(argv, env, gateways, version)`, que recebe os gateways por parâmetro ([ADR-0004](../../06-adr/ADR-0004-manual-composition.md)). O Input Gateway normaliza `argv`+`env` em `ParsedInput`; o Output Gateway é o limite de escrita (stdout/stderr) com streams injetáveis; o comando `status` formata o conteúdo. A validação de config permanece no core. Sem `dist/`: `bin` aponta para `./src/main.ts`.
 
 **Tech Stack:** TypeScript 5.9 strict (NodeNext/ESM, `verbatimModuleSyntax`), Node ≥ 24 (`node:util` `parseArgs`, *type stripping* nativo), Vitest 4, pnpm workspace.
 
@@ -735,7 +735,7 @@ Registra as decisões arquiteturais, atualiza o `CLAUDE.md` e valida a suíte co
 - Consumes: tudo das Tasks 1–4.
 - Produces: nenhuma interface de código.
 
-- [ ] **Step 1: Registrar o ADR-0005**
+- [ ] **Step 1: Registrar o [ADR-0005](../../06-adr/ADR-0005-app-typescript-execution.md)**
 
 `docs/06-adr/ADR-0005-app-typescript-execution.md`:
 
@@ -788,7 +788,7 @@ Custos e riscos:
 **Build para `dist/` com `tsc`.** Reverte o padrão sem-`dist` que funcionou bem; adiciona cerimônia e um loop mais lento.
 ```
 
-- [ ] **Step 2: Registrar o ADR-0006**
+- [ ] **Step 2: Registrar o [ADR-0006](../../06-adr/ADR-0006-config-source-precedence.md)**
 
 `docs/06-adr/ADR-0006-config-source-precedence.md`:
 

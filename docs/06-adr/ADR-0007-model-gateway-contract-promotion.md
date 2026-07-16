@@ -10,9 +10,9 @@ Data: 2026-07-12
 
 # Contexto
 
-A SPEC-0004 criou `@atlas/model-gateway` e, seguindo a regra do Project Structure ("um contrato só sobe a `@atlas/contracts` quando um segundo package precisar dele, via ADR"), manteve os tipos do gateway (`Role`, `Message`, `GenerateRequest`, `GenerateResult`, `ModelGateway`, `ModelGatewayConfig`, `ProviderName`) **locais** ao package — não havia segundo consumidor.
+A [SPEC-0004](../implementation/specs/SPEC-0004-model-gateway.md) criou `@atlas/model-gateway` e, seguindo a regra do Project Structure ("um contrato só sobe a `@atlas/contracts` quando um segundo package precisar dele, via ADR"), manteve os tipos do gateway (`Role`, `Message`, `GenerateRequest`, `GenerateResult`, `ModelGateway`, `ModelGatewayConfig`, `ProviderName`) **locais** ao package — não havia segundo consumidor.
 
-A SPEC-0005 introduz `@atlas/cognitive`, cujo `createCognitiveCore` recebe um `ModelGateway` **por parâmetro** (composição, ADR-0004). Isso cria o segundo consumidor do tipo `ModelGateway`: o Model Gateway o **implementa**; o Cognitive Core o **consome**; e o `@atlas/core` (composition root) instancia o gateway a partir da config e o injeta no Cognitive Core.
+A [SPEC-0005](../implementation/specs/SPEC-0005-cognitive-core.md) introduz `@atlas/cognitive`, cujo `createCognitiveCore` recebe um `ModelGateway` **por parâmetro** (composição, [ADR-0004](ADR-0004-manual-composition.md)). Isso cria o segundo consumidor do tipo `ModelGateway`: o Model Gateway o **implementa**; o Cognitive Core o **consome**; e o `@atlas/core` (composition root) instancia o gateway a partir da config e o injeta no Cognitive Core.
 
 A Regra de Dependência 9 do Module Catalog exige que componentes dependam de **contratos**, não de implementações concretas. Sem promoção, `@atlas/cognitive` teria de importar o tipo do package de implementação `@atlas/model-gateway`, acoplando-se a ele.
 

@@ -10,7 +10,7 @@ Data: 2026-07-11
 
 # Contexto
 
-A configuração do Atlas pode vir de múltiplas fontes: valores padrão, arquivo de configuração, variáveis de ambiente e flags de linha de comando. A SPEC-0002 estabeleceu os `defaults` no core e a validação em `loadConfig`, mas adiou deliberadamente a decisão de precedência entre fontes para a SPEC-0003, quando a primeira interface (CLI) passaria a lê-las.
+A configuração do Atlas pode vir de múltiplas fontes: valores padrão, arquivo de configuração, variáveis de ambiente e flags de linha de comando. A [SPEC-0002](../implementation/specs/SPEC-0002-core-bootstrap.md) estabeleceu os `defaults` no core e a validação em `loadConfig`, mas adiou deliberadamente a decisão de precedência entre fontes para a [SPEC-0003](../implementation/specs/SPEC-0003-cli-foundation.md), quando a primeira interface (CLI) passaria a lê-las.
 
 ---
 

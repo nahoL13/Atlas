@@ -12,17 +12,17 @@ Objetivo: plataforma mínima operável + primeira interface executável (CLI) + 
 
 | SPEC | Título | Status |
 | --- | --- | --- |
-| SPEC-0001 | Workspace Bootstrap | Done |
-| SPEC-0002 | Core Bootstrap | Done |
-| SPEC-0003 | CLI Foundation | Done |
-| SPEC-0004 | Model Gateway | Done |
-| SPEC-0005 | Cognitive Core (mínimo) | Done |
-| SPEC-0006 | atlas chat (conversa multi-turno) | Done |
-| SPEC-0007 | Context Service (detentor de sessão) | Done |
-| SPEC-0008 | Persona Service (Jarvis) | Done |
-| SPEC-0009 | Memory Service (fatos explícitos) | Done |
-| SPEC-0010 | Planner + Runtime + Tools (execução ponta a ponta) | Done |
-| SPEC-0011 | Permission Service + Tools de leitura de sistema de arquivos | Done |
-| SPEC-0012 | Tool de escrita (`write_file`) + política `writeRoots` | Done |
+| [SPEC-0001](../implementation/specs/SPEC-0001-workspace-bootstrap.md) | Workspace Bootstrap | Done |
+| [SPEC-0002](../implementation/specs/SPEC-0002-core-bootstrap.md) | Core Bootstrap | Done |
+| [SPEC-0003](../implementation/specs/SPEC-0003-cli-foundation.md) | CLI Foundation | Done |
+| [SPEC-0004](../implementation/specs/SPEC-0004-model-gateway.md) | Model Gateway | Done |
+| [SPEC-0005](../implementation/specs/SPEC-0005-cognitive-core.md) | Cognitive Core (mínimo) | Done |
+| [SPEC-0006](../implementation/specs/SPEC-0006-atlas-chat.md) | atlas chat (conversa multi-turno) | Done |
+| [SPEC-0007](../implementation/specs/SPEC-0007-context-service.md) | Context Service (detentor de sessão) | Done |
+| [SPEC-0008](../implementation/specs/SPEC-0008-persona-service.md) | Persona Service (Jarvis) | Done |
+| [SPEC-0009](../implementation/specs/SPEC-0009-memory-service.md) | Memory Service (fatos explícitos) | Done |
+| [SPEC-0010](../implementation/specs/SPEC-0010-planner-runtime-tools.md) | Planner + Runtime + Tools (execução ponta a ponta) | Done |
+| [SPEC-0011](../implementation/specs/SPEC-0011-permission-service-fs-read.md) | Permission Service + Tools de leitura de sistema de arquivos | Done |
+| [SPEC-0012](../implementation/specs/SPEC-0012-write-file-tool.md) | Tool de escrita (`write_file`) + política `writeRoots` | Done |
 
 Detalhes de retomada: `docs/05-context/NEXT_CONTEXT.md`.

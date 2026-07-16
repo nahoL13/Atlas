@@ -10,9 +10,9 @@ Data: 2026-07-11
 
 # Contexto
 
-As aplicações em `apps/` (a começar por `apps/cli`) precisam executar TypeScript. O monorepo não produz `dist/`: os packages exportam `./src/index.ts` e Vitest/`tsc` resolvem direto do fonte — padrão registrado como acerto na SPEC-0002 (dev loop instantâneo). Os imports usam a convenção NodeNext com sufixo `.js` (ex.: `import { loadConfig } from './config/load-config.js'`), que `tsc` e Vitest mapeiam para os arquivos `.ts`.
+As aplicações em `apps/` (a começar por `apps/cli`) precisam executar TypeScript. O monorepo não produz `dist/`: os packages exportam `./src/index.ts` e Vitest/`tsc` resolvem direto do fonte — padrão registrado como acerto na [SPEC-0002](../implementation/specs/SPEC-0002-core-bootstrap.md) (dev loop instantâneo). Os imports usam a convenção NodeNext com sufixo `.js` (ex.: `import { loadConfig } from './config/load-config.js'`), que `tsc` e Vitest mapeiam para os arquivos `.ts`.
 
-A hipótese inicial da SPEC-0003 era executar o fonte diretamente via _type stripping_ nativo do Node ≥ 24. Na implementação, essa rota **falhou**: o Node nativo não remapeia imports com sufixo `.js` para os arquivos `.ts` correspondentes (`ERR_MODULE_NOT_FOUND`). Como a convenção `.js` é usada em todo o repositório, nem `@atlas/core` carrega sob o Node nativo. Torná-la viável exigiria reescrever os imports de todo o repositório (incluindo core e contracts) para extensões `.ts` — mudança ampla e invasiva, rejeitada.
+A hipótese inicial da [SPEC-0003](../implementation/specs/SPEC-0003-cli-foundation.md) era executar o fonte diretamente via _type stripping_ nativo do Node ≥ 24. Na implementação, essa rota **falhou**: o Node nativo não remapeia imports com sufixo `.js` para os arquivos `.ts` correspondentes (`ERR_MODULE_NOT_FOUND`). Como a convenção `.js` é usada em todo o repositório, nem `@atlas/core` carrega sob o Node nativo. Torná-la viável exigiria reescrever os imports de todo o repositório (incluindo core e contracts) para extensões `.ts` — mudança ampla e invasiva, rejeitada.
 
 ---
 

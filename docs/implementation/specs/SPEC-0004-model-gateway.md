@@ -102,7 +102,7 @@ Origem: `docs/05-context/NEXT_CONTEXT.md` (SPEC-0004 a definir; Model Gateway li
 
 # Pré-requisitos
 
-SPEC-0001 (Done) e SPEC-0002 (Done) — workspace e `@atlas/contracts` (com `AtlasError`) existentes.
+[SPEC-0001](SPEC-0001-workspace-bootstrap.md) (Done) e [SPEC-0002](SPEC-0002-core-bootstrap.md) (Done) — workspace e `@atlas/contracts` (com `AtlasError`) existentes.
 
 ADRs 0001, 0002, 0003, 0004 e 0005 aceitos.
 
@@ -207,7 +207,7 @@ ModelGatewayConfig {
 createModelGateway(config: ModelGatewayConfig): ModelGateway
 ```
 
-Dependência injetável dos provedores de rede (composição, ADR-0004):
+Dependência injetável dos provedores de rede (composição, [ADR-0004](../../06-adr/ADR-0004-manual-composition.md)):
 
 ```text
 HttpDeps { fetch: typeof fetch }   // default: fetch global; testes injetam stub
@@ -252,7 +252,7 @@ tsx scripts/smoke.ts --provider remote --model ...   → endpoint OpenAI-compati
   (config remoto/ollama lida de env: ATLAS_MODEL_BASE_URL, ATLAS_MODEL_API_KEY)
 ```
 
-Precedência de config no smoke (coerente com ADR-0006, escopo do script): `flags > env > defaults`.
+Precedência de config no smoke (coerente com [ADR-0006](../../06-adr/ADR-0006-config-source-precedence.md), escopo do script): `flags > env > defaults`.
 
 ---
 
@@ -318,7 +318,7 @@ O provedor `local` usa a API nativa do Ollama (`POST {baseUrl}/api/chat`), que d
 
 Encaminhamento herdado (SPEC-0001/0002/0003): durante a execução, repetir o probe do TypeScript 7 (`pnpm add -Dw typescript@^7 && pnpm lint`; se falhar, reverter para `typescript@^5`). O typescript-eslint quebrou com o TS 7 em 2026-07-10, 07-11 e 07-12.
 
-Lembrete operacional: o `esbuild` (motor do `tsx`) precisa estar aprovado em `pnpm-workspace.yaml` (`allowBuilds`) — já resolvido na SPEC-0003; confirmar que o novo package não reintroduz `ERR_PNPM_IGNORED_BUILDS`.
+Lembrete operacional: o `esbuild` (motor do `tsx`) precisa estar aprovado em `pnpm-workspace.yaml` (`allowBuilds`) — já resolvido na [SPEC-0003](SPEC-0003-cli-foundation.md); confirmar que o novo package não reintroduz `ERR_PNPM_IGNORED_BUILDS`.
 
 ---
 

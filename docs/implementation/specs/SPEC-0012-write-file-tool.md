@@ -38,7 +38,7 @@ High
 
 # Objetivo
 
-Ao concluir esta SPEC, o Atlas passa a **escrever no mundo** pela primeira vez — de forma **segura e explícita**. Até aqui o Atlas só lê o sistema de arquivos (SPEC-0011); esta fatia adiciona a capacidade de **criar ou sobrescrever um arquivo de texto**, sujeita ao mesmo portão de permissão do Runtime, mas contra uma política de escrita **separada** da de leitura e com **default vazio** (nada é escrevível a menos que o usuário conceda uma raiz explicitamente).
+Ao concluir esta SPEC, o Atlas passa a **escrever no mundo** pela primeira vez — de forma **segura e explícita**. Até aqui o Atlas só lê o sistema de arquivos ([SPEC-0011](SPEC-0011-permission-service-fs-read.md)); esta fatia adiciona a capacidade de **criar ou sobrescrever um arquivo de texto**, sujeita ao mesmo portão de permissão do Runtime, mas contra uma política de escrita **separada** da de leitura e com **default vazio** (nada é escrevível a menos que o usuário conceda uma raiz explicitamente).
 
 Concretamente, quando esta SPEC estiver concluída:
 
@@ -47,7 +47,7 @@ Concretamente, quando esta SPEC estiver concluída:
 - Existe a config `permissions.writeRoots` (**default `[]`** — não escreve em lugar nenhum), com override `--allow-write`/`ATLAS_ALLOW_WRITE` (precedência `flags > env > defaults`), **separada** de `readRoots`.
 - O **Runtime** **não muda**: o portão já trata "veredicto ≠ `allowed` → passo negado, Tool não roda, nunca lança". Uma escrita bloqueada percorre exatamente o mesmo caminho de uma leitura bloqueada.
 - `@atlas/core` compõe o Permission Service com `writeRoots`, registra a `write_file` e aceita injeção de `fsWrite` fake nos testes. A CLI ganha `--allow-write`/`ATLAS_ALLOW_WRITE` e `atlas status` exibe `writeRoots`.
-- O **ADR-0013** ganha uma **nota de atualização** registrando que `access: 'write'` passou de reservado a produzido, com política `writeRoots` separada e default vazio. **Não** há ADR novo — a decisão estrutural (portão puro; Tools declaram requisitos como dado; Runtime aplica) já é a do ADR-0013; esta fatia a concretiza.
+- O **[ADR-0013](../../06-adr/ADR-0013-permission-service-execution-gate.md)** ganha uma **nota de atualização** registrando que `access: 'write'` passou de reservado a produzido, com política `writeRoots` separada e default vazio. **Não** há ADR novo — a decisão estrutural (portão puro; Tools declaram requisitos como dado; Runtime aplica) já é a do ADR-0013; esta fatia a concretiza.
 
 ---
 
@@ -103,7 +103,7 @@ Documentos originadores: **Module Catalog** (Permission Service; "não presumir 
 
 # Pré-requisitos
 
-- SPEC-0010 (Planner + Runtime + Tools) — `Done`
+- [SPEC-0010](SPEC-0010-planner-runtime-tools.md) (Planner + Runtime + Tools) — `Done`
 - SPEC-0011 (Permission Service + Tools de leitura de FS) — `Done`
 
 ---

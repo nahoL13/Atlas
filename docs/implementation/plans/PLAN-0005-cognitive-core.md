@@ -1,10 +1,10 @@
-# SPEC-0005 Cognitive Core (mínimo) — Implementation Plan
+# [SPEC-0005](../specs/SPEC-0005-cognitive-core.md) Cognitive Core (mínimo) — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Criar `packages/cognitive` (`@atlas/cognitive`) — o primeiro orquestrador e primeiro consumidor do Model Gateway — com `ask(objetivo)` numa única chamada `generate()`, compô-lo no `@atlas/core` e expô-lo via novo comando `atlas ask "<objetivo>"` na CLI (default provider `local`/Ollama).
 
-**Architecture:** Promove-se o contrato do Model Gateway (e adiciona-se `CognitiveCore`) a `@atlas/contracts` (ADR-0007). `@atlas/cognitive` implementa `CognitiveCore` dependendo só do contrato. O `@atlas/core` (composition root) instancia `createModelGateway(config.model)` + `createCognitiveCore({ gateway })` e expõe `atlas.cognitive`. A CLI ganha o comando `ask`; erros de modelo (código `ATLAS_MODEL_GATEWAY`) viram mensagem amigável. Tudo testável sem rede (provider `fake` ou `fetch` injetado).
+**Architecture:** Promove-se o contrato do Model Gateway (e adiciona-se `CognitiveCore`) a `@atlas/contracts` ([ADR-0007](../../06-adr/ADR-0007-model-gateway-contract-promotion.md)). `@atlas/cognitive` implementa `CognitiveCore` dependendo só do contrato. O `@atlas/core` (composition root) instancia `createModelGateway(config.model)` + `createCognitiveCore({ gateway })` e expõe `atlas.cognitive`. A CLI ganha o comando `ask`; erros de modelo (código `ATLAS_MODEL_GATEWAY`) viram mensagem amigável. Tudo testável sem rede (provider `fake` ou `fetch` injetado).
 
 **Tech Stack:** TypeScript 5.x (strict, NodeNext, `verbatimModuleSyntax`, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`), Vitest, `tsx` (dev), `fetch` global do Node 24.
 
@@ -18,7 +18,7 @@
 - `verbatimModuleSyntax`: usar `import type` / `export type` para tipos; `import`/`export` para valores.
 - `exactOptionalPropertyTypes`: nunca atribuir `undefined` a propriedade opcional; construir objetos condicionalmente.
 - `noUncheckedIndexedAccess`: acesso indexado/`at()` retorna `T | undefined` — tratar sempre (`!` só quando garantido pelo teste).
-- Sem mocks de framework: dependências (`fetch`, `gateway`) injetadas por parâmetro; testes usam stubs escritos à mão (ADR-0004).
+- Sem mocks de framework: dependências (`fetch`, `gateway`) injetadas por parâmetro; testes usam stubs escritos à mão ([ADR-0004](../../06-adr/ADR-0004-manual-composition.md)).
 - System prompt do Cognitive Core é **neutro** (orientado à tarefa), nunca uma persona.
 - `typescript` permanece pinado em `^5` (probe do TS 7 na última task).
 - Commits: conventional commits em português; cada commit termina com o trailer `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>` (usar dois `-m`).
@@ -1078,7 +1078,7 @@ No parágrafo de estado (seção "O que é este repositório"), acrescentar que 
 - Estado imediato: SPEC-0005 em `Review` (pendente de aprovação → `Done`); registrar `@atlas/cognitive` entregue e o comando `atlas ask`.
 - Registrar padrões reutilizáveis novos: contrato do gateway promovido a `@atlas/contracts` (ADR-0007); `config.model` com precedência `flags > env > defaults`; erro de modelo mapeado por `code` (`ATLAS_MODEL_GATEWAY`) sem acoplar a CLI ao package do gateway; `createAtlas(options, { fetch })` injeta `fetch` para testes sem rede.
 - Atualizar o "Mapa Rápido" com o package `packages/cognitive` e o ADR-0007.
-- Candidatas à próxima SPEC: próximas etapas do ciclo (Planner/Runtime/Memory/Context), provedor Anthropic nativo, Persona Service (tom/Jarvis), config por arquivo (slot do ADR-0006), distribuição da CLI.
+- Candidatas à próxima SPEC: próximas etapas do ciclo (Planner/Runtime/Memory/Context), provedor Anthropic nativo, Persona Service (tom/Jarvis), config por arquivo (slot do [ADR-0006](../../06-adr/ADR-0006-config-source-precedence.md)), distribuição da CLI.
 
 - [ ] **Step 3: Atualizar `docs/05-context/CURRENT_SPRINT.md`**
 

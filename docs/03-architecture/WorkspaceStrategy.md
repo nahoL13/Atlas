@@ -63,7 +63,7 @@ atlas-workspace/
 
 Essa estrutura representa a organização lógica da plataforma.
 
-A organização física adotada para o MVP é o monorepo definido em `docs/03-architecture/ProjectStructure.md` (ver ADR-0001), com o seguinte mapeamento:
+A organização física adotada para o MVP é o monorepo definido em `docs/03-architecture/ProjectStructure.md` (ver [ADR-0001](../06-adr/ADR-0001-monorepo.md)), com o seguinte mapeamento:
 
 - `atlas-core` → `packages/*`;
 - `atlas-desktop` → `apps/desktop/`;

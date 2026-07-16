@@ -40,7 +40,7 @@ Ao final desta SPEC, o comando `atlas status` deve resolver a configuração a p
 
 # Motivação
 
-O core existe e é operável por código (SPEC-0002), mas ainda não há nenhuma forma de um humano exercitá-lo. A CLI é a primeira interface prevista no Project Structure (`apps/cli/`) e a escolhida para validar o MVP.
+O core existe e é operável por código ([SPEC-0002](SPEC-0002-core-bootstrap.md)), mas ainda não há nenhuma forma de um humano exercitá-lo. A CLI é a primeira interface prevista no Project Structure (`apps/cli/`) e a escolhida para validar o MVP.
 
 Esta SPEC materializa as primeiras sementes do Input Gateway e do Output Gateway (Module Catalog, camada Interaction, localização `apps/*`) e resolve a decisão de **precedência de fontes de configuração**, deliberadamente adiada da SPEC-0002 para cá.
 
@@ -74,7 +74,7 @@ Origem: fluxo de SPECs definido no Project Structure (`SPEC-0003-cli-foundation`
 - declarar as dependências `@atlas/contracts: workspace:*` (tipos públicos: `AtlasConfig`, `AtlasPlatform`, `InvalidConfigError`) e `@atlas/core: workspace:*`;
 - execução sem `dist/`: roda o fonte `.ts` via `tsx` (`devDependency`); `bin` aponta para `./src/main.ts` (shebang `#!/usr/bin/env -S npx tsx`);
 - ajustar o Vitest para incluir `apps/*/tests/**/*.test.ts`;
-- registrar ADR-0005 (execução de TS em apps via `tsx`) e ADR-0006 (precedência de fontes de configuração);
+- registrar [ADR-0005](../../06-adr/ADR-0005-app-typescript-execution.md) (execução de TS em apps via `tsx`) e [ADR-0006](../../06-adr/ADR-0006-config-source-precedence.md) (precedência de fontes de configuração);
 - atualizar `CLAUDE.md` (estado do projeto; remover `apps/cli` da seção de itens ainda não criados).
 
 ---
@@ -249,7 +249,7 @@ flags  >  env  >  arquivo  >  defaults
 - **input-gateway**: seleção de comando por `argv`; sem argumentos ⇒ `help`; `--help`/`--version` têm prioridade sobre o positional; flag sobrepõe env sobrepõe ausência; aliases `-h`/`--help` e `-v`/`--version`; comando e flag desconhecidos lançam `CliUsageError`;
 - **status**: renderiza `state` + `logLevel` + `dataDir`; propaga `InvalidConfigError` sem capturar;
 - **run** (integração `apps → core`): `status` imprime `ready` + config e retorna `0`; `--log-level` inválido retorna `1` e escreve em stderr; comando inválido retorna `2`; `--version` e `--help` retornam `0` e escrevem em stdout;
-- sem mocks: os gateways recebem writers/dependências por parâmetro e o core real é usado na integração (`createAtlas` é in-memory e determinístico) — ADR-0004.
+- sem mocks: os gateways recebem writers/dependências por parâmetro e o core real é usado na integração (`createAtlas` é in-memory e determinístico) — [ADR-0004](../../06-adr/ADR-0004-manual-composition.md).
 
 ---
 
@@ -290,7 +290,7 @@ Imports entre packages exclusivamente via nome `@atlas/*` declarado no `package.
 
 A versão exibida por `--version` é lida do `package.json` do próprio app (via `node:fs` + `import.meta.url`), evitando duplicação e a configuração de import de JSON.
 
-Encaminhamento herdado (SPEC-0001/0002): durante a execução, repetir o probe do TypeScript 7 (`pnpm add -Dw typescript@^7 && pnpm lint`; se falhar, reverter para `typescript@^5`). O typescript-eslint 8.63 quebrou com o TS 7 em 2026-07-10 e 2026-07-11.
+Encaminhamento herdado ([SPEC-0001](SPEC-0001-workspace-bootstrap.md)/0002): durante a execução, repetir o probe do TypeScript 7 (`pnpm add -Dw typescript@^7 && pnpm lint`; se falhar, reverter para `typescript@^5`). O typescript-eslint 8.63 quebrou com o TS 7 em 2026-07-10 e 2026-07-11.
 
 O slot `arquivo` no contrato de precedência (`ADR-0006`) fica definido porém não implementado; a SPEC que o implementar o encaixa entre `env` e `defaults` sem quebrar a ordem.
 

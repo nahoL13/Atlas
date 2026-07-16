@@ -37,7 +37,7 @@ Criar os dois primeiros packages da plataforma:
 - `@atlas/contracts` — contratos públicos compartilhados (plataforma, configuração, erros estruturados);
 - `@atlas/core` — Configuration Service, Lifecycle Manager e o composition root `createAtlas()`.
 
-Ao final desta SPEC, `createAtlas()` deve subir a plataforma até `ready`, reportar estado e configuração, e desligar com segurança até `stopped` — a superfície exata que a SPEC-0003 (cli-foundation) consumirá.
+Ao final desta SPEC, `createAtlas()` deve subir a plataforma até `ready`, reportar estado e configuração, e desligar com segurança até `stopped` — a superfície exata que a [SPEC-0003](SPEC-0003-cli-foundation.md) (cli-foundation) consumirá.
 
 ---
 
@@ -45,7 +45,7 @@ Ao final desta SPEC, `createAtlas()` deve subir a plataforma até `ready`, repor
 
 Nenhum componente das camadas Intelligence, Execution ou Support pode existir sem a base operacional da Platform Layer.
 
-Esta SPEC realiza as primeiras implementações do Module Catalog (Core, Configuration Service, Lifecycle Manager) e materializa o ADR-0003 (composition root) e o ADR-0004 (composição manual).
+Esta SPEC realiza as primeiras implementações do Module Catalog (Core, Configuration Service, Lifecycle Manager) e materializa o [ADR-0003](../../06-adr/ADR-0003-core-composition-root.md) (composition root) e o [ADR-0004](../../06-adr/ADR-0004-manual-composition.md) (composição manual).
 
 Origem: fluxo de SPECs definido no Project Structure (`SPEC-0002-core-bootstrap`).
 
@@ -89,7 +89,7 @@ Origem: fluxo de SPECs definido no Project Structure (`SPEC-0002-core-bootstrap`
 
 # Pré-requisitos
 
-SPEC-0001 (Done).
+[SPEC-0001](SPEC-0001-workspace-bootstrap.md) (Done).
 
 ADRs 0001, 0002, 0003 e 0004 aceitos.
 

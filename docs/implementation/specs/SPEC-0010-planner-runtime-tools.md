@@ -49,13 +49,13 @@ Concretamente, quando esta SPEC estiver concluída:
 - Os contratos `Tool`/`ToolResult`/`ToolDescriptor`/`ToolRegistry`/`Plan`/`PlanStep`/`ExecutedStep`/`ExecutionResult`/`Runtime` e `AskResult` vivem em `@atlas/contracts`.
 - `@atlas/core` compõe o registry (com `clock`+`calc`), o Runtime e injeta o Runtime no Cognitive.
 - `atlas ask` mostra um **traço compacto** de execução (Tools usadas + resultados) antes da resposta final, honrando a transparência do ciclo cognitivo.
-- ADR-0012 registra a decisão (espinha de execução Planner-driven; Gateway intacto; passos independentes).
+- [ADR-0012](../../06-adr/ADR-0012-planner-runtime-execution.md) registra a decisão (espinha de execução Planner-driven; Gateway intacto; passos independentes).
 
 ---
 
 # Motivação
 
-O **Cognitive Lifecycle** define sete etapas (Compreensão → Raciocínio → **Planejamento** → **Execução** → Observação → Aprendizado → Resposta). Até aqui (SPEC-0005), o Atlas honra o ciclo de forma **colapsada**: Compreensão + Raciocínio + Resposta acontecem numa única chamada `generate()`, e Planejamento/Execução/Observação/Aprendizado ainda não existem. O Atlas só sabe *falar* — não sabe *fazer*.
+O **Cognitive Lifecycle** define sete etapas (Compreensão → Raciocínio → **Planejamento** → **Execução** → Observação → Aprendizado → Resposta). Até aqui ([SPEC-0005](SPEC-0005-cognitive-core.md)), o Atlas honra o ciclo de forma **colapsada**: Compreensão + Raciocínio + Resposta acontecem numa única chamada `generate()`, e Planejamento/Execução/Observação/Aprendizado ainda não existem. O Atlas só sabe *falar* — não sabe *fazer*.
 
 Esta SPEC introduz a **espinha de execução**: o menor recorte que faz Planejamento e Execução existirem de verdade, com uma Tool real produzindo um resultado que o modelo sozinho não teria (a hora atual) e outra que ele erra com frequência (aritmética). O **Module Catalog** cataloga o **Planner** (`packages/planner`, consolidável em `packages/cognitive`), o **Runtime** (`packages/runtime`) e as **Tools** (`packages/tools`) como componentes distintos, com autoridade separada: Cognitive Core decide a estratégia, Planner transforma estratégia em plano, Runtime coordena a execução, Tools são adaptadores sem decisão. O **ProjectStructure** prevê `packages/runtime` e `packages/tools` e nomeia `Plan`, `Task`, `ExecutionResult` como contratos de `@atlas/contracts`.
 
@@ -71,10 +71,10 @@ Documentos originadores: **CognitiveLifecycle** (etapas Planejamento/Execução)
 - Module Catalog (`docs/03-architecture/ModuleCatalog.md`) — Planner, Runtime, Task Manager, Tool Registry; Matriz de Autoridade; Regras de Dependência 5–8
 - Project Structure (`docs/03-architecture/ProjectStructure.md`) — `packages/runtime`, `packages/tools`; Planner consolidável em `packages/cognitive`; `Plan`/`Task`/`ExecutionResult` em contracts
 - ArchitectureConstitution — Tools são adaptadores sem lógica de negócio; Core é o único orquestrador de composição
-- ADR-0003 (composition root), ADR-0004 (composição manual por factory), ADR-0007 (promoção de contrato ao 2º consumidor)
-- ADR-0010 (Persona injetada na geração), ADR-0011 (Memory injetada; efeito colateral atrás de porta injetável) — padrões reaproveitados
+- [ADR-0003](../../06-adr/ADR-0003-core-composition-root.md) (composition root), [ADR-0004](../../06-adr/ADR-0004-manual-composition.md) (composição manual por factory), [ADR-0007](../../06-adr/ADR-0007-model-gateway-contract-promotion.md) (promoção de contrato ao 2º consumidor)
+- [ADR-0010](../../06-adr/ADR-0010-persona-injected-generation.md) (Persona injetada na geração), [ADR-0011](../../06-adr/ADR-0011-memory-service-persistence.md) (Memory injetada; efeito colateral atrás de porta injetável) — padrões reaproveitados
 - ADR-0012 — espinha de execução Planner-driven (a ser criado por esta SPEC)
-- SPEC-0004 (Model Gateway), SPEC-0005 (Cognitive Core)
+- [SPEC-0004](SPEC-0004-model-gateway.md) (Model Gateway), SPEC-0005 (Cognitive Core)
 
 ---
 

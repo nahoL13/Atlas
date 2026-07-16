@@ -1,10 +1,10 @@
-# SPEC-0006 `atlas chat` — Implementation Plan
+# [SPEC-0006](../specs/SPEC-0006-atlas-chat.md) `atlas chat` — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Adicionar um comando `atlas chat` que sustenta uma conversa interativa multi-turno no terminal, lembrando o histórico durante a sessão, dando ao `CognitiveCore` operações de conversa (`startConversation`/`respond`) sem torná-lo stateful.
 
-**Architecture:** A conversa é um **dado** (valor imutável `Conversation`) que flui pelo sistema (ADR-0008). O `CognitiveCore` ganha `startConversation()` e `respond(conversation, input)` — `respond` é função pura: monta `[...histórico, {user}]`, chama `gateway.generate` uma vez, devolve a resposta + o histórico atualizado. A CLI ganha `atlas chat`: um loop `readline` (via um `LineReader` injetável) que carrega o `Conversation` entre as voltas e sai em `/sair`/`/exit`/EOF; erro de modelo é tratado dentro do loop (mostra mensagem amigável e continua). Tudo testável sem rede (provider `fake` ou `fetch`/`gateway`/`LineReader` stub).
+**Architecture:** A conversa é um **dado** (valor imutável `Conversation`) que flui pelo sistema ([ADR-0008](../../06-adr/ADR-0008-conversation-as-data.md)). O `CognitiveCore` ganha `startConversation()` e `respond(conversation, input)` — `respond` é função pura: monta `[...histórico, {user}]`, chama `gateway.generate` uma vez, devolve a resposta + o histórico atualizado. A CLI ganha `atlas chat`: um loop `readline` (via um `LineReader` injetável) que carrega o `Conversation` entre as voltas e sai em `/sair`/`/exit`/EOF; erro de modelo é tratado dentro do loop (mostra mensagem amigável e continua). Tudo testável sem rede (provider `fake` ou `fetch`/`gateway`/`LineReader` stub).
 
 **Tech Stack:** TypeScript 5.x (strict, NodeNext, `verbatimModuleSyntax`, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`), Vitest, `tsx` (dev), `node:readline`.
 
@@ -19,7 +19,7 @@
 - `verbatimModuleSyntax`: `import type`/`export type` para tipos; `import`/`export` para valores.
 - `exactOptionalPropertyTypes`: nunca atribuir `undefined` a propriedade opcional; construir objetos condicionalmente.
 - `noUncheckedIndexedAccess`: acesso indexado/`at()` retorna `T | undefined` — tratar (`!` só quando garantido pelo teste).
-- Sem mocks de framework: dependências (`gateway`, `fetch`, `LineReader`) injetadas por parâmetro; stubs escritos à mão (ADR-0004).
+- Sem mocks de framework: dependências (`gateway`, `fetch`, `LineReader`) injetadas por parâmetro; stubs escritos à mão ([ADR-0004](../../06-adr/ADR-0004-manual-composition.md)).
 - System prompt do Cognitive Core segue **neutro**; nunca uma persona.
 - `typescript` permanece pinado em `^5` (probe do TS 7 na última task).
 - Commits: conventional commits em português; cada commit termina com o trailer `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>` (usar dois `-m`).

@@ -1,10 +1,10 @@
-# SPEC-0012 — Tool de escrita (`write_file`) — Implementation Plan
+# [SPEC-0012](../specs/SPEC-0012-write-file-tool.md) — Tool de escrita (`write_file`) — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Dar ao Atlas a primeira Tool de **escrita** (`write_file`, criar/sobrescrever arquivo de texto) atrás do portão de permissão existente, sob uma política de **raízes de escrita** (`writeRoots`) separada da de leitura, com **default vazio** (opt-in explícito via `--allow-write`), sem fluxo interativo.
 
-**Architecture:** A Tool `write_file` declara, como **dado**, o recurso que tocaria (`requirements(args) → ActionRequest` com `access: 'write'`) e escreve o disco por uma **porta injetável separada** (`FsWritePort`). O **Permission Service** (`@atlas/permissions`) passa a rotear por `access`: `read` → `readRoots`, `write` → `writeRoots`, ambos pela **mesma** contenção lexical fatorada. O **Runtime não muda** — o portão da SPEC-0011 já é agnóstico ao `access` e transforma qualquer veredicto ≠ `allowed` em `ExecutedStep` negado. A config nova `permissions.writeRoots` (default `[]`) segue a precedência `flags > env > defaults`.
+**Architecture:** A Tool `write_file` declara, como **dado**, o recurso que tocaria (`requirements(args) → ActionRequest` com `access: 'write'`) e escreve o disco por uma **porta injetável separada** (`FsWritePort`). O **Permission Service** (`@atlas/permissions`) passa a rotear por `access`: `read` → `readRoots`, `write` → `writeRoots`, ambos pela **mesma** contenção lexical fatorada. O **Runtime não muda** — o portão da [SPEC-0011](../specs/SPEC-0011-permission-service-fs-read.md) já é agnóstico ao `access` e transforma qualquer veredicto ≠ `allowed` em `ExecutedStep` negado. A config nova `permissions.writeRoots` (default `[]`) segue a precedência `flags > env > defaults`.
 
 **Tech Stack:** TypeScript (NodeNext, série 5), pnpm workspace, Vitest, `tsx`; execução do fonte sem `dist/`.
 
@@ -939,7 +939,7 @@ Expected: a saída inclui `writeRoots: (nenhuma)`.
 
 > A execução de um `ask` que realmente planeje `write_file` depende do provider; a garantia comportamental está coberta pelos testes unitários do Runtime/Tool/Permissions. O smoke do `status` confirma a config resolvida ponta a ponta.
 
-- [ ] **Step 3: Nota de atualização no ADR-0013**
+- [ ] **Step 3: Nota de atualização no [ADR-0013](../../06-adr/ADR-0013-permission-service-execution-gate.md)**
 
 Acrescentar ao final do `docs/06-adr/ADR-0013-permission-service-execution-gate.md` uma seção `## Atualização (SPEC-0012)` registrando: `access: 'write'` passou de **reservado** a **produzido**; política `writeRoots` **separada** de `readRoots`, **default `[]`** (opt-in explícito, materializa "não presumir consentimento para destrutivas"); a contenção lexical foi **fatorada** e reusada por leitura e escrita; o Runtime **não mudou** (o portão já era agnóstico ao `access`); `confirm` **segue reservado** (fluxo interativo é a próxima fatia); symlink/`realpath` seguem fora (limitação conhecida vale igual para escrita).
 
@@ -981,7 +981,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Notas de execução
 
 - **Ordem de commits**: Task 1 entra junto da Task 2 (contratos + serviço no mesmo commit) para manter o repo verde por commit — contratos sozinhos quebram consumidores.
-- **Runtime**: nenhuma mudança de código. Se sentir vontade de "adaptar" o Runtime, **pare** — o portão já cobre escrita (ver Task 2 do PLAN-0011). Um teste do Runtime já cobre "veredicto ≠ allowed → passo negado, Tool não roda"; não precisa duplicar para escrita, mas pode acrescentar um caso `write` blocked se quiser reforço (opcional, sem novo código de produção).
+- **Runtime**: nenhuma mudança de código. Se sentir vontade de "adaptar" o Runtime, **pare** — o portão já cobre escrita (ver Task 2 do [PLAN-0011](PLAN-0011-permission-service-fs-read.md)). Um teste do Runtime já cobre "veredicto ≠ allowed → passo negado, Tool não roda"; não precisa duplicar para escrita, mas pode acrescentar um caso `write` blocked se quiser reforço (opcional, sem novo código de produção).
 - **`exactOptionalPropertyTypes`**: o objeto `permissions` montado na CLI usa campos opcionais atribuídos condicionalmente — não atribua `undefined` explicitamente.
 - **Escopo**: se aparecer a tentação de `mkdir -p`, deleção, `confirm` ou múltiplas raízes, é fora de escopo (SPEC-0013+).
 ```

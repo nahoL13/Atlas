@@ -1,10 +1,10 @@
-# SPEC-0001 Workspace Bootstrap — Implementation Plan
+# [SPEC-0001](../specs/SPEC-0001-workspace-bootstrap.md) Workspace Bootstrap — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Criar a fundação executável do monorepo Atlas: Git, workspace pnpm, TypeScript strict, ESLint+Prettier e Vitest com teste smoke, verificáveis por comandos na raiz.
 
-**Architecture:** Monorepo pnpm (ADR-0001) sem nenhum package ainda — apenas a mecânica do workspace na raiz. TypeScript strict compartilhado via `tsconfig.base.json` (ADR-0002). Nenhum componente do Module Catalog é implementado.
+**Architecture:** Monorepo pnpm ([ADR-0001](../../06-adr/ADR-0001-monorepo.md)) sem nenhum package ainda — apenas a mecânica do workspace na raiz. TypeScript strict compartilhado via `tsconfig.base.json` ([ADR-0002](../../06-adr/ADR-0002-typescript-node.md)). Nenhum componente do Module Catalog é implementado.
 
 **Tech Stack:** Node.js ≥24 (LTS), pnpm 10.x, TypeScript 5.x, Vitest, ESLint 9 (flat config, typescript-eslint), Prettier 3.
 

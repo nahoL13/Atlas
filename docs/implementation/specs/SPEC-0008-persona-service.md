@@ -47,7 +47,7 @@ Concretamente, quando esta SPEC estiver concluída:
 - O Cognitive Core compõe o enquadramento de identidade da Persona com seu enquadramento de tarefa (`personaPrompt` injetado por parâmetro); `respond` permanece **função pura**.
 - `@atlas/core` resolve a Persona ativa (`config.persona`, default `jarvis`), injeta seu `systemPrompt` no Cognitive e expõe `atlas.persona`.
 - A CLI seleciona a Persona por `--persona`/`ATLAS_PERSONA` (precedência `flags > env > defaults`); `atlas status` mostra a Persona ativa; `atlas chat` a saúda ao abrir.
-- ADR-0010 registra a superação da postura "system prompt neutro por design".
+- [ADR-0010](../../06-adr/ADR-0010-persona-injected-generation.md) registra a superação da postura "system prompt neutro por design".
 
 ---
 
@@ -67,9 +67,9 @@ Documentos originadores: **Vision** (Jarvis como primeira Persona) + **Module Ca
 - Glossary (`docs/00-project/Glossary.md`) — Persona, Jarvis ("configuração de Persona, não um novo Core")
 - Module Catalog — Persona Service (`docs/03-architecture/ModuleCatalog.md`)
 - Project Structure — `packages/persona/` (`docs/03-architecture/ProjectStructure.md`)
-- ADR-0006 (precedência de config), ADR-0003 (composition root), ADR-0004 (composição manual por factory)
+- [ADR-0006](../../06-adr/ADR-0006-config-source-precedence.md) (precedência de config), [ADR-0003](../../06-adr/ADR-0003-core-composition-root.md) (composition root), [ADR-0004](../../06-adr/ADR-0004-manual-composition.md) (composição manual por factory)
 - ADR-0010 — Persona injetada na geração; neutro-por-design superado (a ser criado por esta SPEC)
-- SPEC-0005 (Cognitive Core), SPEC-0006 (atlas chat), SPEC-0007 (Context Service)
+- [SPEC-0005](SPEC-0005-cognitive-core.md) (Cognitive Core), [SPEC-0006](SPEC-0006-atlas-chat.md) (atlas chat), [SPEC-0007](SPEC-0007-context-service.md) (Context Service)
 
 ---
 
@@ -106,7 +106,7 @@ Esta seção é obrigatória.
 
 # Pré-requisitos
 
-- SPEC-0004 (model-gateway) — Done
+- [SPEC-0004](SPEC-0004-model-gateway.md) (model-gateway) — Done
 - SPEC-0005 (cognitive-core) — Done
 - SPEC-0006 (atlas chat) — Done
 - SPEC-0007 (context-service) — Done
