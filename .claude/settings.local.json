@@ -16,10 +16,12 @@
       "Bash(rtk tsc *)",
       "Bash(pnpm test *)",
       "Bash(echo \"exit: $?\")",
-      "Bash(rtk proxy *)",
+      "Bash(rtk proxy grep *)",
+      "Bash(rtk proxy git diff *)",
       "Bash(obsidian search *)",
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(obsidian backlinks *)"
     ]
   }
 }
