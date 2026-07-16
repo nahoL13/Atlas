@@ -15,9 +15,9 @@ export function loadConfig(override: AtlasConfigOverride = {}): AtlasConfig {
   const defaults = defaultConfig();
   const model: ModelGatewayConfig = { ...defaults.model, ...override.model };
   const memory = { path: override.memory?.path ?? defaults.memory.path };
-  const overrideRoots = override.permissions?.readRoots;
   const permissions = {
-    readRoots: overrideRoots ?? defaults.permissions.readRoots,
+    readRoots: override.permissions?.readRoots ?? defaults.permissions.readRoots,
+    writeRoots: override.permissions?.writeRoots ?? defaults.permissions.writeRoots,
   };
   const merged: AtlasConfig = {
     logLevel: override.logLevel ?? defaults.logLevel,
@@ -56,6 +56,13 @@ export function loadConfig(override: AtlasConfigOverride = {}): AtlasConfig {
     permissions.readRoots.some((root) => typeof root !== 'string' || root.trim() === '')
   ) {
     issues.push('permissions.readRoots deve ser uma lista não vazia de caminhos não vazios');
+  }
+
+  if (
+    !Array.isArray(permissions.writeRoots) ||
+    permissions.writeRoots.some((root) => typeof root !== 'string' || root.trim() === '')
+  ) {
+    issues.push('permissions.writeRoots deve ser uma lista de caminhos não vazios (pode ser vazia)');
   }
 
   if (!PROVIDERS.includes(model.provider)) {

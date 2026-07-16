@@ -4,7 +4,7 @@ import type { Fact } from '@atlas/contracts';
 import type { MemoryStorage } from '@atlas/memory';
 import { createPermissionService } from '@atlas/permissions';
 import { createRuntime } from '@atlas/runtime';
-import { createReadFileTool, createToolRegistry } from '@atlas/tools';
+import { createReadFileTool, createToolRegistry, createWriteFileTool } from '@atlas/tools';
 import type { FsReadPort } from '@atlas/tools';
 import { createAtlas } from '../src/index.js';
 
@@ -141,6 +141,15 @@ describe('createAtlas', () => {
     await atlas.shutdown();
   });
 
+  it('compõe com fsWrite injetado e resolve writeRoots sem erro', async () => {
+    const atlas = await createAtlas(
+      { config: { model: { provider: 'fake' }, permissions: { writeRoots: ['/out'] } } },
+      { memoryStorage: fakeStorage(), fsWrite: { writeFile: async () => {} } },
+    );
+    expect(atlas.config.permissions.writeRoots).toEqual(['/out']);
+    await atlas.shutdown();
+  });
+
   it('read_file lê dentro da raiz permitida e é bloqueada fora dela, sem tocar o fs', async () => {
     const calls: string[] = [];
     const fsRead: FsReadPort = {
@@ -150,7 +159,7 @@ describe('createAtlas', () => {
       },
       readdir: async () => [],
     };
-    const permissions = createPermissionService({ readRoots: ['/repo'] });
+    const permissions = createPermissionService({ readRoots: ['/repo'], writeRoots: [] });
     const registry = createToolRegistry();
     registry.register(createReadFileTool({ fs: fsRead }));
     const runtime = createRuntime({ registry, permissions });
@@ -165,5 +174,30 @@ describe('createAtlas', () => {
     });
     expect(blocked.steps[0]!.result.ok).toBe(false);
     expect(calls).toEqual(['/repo/README.md']);
+  });
+
+  it('write_file escreve dentro da raiz permitida e é bloqueada fora dela, sem tocar o fs', async () => {
+    const writes: Array<{ path: string; content: string }> = [];
+    const fsWrite = {
+      writeFile: async (path: string, content: string) => {
+        writes.push({ path, content });
+      },
+    };
+    const permissions = createPermissionService({ readRoots: [], writeRoots: ['/out'] });
+    const registry = createToolRegistry();
+    registry.register(createWriteFileTool({ fs: fsWrite }));
+    const runtime = createRuntime({ registry, permissions });
+
+    const ok = await runtime.execute({
+      steps: [{ tool: 'write_file', args: { path: '/out/a.txt', content: 'olá' } }],
+    });
+    expect(ok.steps[0]!.result).toEqual({ ok: true, output: 'escrito: /out/a.txt' });
+    expect(writes).toEqual([{ path: '/out/a.txt', content: 'olá' }]);
+
+    const blocked = await runtime.execute({
+      steps: [{ tool: 'write_file', args: { path: '/etc/evil', content: 'x' } }],
+    });
+    expect(blocked.steps[0]!.result.ok).toBe(false);
+    expect(writes).toHaveLength(1);
   });
 });

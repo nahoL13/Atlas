@@ -12,8 +12,11 @@ import {
   createCalcTool,
   createReadFileTool,
   createListDirTool,
+  createWriteFileTool,
   nodeFsReadPort,
+  nodeFsWritePort,
   type FsReadPort,
+  type FsWritePort,
 } from '@atlas/tools';
 import { loadConfig } from './config/load-config.js';
 import { createLifecycle } from './lifecycle/lifecycle.js';
@@ -26,6 +29,7 @@ export interface CreateAtlasDeps {
   fetch?: typeof fetch;
   memoryStorage?: MemoryStorage;
   fsRead?: FsReadPort;
+  fsWrite?: FsWritePort;
 }
 
 export async function createAtlas(
@@ -40,12 +44,17 @@ export async function createAtlas(
   const memoryPrompt = memory.prompt();
   const gateway = createModelGateway(config.model, { fetch: deps.fetch ?? globalThis.fetch });
   const fsRead = deps.fsRead ?? nodeFsReadPort();
-  const permissions = createPermissionService({ readRoots: config.permissions.readRoots });
+  const fsWrite = deps.fsWrite ?? nodeFsWritePort();
+  const permissions = createPermissionService({
+    readRoots: config.permissions.readRoots,
+    writeRoots: config.permissions.writeRoots,
+  });
   const registry = createToolRegistry();
   registry.register(createClockTool());
   registry.register(createCalcTool());
   registry.register(createReadFileTool({ fs: fsRead }));
   registry.register(createListDirTool({ fs: fsRead }));
+  registry.register(createWriteFileTool({ fs: fsWrite }));
   const runtime = createRuntime({ registry, permissions });
   const cognitive = createCognitiveCore({
     gateway,

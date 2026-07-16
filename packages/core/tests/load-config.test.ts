@@ -111,4 +111,28 @@ describe('loadConfig', () => {
   it('rejeita readRoots com caminho vazio', () => {
     expect(() => loadConfig({ permissions: { readRoots: ['  '] } })).toThrow(InvalidConfigError);
   });
+
+  it('usa [] como writeRoots padrão', () => {
+    const config = loadConfig();
+    expect(config.permissions.writeRoots).toEqual([]);
+  });
+
+  it('override.permissions.writeRoots substitui o default', () => {
+    const config = loadConfig({ permissions: { writeRoots: ['/out'] } });
+    expect(config.permissions.writeRoots).toEqual(['/out']);
+  });
+
+  it('aceita writeRoots vazio explícito', () => {
+    expect(() => loadConfig({ permissions: { writeRoots: [] } })).not.toThrow();
+  });
+
+  it('rejeita writeRoots com caminho vazio', () => {
+    expect(() => loadConfig({ permissions: { writeRoots: ['  '] } })).toThrow(InvalidConfigError);
+  });
+
+  it('preserva readRoots e writeRoots juntos no override', () => {
+    const config = loadConfig({ permissions: { readRoots: ['/r'], writeRoots: ['/w'] } });
+    expect(config.permissions.readRoots).toEqual(['/r']);
+    expect(config.permissions.writeRoots).toEqual(['/w']);
+  });
 });
