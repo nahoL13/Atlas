@@ -247,7 +247,7 @@ Esta SPEC será considerada concluída somente quando:
 - documentação atualizada;
 - arquitetura preservada;
 - revisão concluída;
-- lições aprendidas registradas em `implementation/LESSONS_LEARNED.md`.
+- lições aprendidas registradas em `docs/implementation/LESSONS_LEARNED.md`.
 
 ---
 

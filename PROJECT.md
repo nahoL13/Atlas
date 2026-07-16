@@ -319,7 +319,7 @@ docs/
 
 Cada diretório possui responsabilidade única.
 
-As SPECs, o template e o registro de lições aprendidas vivem em `implementation/`, na raiz do repositório, conforme definido no Project Structure.
+As SPECs, o template e o registro de lições aprendidas vivem em `docs/implementation/`, conforme definido no Project Structure.
 
 ---
 

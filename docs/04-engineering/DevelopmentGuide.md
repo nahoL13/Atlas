@@ -154,7 +154,7 @@ Uma SPEC não deve depender de interpretações implícitas.
 
 # Estrutura Oficial de uma SPEC
 
-A estrutura oficial de uma SPEC é definida pelo **Implementation Specification Template**, localizado em `implementation/templates/SPEC-TEMPLATE.md`.
+A estrutura oficial de uma SPEC é definida pelo **Implementation Specification Template**, localizado em `docs/implementation/templates/SPEC-TEMPLATE.md`.
 
 Toda SPEC deve seguir integralmente esse template.
 
@@ -228,7 +228,7 @@ Caso alguma resposta seja negativa, a SPEC deve retornar para ajustes.
 
 # Lições Aprendidas
 
-Ao concluir uma SPEC, suas lições aprendidas devem ser registradas em `implementation/LESSONS_LEARNED.md`.
+Ao concluir uma SPEC, suas lições aprendidas devem ser registradas em `docs/implementation/LESSONS_LEARNED.md`.
 
 O registro responde:
 
@@ -244,12 +244,12 @@ Todo item de mudança identificado deve gerar um ADR, uma atualização de docum
 
 # Organização
 
-Cada SPEC deverá possuir um arquivo próprio em `implementation/specs/`.
+Cada SPEC deverá possuir um arquivo próprio em `docs/implementation/specs/`.
 
 Exemplo:
 
 ```text
-implementation/specs/
+docs/implementation/specs/
 
 SPEC-0001-workspace-bootstrap.md
 

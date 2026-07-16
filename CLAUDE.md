@@ -41,8 +41,8 @@ Teste para qualquer decisão: *"isto torna o Atlas mais simples, mais modular, m
 Ideia → existe no PRD? → existe módulo responsável? → SPEC → implementação → testes → atualização da documentação → review → merge. Nenhuma etapa é pulada.
 
 - Processo completo, características de uma boa SPEC e diretrizes para IA: `docs/04-engineering/DevelopmentGuide.md`
-- Estrutura obrigatória de toda SPEC: `implementation/templates/SPEC-TEMPLATE.md`; SPECs vivem em `implementation/specs/`
-- Ao concluir uma SPEC: registre as lições aprendidas em `implementation/LESSONS_LEARNED.md` — é parte da Definition of Done
+- Estrutura obrigatória de toda SPEC: `docs/implementation/templates/SPEC-TEMPLATE.md`; SPECs vivem em `docs/implementation/specs/`
+- Ao concluir uma SPEC: registre as lições aprendidas em `docs/implementation/LESSONS_LEARNED.md` — é parte da Definition of Done
 - Conflito entre documentos: prevalece a ordem de prioridade definida em `docs/04-engineering/DevelopmentGuide.md` (PROJECT.md → Vision → Constitution → ... → SPEC).
 
 ## Mapa da documentação (leia sob demanda)
@@ -66,8 +66,8 @@ Ideia → existe no PRD? → existe módulo responsável? → SPEC → implement
 | Permission Service (`packages/permissions`): portão puro/síncrono na execução; Tools declaram `requirements` como dado; Runtime aplica o veredicto; contenção lexical (symlink adiado); `confirm` reservado | `docs/06-adr/ADR-0013-permission-service-execution-gate.md` |
 | Workspace multi-projeto (atlas-core, atlas-desktop...) e dependências entre projetos | `docs/03-architecture/WorkspaceStrategy.md` |
 | Processo oficial de desenvolvimento e SPECs | `docs/04-engineering/DevelopmentGuide.md` |
-| Escrever uma nova SPEC | `implementation/templates/SPEC-TEMPLATE.md` |
-| Concluir uma SPEC; consultar aprendizados de SPECs anteriores | `implementation/LESSONS_LEARNED.md` |
+| Escrever uma nova SPEC | `docs/implementation/templates/SPEC-TEMPLATE.md` |
+| Concluir uma SPEC; consultar aprendizados de SPECs anteriores | `docs/implementation/LESSONS_LEARNED.md` |
 | Entry point para humanos; ordem de leitura em camadas | `PROJECT.md` |
 
 Os termos do projeto têm significado técnico preciso — na dúvida sobre um termo, consulte o Glossary antes de inferir.

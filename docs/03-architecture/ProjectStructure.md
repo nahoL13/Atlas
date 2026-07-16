@@ -117,10 +117,9 @@ atlas/
 │   └── shared/
 │
 ├── docs/
-│
-├── implementation/
-│   ├── templates/
-│   └── specs/
+│   └── implementation/
+│       ├── templates/
+│       └── specs/
 │
 ├── tooling/
 │
@@ -694,12 +693,12 @@ Inventários que possam ser derivados automaticamente do código não devem ser 
 
 ---
 
-# `implementation/`
+# `docs/implementation/`
 
 Contém as Implementation Specifications que orientam o desenvolvimento incremental.
 
 ```text
-implementation/
+docs/implementation/
 ├── templates/
 │   └── SPEC-TEMPLATE.md
 │
@@ -712,7 +711,7 @@ implementation/
     └── SPEC-0003-cli-foundation.md
 ```
 
-Cada SPEC pode possuir um plano de implementação correspondente em `implementation/plans/`, com a mesma numeração.
+Cada SPEC pode possuir um plano de implementação correspondente em `docs/implementation/plans/`, com a mesma numeração.
 
 Uma SPEC descreve uma entrega implementável.
 
@@ -960,7 +959,7 @@ atlas/
 │   ├── contracts/
 │   └── core/
 ├── docs/
-├── implementation/
+│   └── implementation/
 ├── CLAUDE.md
 ├── PROJECT.md
 ├── package.json
