@@ -54,11 +54,11 @@ Concretamente, quando esta SPEC estiver concluída:
 
 # Motivação
 
-A Constituição e o Glossary tratam **memória** (conhecimento persistente) e **contexto** (estado temporário da execução) como conceitos **distintos e separados**; o Artigo de invariante 6 dá à Memória "autoridade exclusiva sobre estado persistente". O Module Catalog cataloga o **Memory Service** (`packages/memory`) como a única autoridade para armazenamento e recuperação de conhecimento permanente (preferências, fatos persistentes, memória de projetos, memória episódica, histórico, relações), usada pelo Cognitive Core.
+A Constituição e o [Glossary](../../00-project/Glossary.md) tratam **memória** (conhecimento persistente) e **contexto** (estado temporário da execução) como conceitos **distintos e separados**; o Artigo de invariante 6 dá à Memória "autoridade exclusiva sobre estado persistente". O [Module Catalog](../../03-architecture/ModuleCatalog.md) cataloga o **Memory Service** (`packages/memory`) como a única autoridade para armazenamento e recuperação de conhecimento permanente (preferências, fatos persistentes, memória de projetos, memória episódica, histórico, relações), usada pelo Cognitive Core.
 
 Até aqui a plataforma é **efêmera**: o Context Service ([SPEC-0007](SPEC-0007-context-service.md)) guarda a conversa apenas durante a sessão, em memória, por design ([ADR-0009](../../06-adr/ADR-0009-context-service-value-store.md)). Nada sobrevive ao encerramento do processo. Esta SPEC introduz o primeiro conhecimento **persistente** do Atlas — a fatia mínima que entrega valor visível ponta a ponta: o usuário grava um fato ("meu nome é X", "prefiro respostas curtas"), e o Atlas passa a levá-lo em conta nas próximas sessões. O amplo escopo do Memory Service (episódica, projetos, busca, classificação, retenção) é deliberadamente decomposto: esta SPEC entrega só fatos/preferências explícitos; o resto vira SPECs futuras.
 
-Documentos originadores: **ArchitectureConstitution** (memória como autoridade sobre estado persistente) + **Glossary** (Memory/Context distintos) + **Module Catalog / Project Structure** (Memory Service, `packages/memory`).
+Documentos originadores: **ArchitectureConstitution** (memória como autoridade sobre estado persistente) + **Glossary** (Memory/Context distintos) + **Module Catalog / [Project Structure](../../03-architecture/ProjectStructure.md)** (Memory Service, `packages/memory`).
 
 ---
 
@@ -68,7 +68,7 @@ Documentos originadores: **ArchitectureConstitution** (memória como autoridade 
 - Glossary (`docs/00-project/Glossary.md`) — Memory, Context ("Memory armazena contexto"; temporário vs. permanente)
 - Module Catalog — Memory Service (`docs/03-architecture/ModuleCatalog.md`)
 - Project Structure — `packages/memory/` (`docs/03-architecture/ProjectStructure.md`)
-- Cognitive Lifecycle — etapa de Aprendizado (`docs/03-architecture/CognitiveLifecycle.md`)
+- [Cognitive Lifecycle](../../03-architecture/CognitiveLifecycle.md) — etapa de Aprendizado (`docs/03-architecture/CognitiveLifecycle.md`)
 - [ADR-0006](../../06-adr/ADR-0006-config-source-precedence.md) (precedência de config), [ADR-0003](../../06-adr/ADR-0003-core-composition-root.md) (composition root), [ADR-0004](../../06-adr/ADR-0004-manual-composition.md) (composição manual por factory)
 - ADR-0009 (Context como store de valor; leitura de ambiente fora de escopo) — contraste memória × contexto
 - ADR-0010 (Persona injetada na geração) — princípio de injeção reaproveitado
@@ -278,7 +278,7 @@ atlas.memory → CLI: memory list exibe; remember/forget mutam
 
 - todos os critérios atendidos;
 - testes passando (`pnpm lint && pnpm format:check && pnpm typecheck && pnpm test`);
-- documentação atualizada (CLAUDE.md raiz + `packages/memory/CLAUDE.md` + atualizar `packages/cognitive/CLAUDE.md` — passa a compor memória + `packages/core/CLAUDE.md` se necessário + NEXT_CONTEXT + CURRENT_SPRINT);
+- documentação atualizada (CLAUDE.md raiz + `packages/memory/CLAUDE.md` + atualizar `packages/cognitive/CLAUDE.md` — passa a compor memória + `packages/core/CLAUDE.md` se necessário + [NEXT_CONTEXT](../../05-context/NEXT_CONTEXT.md) + [CURRENT_SPRINT](../../05-context/CURRENT_SPRINT.md));
 - ADR-0011 aceito;
 - arquitetura preservada (Memory não decide estratégia, não chama o Gateway, não controla o fluxo cognitivo; `respond` puro; Context×Memory mantidos distintos);
 - revisão concluída;

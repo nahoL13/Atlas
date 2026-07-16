@@ -14,7 +14,7 @@ A [SPEC-0005](../implementation/specs/SPEC-0005-cognitive-core.md) entregou o Co
 
 A [SPEC-0006](../implementation/specs/SPEC-0006-atlas-chat.md) introduz `atlas chat` — um loop de conversa que **lembra o histórico enquanto a sessão está aberta** (e esquece ao fechar; persistência entre sessões é do Memory Service, inexistente).
 
-O Module Catalog atribui "representar o estado atual e temporário" ao **Context Service** (`packages/context`, consolidado em `packages/memory`), que **ainda não existe**. Um buffer de conversa de sessão é exatamente esse "estado temporário". Surge então a pergunta: onde vive esse histórico sem (a) violar a responsabilidade catalogada do Context Service, nem (b) tornar o Cognitive Core stateful, nem (c) forçar a criação prematura de um módulo cujo escopo real é mais amplo do que "guardar mensagens de chat"?
+O [Module Catalog](../03-architecture/ModuleCatalog.md) atribui "representar o estado atual e temporário" ao **Context Service** (`packages/context`, consolidado em `packages/memory`), que **ainda não existe**. Um buffer de conversa de sessão é exatamente esse "estado temporário". Surge então a pergunta: onde vive esse histórico sem (a) violar a responsabilidade catalogada do Context Service, nem (b) tornar o Cognitive Core stateful, nem (c) forçar a criação prematura de um módulo cujo escopo real é mais amplo do que "guardar mensagens de chat"?
 
 ---
 

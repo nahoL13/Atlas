@@ -4,7 +4,7 @@
 
 **Goal:** Criar a fundação executável do monorepo Atlas: Git, workspace pnpm, TypeScript strict, ESLint+Prettier e Vitest com teste smoke, verificáveis por comandos na raiz.
 
-**Architecture:** Monorepo pnpm ([ADR-0001](../../06-adr/ADR-0001-monorepo.md)) sem nenhum package ainda — apenas a mecânica do workspace na raiz. TypeScript strict compartilhado via `tsconfig.base.json` ([ADR-0002](../../06-adr/ADR-0002-typescript-node.md)). Nenhum componente do Module Catalog é implementado.
+**Architecture:** Monorepo pnpm ([ADR-0001](../../06-adr/ADR-0001-monorepo.md)) sem nenhum package ainda — apenas a mecânica do workspace na raiz. TypeScript strict compartilhado via `tsconfig.base.json` ([ADR-0002](../../06-adr/ADR-0002-typescript-node.md)). Nenhum componente do [Module Catalog](../../03-architecture/ModuleCatalog.md) é implementado.
 
 **Tech Stack:** Node.js ≥24 (LTS), pnpm 10.x, TypeScript 5.x, Vitest, ESLint 9 (flat config, typescript-eslint), Prettier 3.
 

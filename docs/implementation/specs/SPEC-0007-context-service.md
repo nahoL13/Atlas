@@ -56,7 +56,7 @@ O ADR-0008 ("Conversa como dado") decidiu que o histórico de conversa multi-tur
 
 > "quando o Context Service existir, ele passa a ser o detentor do estado temporário de conversa, sem alterar o contrato `respond` (que continua puro). [...] Migração futura para o Context Service é uma troca de **detentor**, não uma mudança de contrato."
 
-Esta SPEC paga essa dívida: cria o dono catalogado do "estado atual e temporário" (Module Catalog) e migra a titularidade da conversa para ele, sem tocar no contrato do Cognitive Core. É o próximo passo arquitetural natural do ciclo cognitivo, avançando a plataforma na direção do desenho documentado sem expandir escopo.
+Esta SPEC paga essa dívida: cria o dono catalogado do "estado atual e temporário" ([Module Catalog](../../03-architecture/ModuleCatalog.md)) e migra a titularidade da conversa para ele, sem tocar no contrato do Cognitive Core. É o próximo passo arquitetural natural do ciclo cognitivo, avançando a plataforma na direção do desenho documentado sem expandir escopo.
 
 Documento originador: **ADR-0008** (dívida de detentor) + **Module Catalog** (Context Service: "representar o estado atual e temporário").
 
@@ -67,10 +67,10 @@ Documento originador: **ADR-0008** (dívida de detentor) + **Module Catalog** (C
 - ADR-0008 — Conversa como dado: multi-turno sem estado no Cognitive Core (`docs/06-adr/ADR-0008-conversation-as-data.md`)
 - ADR-0009 — Context Service como store de valor; a app medeia (a ser criado por esta SPEC)
 - Module Catalog — Context Service (`docs/03-architecture/ModuleCatalog.md`)
-- Project Structure — `packages/context/` e regra de consolidação aceitável (`docs/03-architecture/ProjectStructure.md`)
+- [Project Structure](../../03-architecture/ProjectStructure.md) — `packages/context/` e regra de consolidação aceitável (`docs/03-architecture/ProjectStructure.md`)
 - [ADR-0003](../../06-adr/ADR-0003-core-composition-root.md) (composition root) e [ADR-0004](../../06-adr/ADR-0004-manual-composition.md) (composição manual por factory)
 - [SPEC-0006](SPEC-0006-atlas-chat.md) — atlas chat (consumidor a ser migrado)
-- Cognitive Lifecycle — etapa de Contexto (`docs/03-architecture/CognitiveLifecycle.md`)
+- [Cognitive Lifecycle](../../03-architecture/CognitiveLifecycle.md) — etapa de Contexto (`docs/03-architecture/CognitiveLifecycle.md`)
 
 ---
 
@@ -84,7 +84,7 @@ Documento originador: **ADR-0008** (dívida de detentor) + **Module Catalog** (C
 - Erro de sessão inexistente mapeado por `AtlasError` com `code: 'ATLAS_CONTEXT'`.
 - Testes: unit do store, integração em `@atlas/core` (`atlas.context` funciona), CLI `chat` verde.
 - Criar ADR-0009 (resolução da tensão de mediação).
-- Documentação: `packages/context/CLAUDE.md`, CLAUDE.md raiz, NEXT_CONTEXT, CURRENT_SPRINT, LESSONS_LEARNED; atualizar referência no ADR-0008.
+- Documentação: `packages/context/CLAUDE.md`, CLAUDE.md raiz, [NEXT_CONTEXT](../../05-context/NEXT_CONTEXT.md), [CURRENT_SPRINT](../../05-context/CURRENT_SPRINT.md), LESSONS_LEARNED; atualizar referência no ADR-0008.
 
 ---
 

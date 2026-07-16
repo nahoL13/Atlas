@@ -51,8 +51,8 @@ Nenhuma solução deve ser criada sem um problema claramente definido.
 
 Antes de criar novos componentes, deve-se verificar:
 
-- Vision
-- Architecture Constitution
+- [Vision](../01-vision/Vision.md)
+- [Architecture Constitution](ArchitectureConstitution.md)
 - Product Requirements
 - Architecture
 - Especificação dos módulos

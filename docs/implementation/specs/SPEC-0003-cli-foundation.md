@@ -40,9 +40,9 @@ Ao final desta SPEC, o comando `atlas status` deve resolver a configuração a p
 
 # Motivação
 
-O core existe e é operável por código ([SPEC-0002](SPEC-0002-core-bootstrap.md)), mas ainda não há nenhuma forma de um humano exercitá-lo. A CLI é a primeira interface prevista no Project Structure (`apps/cli/`) e a escolhida para validar o MVP.
+O core existe e é operável por código ([SPEC-0002](SPEC-0002-core-bootstrap.md)), mas ainda não há nenhuma forma de um humano exercitá-lo. A CLI é a primeira interface prevista no [Project Structure](../../03-architecture/ProjectStructure.md) (`apps/cli/`) e a escolhida para validar o MVP.
 
-Esta SPEC materializa as primeiras sementes do Input Gateway e do Output Gateway (Module Catalog, camada Interaction, localização `apps/*`) e resolve a decisão de **precedência de fontes de configuração**, deliberadamente adiada da SPEC-0002 para cá.
+Esta SPEC materializa as primeiras sementes do Input Gateway e do Output Gateway ([Module Catalog](../../03-architecture/ModuleCatalog.md), camada Interaction, localização `apps/*`) e resolve a decisão de **precedência de fontes de configuração**, deliberadamente adiada da SPEC-0002 para cá.
 
 Origem: fluxo de SPECs definido no Project Structure (`SPEC-0003-cli-foundation`) e `docs/05-context/NEXT_CONTEXT.md`.
 

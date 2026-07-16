@@ -48,7 +48,7 @@ Trocar de provedor deve ser apenas uma mudança de configuração; nenhum consum
 
 A fundação do MVP (workspace + `@atlas/core` + `apps/cli`) está entregue, mas o Atlas ainda não consegue produzir nenhuma resposta cognitiva de fato porque não há acesso a modelos de IA. O Model Gateway é o adaptador que falta e que destrava toda a linha cognitiva futura (Cognitive Core, Planner, Skills), isolando o provedor de modelo do resto da plataforma.
 
-O módulo já está previsto no Module Catalog (`Model Gateway → packages/model-gateway`, camada Extension) — portanto não há criação de módulo novo, apenas a primeira implementação de um módulo já aprovado. O desenho materializa o Princípio 13 (independência tecnológica / provedor substituível): modelos são provedores substituíveis e não fazem parte da identidade do Atlas.
+O módulo já está previsto no [Module Catalog](../../03-architecture/ModuleCatalog.md) (`Model Gateway → packages/model-gateway`, camada Extension) — portanto não há criação de módulo novo, apenas a primeira implementação de um módulo já aprovado. O desenho materializa o Princípio 13 (independência tecnológica / provedor substituível): modelos são provedores substituíveis e não fazem parte da identidade do Atlas.
 
 Origem: `docs/05-context/NEXT_CONTEXT.md` (SPEC-0004 a definir; Model Gateway listado como candidata) e `docs/03-architecture/ModuleCatalog.md`.
 
@@ -93,7 +93,7 @@ Origem: `docs/05-context/NEXT_CONTEXT.md` (SPEC-0004 a definir; Model Gateway li
 - **políticas de seleção, fallback entre provedores e métricas de uso** (o Module Catalog permite, mas ficam para SPEC futura) — v1 usa um único provedor configurado;
 - **provedor nativo da Anthropic** (API Messages própria): o slot pago é atendido pelo provedor `remote` genérico (OpenAI-compatible); um provedor nativo pode ser adicionado depois sem mudar a interface;
 - qualquer **consumo do gateway pela CLI, pelo Core ou por outro package** — não há consumidor nesta SPEC além do smoke script de verificação;
-- **promover os tipos para `@atlas/contracts`** — só quando um segundo package precisar deles, via ADR (regra do Project Structure);
+- **promover os tipos para `@atlas/contracts`** — só quando um segundo package precisar deles, via ADR (regra do [Project Structure](../../03-architecture/ProjectStructure.md));
 - **alterar `@atlas/contracts`, `@atlas/core` ou `apps/cli`** — se a implementação sugerir necessidade de mudança neles, **parar e registrar** (Constituição);
 - **persistência, memória, contexto de conversa** — o gateway é sem estado; guardar histórico é responsabilidade de outros módulos;
 - adicionar SDKs de provedor como dependência de runtime — a integração HTTP usa o `fetch` global do Node.

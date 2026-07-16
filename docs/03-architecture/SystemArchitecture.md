@@ -40,13 +40,13 @@ Este documento não define:
 
 Esta arquitetura é construída sobre os seguintes documentos:
 
-- Vision
-- Architecture Constitution
-- Architecture Decision Process
-- Glossary
+- [Vision](../01-vision/Vision.md)
+- [Architecture Constitution](../00-project/ArchitectureConstitution.md)
+- [Architecture Decision Process](../00-project/ArchitectureDecisionProcess.md)
+- [Glossary](../00-project/Glossary.md)
 - Product Requirements
-- Cognitive Lifecycle
-- Architecture Principles
+- [Cognitive Lifecycle](CognitiveLifecycle.md)
+- [Architecture Principles](ArchitecturePrinciples.md)
 
 Este documento deve ser interpretado como a materialização arquitetural desses princípios.
 

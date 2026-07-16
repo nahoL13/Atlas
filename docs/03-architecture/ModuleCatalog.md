@@ -70,7 +70,7 @@ Em caso de conflito, os documentos normativos de nível superior possuem priorid
 
 A localização física dos componentes no monorepo é governada pelo `docs/03-architecture/ProjectStructure.md`.
 
-A coluna "Localização" deste catálogo indica o package de **destino** de cada componente; consolidações temporárias durante o MVP são definidas pelo Project Structure.
+A coluna "Localização" deste catálogo indica o package de **destino** de cada componente; consolidações temporárias durante o MVP são definidas pelo [Project Structure](ProjectStructure.md).
 
 ---
 
@@ -1086,7 +1086,7 @@ Os componentes abaixo são considerados possibilidades futuras, não partes obri
 - Remote Execution Service;
 - Home Automation Gateway.
 
-A inclusão de qualquer um desses componentes deverá seguir o Architecture Decision Process.
+A inclusão de qualquer um desses componentes deverá seguir o [Architecture Decision Process](../00-project/ArchitectureDecisionProcess.md).
 
 ---
 
@@ -1096,7 +1096,7 @@ Este catálogo será considerado válido enquanto:
 
 - representar todos os componentes arquiteturais oficiais;
 - não possuir sobreposição significativa de responsabilidades;
-- refletir a System Architecture;
+- refletir a [System Architecture](SystemArchitecture.md);
 - permitir identificar a autoridade de cada componente;
 - oferecer uma referência clara para as especificações dos módulos.
 

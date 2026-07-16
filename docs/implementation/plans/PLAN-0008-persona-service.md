@@ -12,7 +12,7 @@
 
 - Node ≥ 24, pnpm ≥ 11 via corepack. Diretório de trabalho: `/Users/lohanberg/Documents/Repos/Atlas` (todos os caminhos relativos a ele).
 - **Um único package novo:** `@atlas/persona`. Não criar outros módulos. Personas são embutidas no package (não por arquivo externo).
-- **A Persona é configuração de dados**, não decide estratégia técnica, não cria Plans, não executa Tasks (Module Catalog). Jarvis é uma configuração, não um novo Core (Glossary).
+- **A Persona é configuração de dados**, não decide estratégia técnica, não cria Plans, não executa Tasks ([Module Catalog](../../03-architecture/ModuleCatalog.md)). Jarvis é uma configuração, não um novo Core ([Glossary](../../00-project/Glossary.md)).
 - **Cognitive desacoplado do conceito de Persona:** recebe `personaPrompt?: string` por parâmetro; nunca importa `@atlas/persona` nem o tipo `Persona`. `respond` permanece **função pura**; o Cognitive segue sem estado.
 - **Voz e emoção** são slots declarativos no tipo `Persona`, **sem efeito de runtime** (não entram no `systemPrompt`).
 - `@atlas/persona` depende **apenas** de `@atlas/contracts`. Só `@atlas/core` importa implementações de packages (Regra de Dependência 11) — inclusive `@atlas/persona` e `PERSONA_IDS`.
@@ -1128,7 +1128,7 @@ Run: `pnpm add -Dw typescript@^7 && pnpm lint`
 Adicionar em `implementation/LESSONS_LEARNED.md` uma seção da SPEC-0008 cobrindo: (a) Persona injetada na geração com o Cognitive desacoplado do conceito (recebe string) — ADR-0010; (b) validação de `config.persona` importando `PERSONA_IDS` de `@atlas/persona` para manter fonte única (core é composition root, pode importar impl); (c) adicionar campo obrigatório a `AtlasConfig`/`AtlasPlatform` exige atualizar os literais/mocks (`apps/cli/tests/status.test.ts`) atomicamente; (d) voz/emoção como slots declarativos inertes; (e) resultado do probe do TS 7.
 
 Run (verificação final): `pnpm install && pnpm lint && pnpm format:check && pnpm typecheck && pnpm test`
-Expected: tudo verde. Anotar a contagem final de testes no NEXT_CONTEXT.
+Expected: tudo verde. Anotar a contagem final de testes no [NEXT_CONTEXT](../../05-context/NEXT_CONTEXT.md).
 
 - [ ] **Step 9: Marcar a SPEC como Review**
 

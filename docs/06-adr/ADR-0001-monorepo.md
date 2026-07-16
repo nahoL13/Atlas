@@ -10,7 +10,7 @@ Data: 2026-07-10
 
 # Contexto
 
-O Workspace Strategy define a organização lógica do Atlas em múltiplos projetos (atlas-core, atlas-desktop, atlas-docs, entre outros), mas deixa a organização física em aberto.
+O [Workspace Strategy](../03-architecture/WorkspaceStrategy.md) define a organização lógica do Atlas em múltiplos projetos (atlas-core, atlas-desktop, atlas-docs, entre outros), mas deixa a organização física em aberto.
 
 Para iniciar o MVP era necessário decidir entre repositório único, múltiplos repositórios ou um modelo híbrido.
 
@@ -45,7 +45,7 @@ Custos e riscos:
 - os limites entre packages precisam ser aplicados por lint e testes arquiteturais, não por fronteiras de repositório;
 - uma separação futura, se necessária, exigirá migração planejada.
 
-A separação em múltiplos repositórios somente será considerada diante das necessidades concretas listadas na seção "Evolução Futura" do Project Structure: ciclos de release independentes, equipes separadas, permissões distintas, distribuição pública independente ou problemas reais de escala.
+A separação em múltiplos repositórios somente será considerada diante das necessidades concretas listadas na seção "Evolução Futura" do [Project Structure](../03-architecture/ProjectStructure.md): ciclos de release independentes, equipes separadas, permissões distintas, distribuição pública independente ou problemas reais de escala.
 
 ---
 

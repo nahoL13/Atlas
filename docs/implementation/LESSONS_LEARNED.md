@@ -95,7 +95,7 @@ Tornar `permissions.readRoots` **obrigatório** em `AtlasConfig` repetiu, pela s
 
 **A arquitetura ajudou porque...**
 
-O Module Catalog já cravava os quatro veredictos (`free`/`allowed`/`confirm`/`blocked`) e a proibição de presumir consentimento para ações destrutivas — a decisão de começar por leitura (read-only) saiu quase automática: exercita o portão real (livre × bloqueada por raiz) sem precisar do fluxo interativo de confirmação, que só faz sentido diante de uma ação destrutiva de verdade. O padrão de porta injetável ([ADR-0004](../06-adr/ADR-0004-manual-composition.md)/0011: `fetch`, `MemoryStorage`) se repetiu sem fricção para o `FsReadPort` — o primeiro IO das Tools nasceu testável sem disco desde o primeiro commit.
+O [Module Catalog](../03-architecture/ModuleCatalog.md) já cravava os quatro veredictos (`free`/`allowed`/`confirm`/`blocked`) e a proibição de presumir consentimento para ações destrutivas — a decisão de começar por leitura (read-only) saiu quase automática: exercita o portão real (livre × bloqueada por raiz) sem precisar do fluxo interativo de confirmação, que só faz sentido diante de uma ação destrutiva de verdade. O padrão de porta injetável ([ADR-0004](../06-adr/ADR-0004-manual-composition.md)/0011: `fetch`, `MemoryStorage`) se repetiu sem fricção para o `FsReadPort` — o primeiro IO das Tools nasceu testável sem disco desde o primeiro commit.
 
 **A arquitetura atrapalhou porque...**
 
@@ -103,7 +103,7 @@ Nada estrutural. O único atrito foi o already-conhecido TS2741 em literais de c
 
 **Precisamos mudar...**
 
-Nada novo no processo além do reforço já registrado (mover mudança de assinatura de factory junto do único chamador; atualizar literais de `AtlasConfig` na mesma task que torna um campo obrigatório). Próximas fatias naturais: Tools de **escrita** + o fluxo interativo de **`confirm`** (hoje só reservado no vocabulário do contrato); **endurecimento de symlink** (`realpath` ou porta de resolução injetável) contra o escape documentado da contenção lexical. Não rodamos um novo probe do TS7 nesta SPEC — a Pendência já registrada em NEXT_CONTEXT pede para parar de re-probar por hábito e vincular a um gatilho externo (release do typescript-eslint com suporte ao TS7); nada mudou nesse encaminhamento.
+Nada novo no processo além do reforço já registrado (mover mudança de assinatura de factory junto do único chamador; atualizar literais de `AtlasConfig` na mesma task que torna um campo obrigatório). Próximas fatias naturais: Tools de **escrita** + o fluxo interativo de **`confirm`** (hoje só reservado no vocabulário do contrato); **endurecimento de symlink** (`realpath` ou porta de resolução injetável) contra o escape documentado da contenção lexical. Não rodamos um novo probe do TS7 nesta SPEC — a Pendência já registrada em [NEXT_CONTEXT](../05-context/NEXT_CONTEXT.md) pede para parar de re-probar por hábito e vincular a um gatilho externo (release do typescript-eslint com suporte ao TS7); nada mudou nesse encaminhamento.
 
 ---
 
@@ -145,7 +145,7 @@ O primeiro efeito de disco da plataforma coube no mesmo molde de injeção já u
 
 **A arquitetura ajudou porque...**
 
-O padrão "efeito colateral atrás de porta injetável + composição escolhe o adapter" (ADR-0004) já estava consolidado (`fetch`, `LineReader`), então persistir sem acoplar o módulo ao disco nem tocar disco nos testes foi mecânico. A separação Memória (persistente) × Contexto (temporário) do Glossary deu limites claros: o Memory Service só guarda/recupera fatos, sem decidir estratégia nem chamar o Gateway. Injetar identidade e memória como strings opcionais manteve o Cognitive sem estado e desacoplado de ambos os conceitos.
+O padrão "efeito colateral atrás de porta injetável + composição escolhe o adapter" (ADR-0004) já estava consolidado (`fetch`, `LineReader`), então persistir sem acoplar o módulo ao disco nem tocar disco nos testes foi mecânico. A separação Memória (persistente) × Contexto (temporário) do [Glossary](../00-project/Glossary.md) deu limites claros: o Memory Service só guarda/recupera fatos, sem decidir estratégia nem chamar o Gateway. Injetar identidade e memória como strings opcionais manteve o Cognitive sem estado e desacoplado de ambos os conceitos.
 
 **A arquitetura atrapalhou porque...**
 

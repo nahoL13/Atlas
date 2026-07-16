@@ -12,8 +12,8 @@
 
 - Node ≥ 24, pnpm ≥ 11 via corepack. Diretório de trabalho: `/Users/lohanberg/Documents/Repos/Atlas` (todos os caminhos relativos a ele).
 - **Um único package novo:** `@atlas/memory`. Não criar outros módulos.
-- **Memória é a autoridade de persistência**, mas **não decide estratégia**, não controla o fluxo cognitivo, não chama o Model Gateway, não considera toda conversa como memória permanente (Module Catalog).
-- **Memória (persistente) × Contexto (temporário)** permanecem conceitos distintos (Glossary/Constituição); esta SPEC não mistura os módulos.
+- **Memória é a autoridade de persistência**, mas **não decide estratégia**, não controla o fluxo cognitivo, não chama o Model Gateway, não considera toda conversa como memória permanente ([Module Catalog](../../03-architecture/ModuleCatalog.md)).
+- **Memória (persistente) × Contexto (temporário)** permanecem conceitos distintos ([Glossary](../../00-project/Glossary.md)/Constituição); esta SPEC não mistura os módulos.
 - **Cognitive desacoplado do conceito de Memory:** recebe `memoryPrompt?: string` por parâmetro; nunca importa `@atlas/memory`. `respond` permanece **função pura**; o Cognitive segue sem estado.
 - **IO de disco atrás da porta injetável** `MemoryStorage`; testes de unidade não tocam disco real (exceto o teste dedicado do file adapter e os testes de comando da CLI, ambos em `tmpdir` isolado — nunca no `~` real).
 - `@atlas/memory` depende **apenas** de `@atlas/contracts`. Só `@atlas/core` importa implementações de packages (Regra de Dependência 11) — inclusive `@atlas/memory`. A **CLI não importa `@atlas/memory`** (isola disco por `--memory-path`, não por injeção de objeto).
@@ -1335,7 +1335,7 @@ Run: `pnpm add -Dw typescript@^7 && pnpm lint`
 Adicionar em `implementation/LESSONS_LEARNED.md` uma seção da SPEC-0009 cobrindo: (a) primeiro efeito de disco com porta injetável (`MemoryStorage`) + adapter de arquivo — testes de unidade sem disco, disco real só no file adapter e nos comandos da CLI (`tmpdir`) — ADR-0011; (b) memória injetada na geração estendendo o ADR-0010 (composição identidade → memória → tarefa; Cognitive segue desacoplado, recebe string); (c) `createMemoryService` assíncrono (load-once) integrado ao `createAtlas` já assíncrono; (d) CLI isolando disco por `--memory-path` (`tmpdir`) em vez de importar `@atlas/memory` (mantém a app acoplada só a contracts+core); (e) config aninhada `memory.path` com merge campo-a-campo e `exactOptionalPropertyTypes`; (f) resultado do probe do TS 7 (sexto probe).
 
 Run (verificação final): `pnpm install && pnpm lint && pnpm format:check && pnpm typecheck && pnpm test`
-Expected: tudo verde. Anotar a contagem final de testes no NEXT_CONTEXT.
+Expected: tudo verde. Anotar a contagem final de testes no [NEXT_CONTEXT](../../05-context/NEXT_CONTEXT.md).
 
 - [ ] **Step 9: Marcar a SPEC como Review**
 

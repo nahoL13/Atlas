@@ -53,9 +53,9 @@ Concretamente, quando esta SPEC estiver concluída:
 
 # Motivação
 
-O **Cognitive Lifecycle** e a **espinha de execução** ([SPEC-0010](SPEC-0010-planner-runtime-tools.md)) deixaram o Atlas capaz de planejar e executar Tools — mas apenas Tools **puras** (`clock`/`calc`), justamente porque o **Permission Service ainda não existia** (fronteira explícita da SPEC-0010: "Tools que exijam avaliação de risco ficam para depois do Permission Service"). O Atlas sabe fazer aritmética, mas não sabe **ler um arquivo** — não age sobre nenhum recurso externo.
+O **[Cognitive Lifecycle](../../03-architecture/CognitiveLifecycle.md)** e a **espinha de execução** ([SPEC-0010](SPEC-0010-planner-runtime-tools.md)) deixaram o Atlas capaz de planejar e executar Tools — mas apenas Tools **puras** (`clock`/`calc`), justamente porque o **Permission Service ainda não existia** (fronteira explícita da SPEC-0010: "Tools que exijam avaliação de risco ficam para depois do Permission Service"). O Atlas sabe fazer aritmética, mas não sabe **ler um arquivo** — não age sobre nenhum recurso externo.
 
-O **Module Catalog** cataloga o **Permission Service** (`packages/permissions`, camada Support) com a responsabilidade de *"avaliar se uma ação pode ser executada de acordo com permissões, políticas e nível de risco"*, distinguindo no mínimo **ações livres / permitidas por política / que exigem confirmação / bloqueadas**, sendo consumido pelo **Runtime** (entre outros) e **não** sendo responsável por executar ações nem por **presumir consentimento para ações destrutivas**. A **Constituição** (Regra 5) define Tools como adaptadores sem lógica de negócio; a autoridade sobre "pode?" é do Permission Service (Regra 4/6 sobre separação de responsabilidades).
+O **[Module Catalog](../../03-architecture/ModuleCatalog.md)** cataloga o **Permission Service** (`packages/permissions`, camada Support) com a responsabilidade de *"avaliar se uma ação pode ser executada de acordo com permissões, políticas e nível de risco"*, distinguindo no mínimo **ações livres / permitidas por política / que exigem confirmação / bloqueadas**, sendo consumido pelo **Runtime** (entre outros) e **não** sendo responsável por executar ações nem por **presumir consentimento para ações destrutivas**. A **Constituição** (Regra 5) define Tools como adaptadores sem lógica de negócio; a autoridade sobre "pode?" é do Permission Service (Regra 4/6 sobre separação de responsabilidades).
 
 Esta SPEC entrega o **menor recorte** que faz o Permission Service existir de verdade, com Tools que produzem um valor que o modelo sozinho não tem (o conteúdo real de um arquivo) — escolhendo deliberadamente **leitura** como primeiro efeito para **não** disparar o problema de "consentimento para ação destrutiva": ações read-only exercitam o portão (livre × bloqueada por política de raiz) sem exigir o fluxo interativo de confirmação, que fica para a fatia de escrita.
 
@@ -67,7 +67,7 @@ Documentos originadores: **Module Catalog** (Permission Service; Runtime consome
 
 - Module Catalog (`docs/03-architecture/ModuleCatalog.md`) — Permission Service (responsabilidade, 4 veredictos, "não presumir consentimento para destrutivas"); Runtime consome Permission Service; Tool Registry; Regras de Dependência 5–8
 - Cognitive Lifecycle (`docs/03-architecture/CognitiveLifecycle.md`) — Execução com avaliação de risco; transparência
-- Project Structure (`docs/03-architecture/ProjectStructure.md`) — `packages/permissions`, `packages/tools`; contratos em `@atlas/contracts`
+- [Project Structure](../../03-architecture/ProjectStructure.md) (`docs/03-architecture/ProjectStructure.md`) — `packages/permissions`, `packages/tools`; contratos em `@atlas/contracts`
 - ArchitectureConstitution — Regra 5 (Tools são adaptadores sem decisão), autoridade de permissão separada da execução
 - [ADR-0006](../../06-adr/ADR-0006-config-source-precedence.md) (precedência de config `flags > env > defaults`), [ADR-0011](../../06-adr/ADR-0011-memory-service-persistence.md) (efeito colateral atrás de porta injetável — padrão reaproveitado para o fs das Tools), [ADR-0012](../../06-adr/ADR-0012-planner-runtime-execution.md) (espinha de execução: falha estruturada por passo, nunca derruba a execução)
 - ADR-0013 — Permission Service como portão puro na execução (a ser criado por esta SPEC)
@@ -311,7 +311,7 @@ Autoridade (Module Catalog): Permission Service **avalia** (pode?); Runtime **ap
 
 - todos os critérios atendidos;
 - testes passando (`pnpm lint && pnpm format:check && pnpm typecheck && pnpm test`);
-- documentação atualizada (CLAUDE.md raiz — invariantes/estado; `packages/permissions/CLAUDE.md`; `packages/tools/CLAUDE.md` — novas Tools com IO; `packages/runtime/CLAUDE.md` — portão de permissão; `packages/core/CLAUDE.md` se necessário; NEXT_CONTEXT; CURRENT_SPRINT);
+- documentação atualizada (CLAUDE.md raiz — invariantes/estado; `packages/permissions/CLAUDE.md`; `packages/tools/CLAUDE.md` — novas Tools com IO; `packages/runtime/CLAUDE.md` — portão de permissão; `packages/core/CLAUDE.md` se necessário; [NEXT_CONTEXT](../../05-context/NEXT_CONTEXT.md); [CURRENT_SPRINT](../../05-context/CURRENT_SPRINT.md));
 - ADR-0013 aceito;
 - arquitetura preservada (Permission Service não executa e não faz IO; Tools declaram o que tocam e não decidem permissão; Runtime aplica a decisão e nunca lança por falha/bloqueio; Cognitive não conhece permissão; `respond` puro; Gateway intacto);
 - revisão concluída;

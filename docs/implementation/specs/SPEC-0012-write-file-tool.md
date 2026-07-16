@@ -55,7 +55,7 @@ Concretamente, quando esta SPEC estiver concluída:
 
 A SPEC-0011 entregou o **Permission Service** e as **primeiras Tools com IO**, mas deliberadamente **só de leitura** — escolhendo read-only para exercitar o portão (livre × bloqueada por política) **sem** disparar o problema de "consentimento para ação destrutiva", que exigiria o fluxo interativo de confirmação. O vocabulário do contrato já reservou `access: 'write'` (hoje sempre `blocked`) e o veredicto `confirm` (hoje nunca produzido) exatamente para esta continuação.
 
-Esta SPEC entrega a **próxima fatia mínima**: a capacidade de **escrever**, mantendo a segurança por uma fronteira **explícita** em vez do fluxo interativo `confirm` (que fica para a SPEC seguinte). A escolha de **default vazio + opt-in explícito** (`--allow-write`) materializa o princípio do **Module Catalog** de que o Permission Service *"não presume consentimento para ações destrutivas"*: enquanto o `confirm` interativo não existe como segunda barreira, o consentimento é um ato deliberado do usuário — conceder uma raiz de escrita —, não um default silencioso. Escrever é mais perigoso que ler, então a política de escrita é **separada** da de leitura (ter leitura não concede escrita).
+Esta SPEC entrega a **próxima fatia mínima**: a capacidade de **escrever**, mantendo a segurança por uma fronteira **explícita** em vez do fluxo interativo `confirm` (que fica para a SPEC seguinte). A escolha de **default vazio + opt-in explícito** (`--allow-write`) materializa o princípio do **[Module Catalog](../../03-architecture/ModuleCatalog.md)** de que o Permission Service *"não presume consentimento para ações destrutivas"*: enquanto o `confirm` interativo não existe como segunda barreira, o consentimento é um ato deliberado do usuário — conceder uma raiz de escrita —, não um default silencioso. Escrever é mais perigoso que ler, então a política de escrita é **separada** da de leitura (ter leitura não concede escrita).
 
 O recorte é deliberadamente pequeno: **uma** Tool nova (`write_file`, criar/sobrescrever), reusando **toda** a máquina existente (Runtime em lote, portão do Runtime, traço de passos da CLI, padrão de portas injetáveis). Deleção, `mkdir`, `append`, múltiplas raízes e o fluxo `confirm` ficam explicitamente fora.
 
@@ -67,9 +67,9 @@ Documentos originadores: **Module Catalog** (Permission Service; "não presumir 
 
 - Module Catalog (`docs/03-architecture/ModuleCatalog.md`) — Permission Service (responsabilidade, 4 veredictos, "não presumir consentimento para destrutivas"); Tools são adaptadores; Runtime consome Permission Service
 - ADR-0013 (`docs/06-adr/ADR-0013-permission-service-execution-gate.md`) — Permission Service como portão puro na execução; Tools declaram `requirements` como dado; Runtime aplica; `write`/`confirm` reservados
-- Cognitive Lifecycle (`docs/03-architecture/CognitiveLifecycle.md`) — Execução com avaliação de risco; transparência
-- Project Structure (`docs/03-architecture/ProjectStructure.md`) — `packages/permissions`, `packages/tools`; contratos em `@atlas/contracts`
-- Architecture Constitution (`docs/00-project/ArchitectureConstitution.md`) — Regra 5 (Tools são adaptadores), Regra 6 (Permission/Memory têm autoridade), separação de responsabilidades
+- [Cognitive Lifecycle](../../03-architecture/CognitiveLifecycle.md) (`docs/03-architecture/CognitiveLifecycle.md`) — Execução com avaliação de risco; transparência
+- [Project Structure](../../03-architecture/ProjectStructure.md) (`docs/03-architecture/ProjectStructure.md`) — `packages/permissions`, `packages/tools`; contratos em `@atlas/contracts`
+- [Architecture Constitution](../../00-project/ArchitectureConstitution.md) (`docs/00-project/ArchitectureConstitution.md`) — Regra 5 (Tools são adaptadores), Regra 6 (Permission/Memory têm autoridade), separação de responsabilidades
 - SPEC-0011 (`implementation/specs/SPEC-0011-permission-service-fs-read.md`) — Permission Service, `read_file`/`list_dir`, `FsReadPort`, `readRoots`, padrão a espelhar
 
 ---

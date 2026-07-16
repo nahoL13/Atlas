@@ -1198,7 +1198,7 @@ No parágrafo "Estado em julho/2026" e na seção de packages, registrar: novo `
 
 - [ ] **Step 4: Atualizar `docs/05-context/NEXT_CONTEXT.md` e `CURRENT_SPRINT.md`**
 
-- Mover SPEC-0011 para `Review` no NEXT_CONTEXT (Estado Imediato), descrevendo a entrega (Permission Service + `read_file`/`list_dir` + portão no Runtime + config `readRoots`), listar `@atlas/permissions`, atualizar o "Mapa Rápido" (ADR-0013), a contagem de testes/arquivos após a suíte verde, e ajustar "Próximo Trabalho" (a fatia de escrita + `confirm` + endurecimento de symlink como candidatas naturais).
+- Mover SPEC-0011 para `Review` no [NEXT_CONTEXT](../../05-context/NEXT_CONTEXT.md) (Estado Imediato), descrevendo a entrega (Permission Service + `read_file`/`list_dir` + portão no Runtime + config `readRoots`), listar `@atlas/permissions`, atualizar o "Mapa Rápido" (ADR-0013), a contagem de testes/arquivos após a suíte verde, e ajustar "Próximo Trabalho" (a fatia de escrita + `confirm` + endurecimento de symlink como candidatas naturais).
 - `CURRENT_SPRINT.md`: refletir o status da SPEC-0011.
 
 - [ ] **Step 5: Registrar lições em `implementation/LESSONS_LEARNED.md`**

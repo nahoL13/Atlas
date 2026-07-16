@@ -67,11 +67,11 @@ Liste toda documentação relacionada.
 
 Exemplo
 
-- PRD
-- System Architecture
-- Module Catalog
+- [PRD](../../02-product/ProductRequirementsDocument.md)
+- [System Architecture](../../03-architecture/SystemArchitecture.md)
+- [Module Catalog](../../03-architecture/ModuleCatalog.md)
 - ADRs
-- Cognitive Lifecycle
+- [Cognitive Lifecycle](../../03-architecture/CognitiveLifecycle.md)
 
 Toda SPEC deve possuir pelo menos uma referência.
 

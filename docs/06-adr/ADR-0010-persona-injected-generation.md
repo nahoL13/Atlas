@@ -20,7 +20,7 @@ A Persona molda a **geração**, injetando um enquadramento de identidade no sys
 
 - O Persona Service deriva, dos atributos textuais da Persona (nome, tom, formalidade, idioma, estilo, regras), um `systemPrompt(persona): string` — o enquadramento de **identidade**.
 - O Cognitive Core recebe esse texto como `personaPrompt?: string` por parâmetro e o compõe com seu enquadramento de **tarefa** (`TASK_FRAMING`): `system = personaPrompt ? \`${personaPrompt}\n\n${TASK_FRAMING}\` : TASK_FRAMING`. O Cognitive **não conhece o conceito de Persona** — só recebe uma string.
-- A composição (`@atlas/core`) resolve a Persona ativa (`config.persona`, default `jarvis`) e injeta seu `systemPrompt`. Isso realiza "Persona é usada pelo Cognitive Core" (Module Catalog) **via composição**, sem inverter dependência.
+- A composição (`@atlas/core`) resolve a Persona ativa (`config.persona`, default `jarvis`) e injeta seu `systemPrompt`. Isso realiza "Persona é usada pelo Cognitive Core" ([Module Catalog](../03-architecture/ModuleCatalog.md)) **via composição**, sem inverter dependência.
 - O "neutro por design" das SPECs 0005–0007 fica **superado**: o Cognitive mantém o enquadramento de tarefa (correção/clareza); a identidade passa a ser responsabilidade da Persona.
 - `respond` permanece **função pura**; o Cognitive segue sem estado.
 
@@ -32,7 +32,7 @@ Positivas:
 
 - Uma única chamada de modelo; resposta coerente na voz da Persona.
 - Cognitive desacoplado do conceito de Persona (recebe string) — testável isoladamente; a Persona é trocável por config.
-- Separação limpa: Cognitive = correção; Persona = identidade. Jarvis é configuração, não Core (Glossary).
+- Separação limpa: Cognitive = correção; Persona = identidade. Jarvis é configuração, não Core ([Glossary](../00-project/Glossary.md)).
 
 Custos e riscos:
 

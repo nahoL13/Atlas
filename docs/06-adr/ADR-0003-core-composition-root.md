@@ -10,7 +10,7 @@ Data: 2026-07-10
 
 # Contexto
 
-A Regra de Dependência 3 do Project Structure exige que packages dependam de contratos públicos, nunca de implementações internas de outros packages.
+A Regra de Dependência 3 do [Project Structure](../03-architecture/ProjectStructure.md) exige que packages dependam de contratos públicos, nunca de implementações internas de outros packages.
 
 Porém, algum componente precisa importar as implementações concretas para compor a plataforma na inicialização.
 

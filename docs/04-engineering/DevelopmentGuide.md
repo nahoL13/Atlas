@@ -39,15 +39,15 @@ Velocidade nunca deve comprometer qualidade, modularidade ou clareza.
 Toda implementação deve seguir a seguinte ordem de prioridade:
 
 1. PROJECT.md
-2. Vision
-3. Architecture Constitution
-4. Architecture Decision Process
-5. Glossary
+2. [Vision](../01-vision/Vision.md)
+3. [Architecture Constitution](../00-project/ArchitectureConstitution.md)
+4. [Architecture Decision Process](../00-project/ArchitectureDecisionProcess.md)
+5. [Glossary](../00-project/Glossary.md)
 6. Product Requirements
-7. Cognitive Lifecycle
-8. Architecture Principles
-9. System Architecture
-10. Module Catalog
+7. [Cognitive Lifecycle](../03-architecture/CognitiveLifecycle.md)
+8. [Architecture Principles](../03-architecture/ArchitecturePrinciples.md)
+9. [System Architecture](../03-architecture/SystemArchitecture.md)
+10. [Module Catalog](../03-architecture/ModuleCatalog.md)
 11. ADRs
 12. SPEC (Implementation Specification)
 

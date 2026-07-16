@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - Node ≥ 24, pnpm ≥ 11 via corepack. Diretório de trabalho: `/Users/lohanberg/Documents/Repos/Atlas` (todos os caminhos relativos a ele).
-- **Só criar `packages/cognitive`** — nenhum outro módulo/app novo; o módulo já está previsto no Module Catalog.
+- **Só criar `packages/cognitive`** — nenhum outro módulo/app novo; o módulo já está previsto no [Module Catalog](../../03-architecture/ModuleCatalog.md).
 - `@atlas/cognitive` depende **apenas** de `@atlas/contracts` (contrato `ModelGateway`/`CognitiveCore`), nunca do package `@atlas/model-gateway` (Regra de Dependência 9). Só o `@atlas/core` importa implementações para composição (Regra 11).
 - **Zero dependências de runtime externas.** Integração HTTP segue via `fetch` global no gateway. `tsx` é dev tooling.
 - Imports entre packages só via nome `@atlas/*`; imports internos com sufixo `.js` (NodeNext). Sem path aliases. Sem `dist/`.

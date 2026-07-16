@@ -4,14 +4,14 @@
 
 **Goal:** Descolapsar as etapas de **Planejamento** e **Execução** do ciclo cognitivo: criar `@atlas/tools` (registry + Tools puras `clock`/`calc`) e `@atlas/runtime` (executa planos), consolidar um **Planner** puro em `@atlas/cognitive`, e fazer o Cognitive Core orquestrar em `ask` (plano estruturado Planner-driven → execução → composição), retornando `AskResult { text; steps? }` para o CLI mostrar um traço. Model Gateway **intacto**.
 
-**Architecture:** O modelo produz um **plano em JSON** (via `generate()` atual); o Runtime o executa deterministicamente sobre um **Tool Registry**. Autoridade separada (Module Catalog): Cognitive Core **orquestra e responde**; o **Planner** (puro, sem gateway) fornece a instrução de planejamento e **parseia** a saída num `Plan` (ou `null` = resposta direta); o **Runtime** coordena a execução e expõe o catálogo de Tools (`tools()`); as **Tools** executam sem decidir quando são usadas. `ask` faz 1 chamada quando não há plano (comportamento de hoje preservado, na voz da Persona) e 2 chamadas quando há (planejar → executar → compor). Passos de um plano são **independentes** (sem dependência de dados entre Tools). Só `@atlas/core` importa implementações e injeta o `runtime` no Cognitive; a CLI consome `atlas.cognitive.ask`.
+**Architecture:** O modelo produz um **plano em JSON** (via `generate()` atual); o Runtime o executa deterministicamente sobre um **Tool Registry**. Autoridade separada ([Module Catalog](../../03-architecture/ModuleCatalog.md)): Cognitive Core **orquestra e responde**; o **Planner** (puro, sem gateway) fornece a instrução de planejamento e **parseia** a saída num `Plan` (ou `null` = resposta direta); o **Runtime** coordena a execução e expõe o catálogo de Tools (`tools()`); as **Tools** executam sem decidir quando são usadas. `ask` faz 1 chamada quando não há plano (comportamento de hoje preservado, na voz da Persona) e 2 chamadas quando há (planejar → executar → compor). Passos de um plano são **independentes** (sem dependência de dados entre Tools). Só `@atlas/core` importa implementações e injeta o `runtime` no Cognitive; a CLI consome `atlas.cognitive.ask`.
 
 **Tech Stack:** TypeScript 5.x (strict, NodeNext, `verbatimModuleSyntax`, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`), Vitest, `tsx` (dev).
 
 ## Global Constraints
 
 - Node ≥ 24, pnpm ≥ 11 via corepack. Diretório de trabalho: `/Users/lohanberg/Documents/Repos/Atlas` (todos os caminhos relativos a ele).
-- **Dois packages novos:** `@atlas/tools` e `@atlas/runtime`. O **Planner** é consolidado em `@atlas/cognitive` (consolidação sancionada pelo Project Structure) — **não** criar `packages/planner`.
+- **Dois packages novos:** `@atlas/tools` e `@atlas/runtime`. O **Planner** é consolidado em `@atlas/cognitive` (consolidação sancionada pelo [Project Structure](../../03-architecture/ProjectStructure.md)) — **não** criar `packages/planner`.
 - **Regras de Dependência (Module Catalog / Project Structure):** `@atlas/tools` e `@atlas/runtime` dependem **apenas** de `@atlas/contracts`; **não** dependem do Cognitive Core (Regra 5). Planner **não** coordena execução (Regra 7). Runtime **não** redefine o objetivo estratégico (Regra 8). Só `@atlas/core` importa implementações de packages (Regra 11); o Cognitive recebe o `runtime` por **injeção** e importa só o **tipo** `Runtime` de `@atlas/contracts`.
 - **Model Gateway intacto:** sem tool/function-calling nativo; o mecanismo é Planner-driven (JSON via `generate()`).
 - **Tools puras:** sem rede, disco, filesystem ou efeitos colaterais (o Permission Service não existe). `calc` **não** usa `eval`/`Function` — parser aritmético próprio e restrito.
@@ -1561,7 +1561,7 @@ Run: `pnpm add -Dw typescript@^7 && pnpm lint`
 Adicionar em `implementation/LESSONS_LEARNED.md` uma seção da SPEC-0010 cobrindo: (a) espinha de execução Planner-driven com Model Gateway intacto (o modelo emite JSON, o Runtime executa) — ADR-0012; (b) Planner **puro** sem gateway (schema + parse) separado da chamada ao modelo (feita pelo Cognitive) → testável sem gateway; instrução vazia sem Tools preserva o caminho de 1 chamada e os testes existentes; (c) mudança de tipo de contrato (`ask: Promise<string>` → `Promise<AskResult>`) acopla contracts + cognitive + core + cli numa única task para manter o typecheck atômico — contraste com adições inertes de contrato; (d) máquina multi-tool "de graça" (registry `Map` + plano-lista + runtime-loop), com 2 Tools puras (`clock`/`calc`) exercitando a seleção sem Permission Service; (e) Runtime nunca lança por falha de Tool (falhas estruturadas) e passos independentes evitam Task Manager completo (YAGNI); (f) `calc` com parser de descida recursiva próprio (sem `eval`) sob `noUncheckedIndexedAccess`; (g) resultado do probe do TS 7 (sétimo probe).
 
 Run (verificação final): `pnpm install && pnpm lint && pnpm format:check && pnpm typecheck && pnpm test`
-Expected: tudo verde. Anotar a contagem final de testes no NEXT_CONTEXT.
+Expected: tudo verde. Anotar a contagem final de testes no [NEXT_CONTEXT](../../05-context/NEXT_CONTEXT.md).
 
 - [ ] **Step 10: Marcar a SPEC como Review**
 

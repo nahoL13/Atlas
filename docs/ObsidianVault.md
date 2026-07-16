@@ -8,7 +8,7 @@ No Obsidian, use **"Open folder as vault"** e aponte para `docs/` (não para a r
 
 ## O que muda ao usar o Obsidian aqui
 
-- **Busca full-text** sobre toda a documentação (SPECs, ADRs, PRD, etc.).
+- **Busca full-text** sobre toda a documentação (SPECs, ADRs, [PRD](02-product/ProductRequirementsDocument.md), etc.).
 - **Backlinks automáticos**: ao abrir um arquivo, o Obsidian mostra quais outros arquivos referenciam ele.
 - **Graph view**: visualização de como ADRs, SPECs e docs de arquitetura se conectam entre si.
 - **Edição continua normal**: salvar um arquivo no Obsidian é salvar o arquivo real do repo — aparece no `git status` como qualquer outra mudança.

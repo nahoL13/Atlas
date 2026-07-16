@@ -925,7 +925,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 - [ ] **Step 1: Suíte completa verde**
 
 Run: `pnpm install && pnpm lint && pnpm format:check && pnpm typecheck && pnpm test`
-Expected: PASS em tudo. Anote o total de testes/arquivos (para o NEXT_CONTEXT).
+Expected: PASS em tudo. Anote o total de testes/arquivos (para o [NEXT_CONTEXT](../../05-context/NEXT_CONTEXT.md)).
 
 - [ ] **Step 2: Verificação manual (fumaça) do bloqueio e da permissão de escrita**
 

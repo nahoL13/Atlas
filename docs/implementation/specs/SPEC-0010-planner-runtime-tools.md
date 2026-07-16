@@ -44,7 +44,7 @@ Concretamente, quando esta SPEC estiver concluída:
 
 - Existe o package `packages/tools` (`@atlas/tools`): um **Tool Registry** (`register`/`get`/`has`/`list`) e **duas Tools puras** — `clock` (data/hora atual) e `calc` (aritmética) — sem rede, sem disco, sem permissões.
 - Existe o package `packages/runtime` (`@atlas/runtime`): `createRuntime({ registry })` → `execute(plan)` roda os passos em ordem, resolvendo cada Tool no registry e coletando um `ExecutionResult` com falhas **estruturadas** (nunca lança por falha de Tool); e `tools()` expõe os descritores (nome + descrição) das Tools disponíveis.
-- O **Planner** vive consolidado em `packages/cognitive` (consolidação sancionada pelo Project Structure): produz a **instrução de planejamento** (lista as Tools e o schema JSON) e **parseia** a saída do modelo num `Plan` (ou `null` = resposta direta).
+- O **Planner** vive consolidado em `packages/cognitive` (consolidação sancionada pelo [Project Structure](../../03-architecture/ProjectStructure.md)): produz a **instrução de planejamento** (lista as Tools e o schema JSON) e **parseia** a saída do modelo num `Plan` (ou `null` = resposta direta).
 - O **Cognitive Core** passa a **orquestrar** em `ask`: 1ª chamada `generate()` (prompt composto de sempre + instrução de planejamento) → parseia → se houver plano, `runtime.execute(plan)` → 2ª chamada `generate()` compõe a resposta final com os resultados. `ask` retorna `AskResult { text; steps? }`.
 - Os contratos `Tool`/`ToolResult`/`ToolDescriptor`/`ToolRegistry`/`Plan`/`PlanStep`/`ExecutedStep`/`ExecutionResult`/`Runtime` e `AskResult` vivem em `@atlas/contracts`.
 - `@atlas/core` compõe o registry (com `clock`+`calc`), o Runtime e injeta o Runtime no Cognitive.
@@ -55,9 +55,9 @@ Concretamente, quando esta SPEC estiver concluída:
 
 # Motivação
 
-O **Cognitive Lifecycle** define sete etapas (Compreensão → Raciocínio → **Planejamento** → **Execução** → Observação → Aprendizado → Resposta). Até aqui ([SPEC-0005](SPEC-0005-cognitive-core.md)), o Atlas honra o ciclo de forma **colapsada**: Compreensão + Raciocínio + Resposta acontecem numa única chamada `generate()`, e Planejamento/Execução/Observação/Aprendizado ainda não existem. O Atlas só sabe *falar* — não sabe *fazer*.
+O **[Cognitive Lifecycle](../../03-architecture/CognitiveLifecycle.md)** define sete etapas (Compreensão → Raciocínio → **Planejamento** → **Execução** → Observação → Aprendizado → Resposta). Até aqui ([SPEC-0005](SPEC-0005-cognitive-core.md)), o Atlas honra o ciclo de forma **colapsada**: Compreensão + Raciocínio + Resposta acontecem numa única chamada `generate()`, e Planejamento/Execução/Observação/Aprendizado ainda não existem. O Atlas só sabe *falar* — não sabe *fazer*.
 
-Esta SPEC introduz a **espinha de execução**: o menor recorte que faz Planejamento e Execução existirem de verdade, com uma Tool real produzindo um resultado que o modelo sozinho não teria (a hora atual) e outra que ele erra com frequência (aritmética). O **Module Catalog** cataloga o **Planner** (`packages/planner`, consolidável em `packages/cognitive`), o **Runtime** (`packages/runtime`) e as **Tools** (`packages/tools`) como componentes distintos, com autoridade separada: Cognitive Core decide a estratégia, Planner transforma estratégia em plano, Runtime coordena a execução, Tools são adaptadores sem decisão. O **ProjectStructure** prevê `packages/runtime` e `packages/tools` e nomeia `Plan`, `Task`, `ExecutionResult` como contratos de `@atlas/contracts`.
+Esta SPEC introduz a **espinha de execução**: o menor recorte que faz Planejamento e Execução existirem de verdade, com uma Tool real produzindo um resultado que o modelo sozinho não teria (a hora atual) e outra que ele erra com frequência (aritmética). O **[Module Catalog](../../03-architecture/ModuleCatalog.md)** cataloga o **Planner** (`packages/planner`, consolidável em `packages/cognitive`), o **Runtime** (`packages/runtime`) e as **Tools** (`packages/tools`) como componentes distintos, com autoridade separada: Cognitive Core decide a estratégia, Planner transforma estratégia em plano, Runtime coordena a execução, Tools são adaptadores sem decisão. O **ProjectStructure** prevê `packages/runtime` e `packages/tools` e nomeia `Plan`, `Task`, `ExecutionResult` como contratos de `@atlas/contracts`.
 
 O amplo desenho do ciclo é deliberadamente **decomposto em fatias**: esta SPEC entrega Planejamento + Execução com passos independentes e duas Tools puras; Observação/replanejamento, Aprendizado automático, Skills, Permission Service, dependência de dados entre passos e Task Manager completo (fila/retry/timeout/cancelamento) ficam para SPECs futuras.
 
@@ -350,7 +350,7 @@ Autoridade (Module Catalog): Cognitive Core **orquestra e responde**; Planner **
 
 - todos os critérios atendidos;
 - testes passando (`pnpm lint && pnpm format:check && pnpm typecheck && pnpm test`);
-- documentação atualizada (CLAUDE.md raiz — invariantes/estado; `packages/tools/CLAUDE.md`; `packages/runtime/CLAUDE.md`; `packages/cognitive/CLAUDE.md` — passa a orquestrar planejamento/execução; `packages/core/CLAUDE.md` se necessário; NEXT_CONTEXT; CURRENT_SPRINT);
+- documentação atualizada (CLAUDE.md raiz — invariantes/estado; `packages/tools/CLAUDE.md`; `packages/runtime/CLAUDE.md`; `packages/cognitive/CLAUDE.md` — passa a orquestrar planejamento/execução; `packages/core/CLAUDE.md` se necessário; [NEXT_CONTEXT](../../05-context/NEXT_CONTEXT.md); [CURRENT_SPRINT](../../05-context/CURRENT_SPRINT.md));
 - ADR-0012 aceito;
 - arquitetura preservada (Tools não dependem do Cognitive nem decidem uso; Planner não coordena execução; Runtime não redefine objetivo; Cognitive mantém a autoridade estratégica; `respond` puro; Gateway intacto);
 - revisão concluída;

@@ -45,9 +45,9 @@ Ao final desta SPEC, `createAtlas()` deve subir a plataforma até `ready`, repor
 
 Nenhum componente das camadas Intelligence, Execution ou Support pode existir sem a base operacional da Platform Layer.
 
-Esta SPEC realiza as primeiras implementações do Module Catalog (Core, Configuration Service, Lifecycle Manager) e materializa o [ADR-0003](../../06-adr/ADR-0003-core-composition-root.md) (composition root) e o [ADR-0004](../../06-adr/ADR-0004-manual-composition.md) (composição manual).
+Esta SPEC realiza as primeiras implementações do [Module Catalog](../../03-architecture/ModuleCatalog.md) (Core, Configuration Service, Lifecycle Manager) e materializa o [ADR-0003](../../06-adr/ADR-0003-core-composition-root.md) (composition root) e o [ADR-0004](../../06-adr/ADR-0004-manual-composition.md) (composição manual).
 
-Origem: fluxo de SPECs definido no Project Structure (`SPEC-0002-core-bootstrap`).
+Origem: fluxo de SPECs definido no [Project Structure](../../03-architecture/ProjectStructure.md) (`SPEC-0002-core-bootstrap`).
 
 ---
 

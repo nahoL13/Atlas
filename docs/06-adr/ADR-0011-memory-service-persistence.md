@@ -10,7 +10,7 @@ Data: 2026-07-13
 
 # Contexto
 
-Até a [SPEC-0008](../implementation/specs/SPEC-0008-persona-service.md) a plataforma era **efêmera**: o Context Service ([ADR-0009](ADR-0009-context-service-value-store.md)) guarda a conversa apenas durante a sessão, em memória. A Constituição (invariante 6) dá à Memória autoridade exclusiva sobre estado persistente, e o Module Catalog cataloga o Memory Service (`packages/memory`) como a única autoridade de conhecimento permanente. A [SPEC-0009](../implementation/specs/SPEC-0009-memory-service.md) introduz a menor fatia disso — fatos/preferências explícitos — e levanta duas perguntas: (a) **como persistir** sem acoplar o módulo ao disco e sem tocar disco nos testes de unidade; (b) **como a memória chega à resposta** sem tornar o Cognitive Core stateful nem acoplá-lo ao conceito de Memory.
+Até a [SPEC-0008](../implementation/specs/SPEC-0008-persona-service.md) a plataforma era **efêmera**: o Context Service ([ADR-0009](ADR-0009-context-service-value-store.md)) guarda a conversa apenas durante a sessão, em memória. A Constituição (invariante 6) dá à Memória autoridade exclusiva sobre estado persistente, e o [Module Catalog](../03-architecture/ModuleCatalog.md) cataloga o Memory Service (`packages/memory`) como a única autoridade de conhecimento permanente. A [SPEC-0009](../implementation/specs/SPEC-0009-memory-service.md) introduz a menor fatia disso — fatos/preferências explícitos — e levanta duas perguntas: (a) **como persistir** sem acoplar o módulo ao disco e sem tocar disco nos testes de unidade; (b) **como a memória chega à resposta** sem tornar o Cognitive Core stateful nem acoplá-lo ao conceito de Memory.
 
 ---
 

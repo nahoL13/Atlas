@@ -50,7 +50,7 @@ Depois da [SPEC-0005](SPEC-0005-cognitive-core.md), o Atlas responde, mas só em
 
 O desenho evita as duas armadilhas de escopo: **não** torna o Cognitive Core stateful e **não** cria prematuramente o Context Service. A conversa é um valor imutável que flui pelo sistema (ADR-0008); o Cognitive Core continua uma função pura sobre esse valor; o detentor do valor entre as voltas é o loop da CLI, de forma interina até o Context Service existir.
 
-Origem: pedido do usuário por um fluxo conversável no terminal (2026-07-13), mapeado contra o Module Catalog (Cognitive Core, Context Service) e o Cognitive Lifecycle.
+Origem: pedido do usuário por um fluxo conversável no terminal (2026-07-13), mapeado contra o [Module Catalog](../../03-architecture/ModuleCatalog.md) (Cognitive Core, Context Service) e o [Cognitive Lifecycle](../../03-architecture/CognitiveLifecycle.md).
 
 ---
 

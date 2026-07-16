@@ -46,9 +46,9 @@ Trocar o modelo por trás do `ask` (local grátis ↔ pago) deve ser apenas conf
 
 # Motivação
 
-O Model Gateway ([SPEC-0004](SPEC-0004-model-gateway.md)) existe mas está **sem consumidor** — o Atlas ainda não produz nenhuma resposta de fato. O Cognitive Core é o componente que falta para fechar o ciclo: é o único autorizado a decidir estratégia (Module Catalog, Matriz de Autoridade) e o primeiro consumidor previsto do Model Gateway. Implementá-lo, ainda que mínimo, destrava a **primeira resposta ponta a ponta** e dá à CLI o comando `atlas ask`, tornando a plataforma efetivamente utilizável.
+O Model Gateway ([SPEC-0004](SPEC-0004-model-gateway.md)) existe mas está **sem consumidor** — o Atlas ainda não produz nenhuma resposta de fato. O Cognitive Core é o componente que falta para fechar o ciclo: é o único autorizado a decidir estratégia ([Module Catalog](../../03-architecture/ModuleCatalog.md), Matriz de Autoridade) e o primeiro consumidor previsto do Model Gateway. Implementá-lo, ainda que mínimo, destrava a **primeira resposta ponta a ponta** e dá à CLI o comando `atlas ask`, tornando a plataforma efetivamente utilizável.
 
-O módulo já está previsto no Module Catalog (`Cognitive Core → packages/cognitive`, camada Intelligence) — não há criação de módulo novo, apenas a primeira implementação de um módulo já aprovado. O desenho respeita o Cognitive Lifecycle: as etapas 1–2 e 7 (Compreensão, Raciocínio, Resposta) são honradas de forma colapsada; as demais (Planejamento, Execução, Observação, Aprendizado) dependem de módulos que ainda não existem e ficam explicitamente fora de escopo.
+O módulo já está previsto no Module Catalog (`Cognitive Core → packages/cognitive`, camada Intelligence) — não há criação de módulo novo, apenas a primeira implementação de um módulo já aprovado. O desenho respeita o [Cognitive Lifecycle](../../03-architecture/CognitiveLifecycle.md): as etapas 1–2 e 7 (Compreensão, Raciocínio, Resposta) são honradas de forma colapsada; as demais (Planejamento, Execução, Observação, Aprendizado) dependem de módulos que ainda não existem e ficam explicitamente fora de escopo.
 
 Origem: `docs/05-context/NEXT_CONTEXT.md` (SPEC-0005 candidata "Cognitive Core (primeiro orquestrador)") e `docs/03-architecture/ModuleCatalog.md`.
 

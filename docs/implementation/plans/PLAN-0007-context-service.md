@@ -578,7 +578,7 @@ Run: `pnpm add -Dw typescript@^7 && pnpm lint`
 Adicionar em `implementation/LESSONS_LEARNED.md` uma seção da SPEC-0007 cobrindo: (a) Context Service como store de valor / app medeia (ADR-0009); (b) package novo exige `pnpm install` para linkar antes do primeiro teste; (c) adicionar campo obrigatório em `AtlasPlatform` deve ser atômico com o fornecimento em `createAtlas` (senão o typecheck quebra entre tasks); (d) resultado do probe do TS 7.
 
 Run (verificação final): `pnpm install && pnpm lint && pnpm format:check && pnpm typecheck && pnpm test`
-Expected: tudo verde. Anotar a contagem final de testes no NEXT_CONTEXT.
+Expected: tudo verde. Anotar a contagem final de testes no [NEXT_CONTEXT](../../05-context/NEXT_CONTEXT.md).
 
 - [ ] **Step 9: Marcar a SPEC como Review**
 

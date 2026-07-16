@@ -42,7 +42,7 @@ Ao final desta SPEC, o repositório deve estar pronto para receber a [SPEC-0002]
 
 Nenhum package ou aplicação pode ser implementado sem o chão comum do workspace.
 
-Esta SPEC materializa as decisões registradas nos ADRs 0001 (monorepo), 0002 (TypeScript/Node) e 0003 (composition root) e executa a primeira etapa do "Crescimento Incremental" definido no Project Structure.
+Esta SPEC materializa as decisões registradas nos ADRs 0001 (monorepo), 0002 (TypeScript/Node) e 0003 (composition root) e executa a primeira etapa do "Crescimento Incremental" definido no [Project Structure](../../03-architecture/ProjectStructure.md).
 
 Origem: PROJECT.md — "Próximo Objetivo: iniciar a implementação do MVP através das primeiras SPECs".
 
@@ -79,7 +79,7 @@ Origem: PROJECT.md — "Próximo Objetivo: iniciar a implementação do MVP atra
 - não criar `apps/`, `packages/` ou `tooling/` (nascem nas SPECs seguintes);
 - não criar `.github/` nem integração contínua;
 - não criar `.claude/skills/`;
-- não implementar nenhum componente do Module Catalog;
+- não implementar nenhum componente do [Module Catalog](../../03-architecture/ModuleCatalog.md);
 - não adicionar dependências além do tooling listado no Escopo;
 - não criar `CURRENT_SPRINT`, `NEXT_CONTEXT` ou Roadmap;
 - não configurar publicação de packages.

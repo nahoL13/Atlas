@@ -53,11 +53,11 @@ Concretamente, quando esta SPEC estiver concluída:
 
 # Motivação
 
-A Vision estabelece que "a primeira Persona oficial será Jarvis", e o Glossary define que "Jarvis será uma **configuração** de Persona, não um novo Core". As SPECs 0005–0007 mantiveram deliberadamente o system prompt do Cognitive Core **neutro** — uma postura explicitamente provisória, justificada por o Persona Service ainda não existir ("personalidade é deste serviço, inexistente"). O Module Catalog atribui ao Persona Service (`packages/persona`) a responsabilidade de "aplicar a identidade selecionada à interação com o usuário", controlando nome, tom, formalidade, idioma, estilo e comportamento comunicacional, e o lista como usado pelo Cognitive Core.
+A [Vision](../../01-vision/Vision.md) estabelece que "a primeira Persona oficial será Jarvis", e o [Glossary](../../00-project/Glossary.md) define que "Jarvis será uma **configuração** de Persona, não um novo Core". As SPECs 0005–0007 mantiveram deliberadamente o system prompt do Cognitive Core **neutro** — uma postura explicitamente provisória, justificada por o Persona Service ainda não existir ("personalidade é deste serviço, inexistente"). O [Module Catalog](../../03-architecture/ModuleCatalog.md) atribui ao Persona Service (`packages/persona`) a responsabilidade de "aplicar a identidade selecionada à interação com o usuário", controlando nome, tom, formalidade, idioma, estilo e comportamento comunicacional, e o lista como usado pelo Cognitive Core.
 
 Esta SPEC cria esse serviço e dá ao Atlas sua identidade, realizando a Vision e encerrando a provisoriedade do "neutro por design". É o primeiro passo tangível de produto após a fundação (workspace, core, CLI, modelos, ciclo cognitivo colapsado, conversa multi-turno e detentor de sessão).
 
-Documentos originadores: **Vision** (Jarvis como primeira Persona) + **Module Catalog / Glossary / Project Structure** (Persona Service, `packages/persona`).
+Documentos originadores: **Vision** (Jarvis como primeira Persona) + **Module Catalog / Glossary / [Project Structure](../../03-architecture/ProjectStructure.md)** (Persona Service, `packages/persona`).
 
 ---
 
@@ -256,7 +256,7 @@ atlas.persona → CLI: status exibe; chat saúda
 
 - todos os critérios atendidos;
 - testes passando (`pnpm lint && pnpm format:check && pnpm typecheck && pnpm test`);
-- documentação atualizada (CLAUDE.md raiz + `packages/persona/CLAUDE.md` + atualizar `packages/cognitive/CLAUDE.md` — deixa de ser "neutro por design" + NEXT_CONTEXT + CURRENT_SPRINT);
+- documentação atualizada (CLAUDE.md raiz + `packages/persona/CLAUDE.md` + atualizar `packages/cognitive/CLAUDE.md` — deixa de ser "neutro por design" + [NEXT_CONTEXT](../../05-context/NEXT_CONTEXT.md) + [CURRENT_SPRINT](../../05-context/CURRENT_SPRINT.md));
 - ADR-0010 aceito;
 - arquitetura preservada (Persona não decide estratégia/Plans/Tasks; `respond` puro; Jarvis é configuração, não Core);
 - revisão concluída;

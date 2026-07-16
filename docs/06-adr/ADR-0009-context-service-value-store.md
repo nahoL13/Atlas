@@ -10,7 +10,7 @@ Data: 2026-07-13
 
 # Contexto
 
-O [ADR-0008](ADR-0008-conversation-as-data.md) tratou a conversa como **dado** e deixou o valor `Conversation` interinamente na CLI, prevendo que "quando o Context Service existir, ele passa a ser o detentor". A [SPEC-0007](../implementation/specs/SPEC-0007-context-service.md) cria esse Context Service. Surge uma tensão documental: o Module Catalog diz que o Context Service "é utilizado por" o Cognitive Core (sugerindo que o Cognitive lê o Context), enquanto o ADR-0008 mantém `respond` como **função pura**. Se o Cognitive puxasse o histórico do Context por dentro, `respond` deixaria de ser puro — contradição.
+O [ADR-0008](ADR-0008-conversation-as-data.md) tratou a conversa como **dado** e deixou o valor `Conversation` interinamente na CLI, prevendo que "quando o Context Service existir, ele passa a ser o detentor". A [SPEC-0007](../implementation/specs/SPEC-0007-context-service.md) cria esse Context Service. Surge uma tensão documental: o [Module Catalog](../03-architecture/ModuleCatalog.md) diz que o Context Service "é utilizado por" o Cognitive Core (sugerindo que o Cognitive lê o Context), enquanto o ADR-0008 mantém `respond` como **função pura**. Se o Cognitive puxasse o histórico do Context por dentro, `respond` deixaria de ser puro — contradição.
 
 ---
 
