@@ -8,3 +8,7 @@ export { nodeFsReadPort } from './fs-port.js';
 export type { FsReadPort } from './fs-port.js';
 export { createListDirTool } from './list-dir.js';
 export type { ListDirDeps } from './list-dir.js';
+export { createWriteFileTool } from './write-file.js';
+export type { WriteFileDeps } from './write-file.js';
+export { nodeFsWritePort } from './fs-port.js';
+export type { FsWritePort } from './fs-port.js';
