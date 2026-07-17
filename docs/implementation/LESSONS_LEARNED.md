@@ -53,6 +53,32 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## [SPEC-0015](specs/SPEC-0015-permission-symlink-hardening.md) — Endurecimento de symlink no Permission Service (2026-07-17)
+
+**Descobrimos que...**
+
+A limitação de symlink registrada como "conhecida e documentada" desde o [ADR-0013](../06-adr/ADR-0013-permission-service-execution-gate.md) (SPEC-0011) levou quatro SPECs (0011 → 0012 → 0013 → 0015) para ser efetivamente fechada — o mesmo padrão de "reservado no vocabulário, produzido só depois" já visto com `access: 'write'` e o veredicto `confirm`. A resolução em si (`realpath`) coube inteiramente numa **porta injetável síncrona** nova (`PathResolverPort`/`nodePathResolverPort()`), sem precisar tornar `evaluate` assíncrono nem tocar o Runtime — validando, na prática, a alternativa que o próprio ADR-0013 já havia cogitado ("endurecer exigiria IO na avaliação, **ou uma porta de resolução injetável**") e descartado por falta de justificativa até agora.
+
+O algoritmo de "ancestral existente mais profundo" (necessário porque `realpathSync` lança para caminhos que ainda não existem — o caso comum de `write_file`/`mkdir`/`append_file` criando algo novo) serviu **duas vezes** com a mesma implementação: para o alvo da ação em cada `evaluate()` e para as próprias `readRoots`/`writeRoots` na criação do serviço. Não foi preciso nenhuma lógica especial para "raiz ainda não existe no disco" — o mesmo caminho de código resolveu os dois casos.
+
+O `spec-implementer` identificou, ao revisar a suíte de testes existente contra o `realpathSync` real, uma fragilidade sutil não coberta por nenhum teste novo: em macOS, `/etc` é ele mesmo um symlink para `/private/etc`, o que altera o valor resolvido para os paths literais usados nos testes de regressão (`/etc/passwd`, `/etc/hosts`). Não causou falha porque esses testes afirmam `blocked`/`allowed` de um jeito que independe do valor exato resolvido — mas é o tipo de suposição implícita sobre o SO que só vai doer quando o projeto decidir sua matriz de CI (ainda em aberto, ver `NEXT_CONTEXT.md` → "Pendências Conhecidas").
+
+O `spec-validator` precisou de um passo extra de verificação que não tinha aparecido em SPECs anteriores: confirmar, via `git log`, que a falha de `pnpm format:check` em `docs/.obsidian/*.json` era **pré-existente** (commit `3ef2b31`, anterior a esta sessão) e não uma regressão introduzida pela SPEC-0015. Sem esse `git log`, a falha teria parecido uma regressão de verificação à primeira vista.
+
+**A arquitetura ajudou porque...**
+
+`evaluate()` continuou puro do ponto de vista de decisão — o único toque de disco (`realpathSync`) ficou isolado na porta, na borda, exatamente como `FsReadPort`/`FsWritePort`/`ConfirmPort` já haviam estabelecido como padrão de placement (interno ao package, sem 2º consumidor real, sem subir a `@atlas/contracts`). `@atlas/runtime`, `@atlas/tools`, `@atlas/cognitive`, `apps/cli` e `@atlas/contracts` não mudaram uma linha — o portão absorveu o endurecimento inteiro sem que nenhum consumidor precisasse saber que a contenção agora é sobre `realpath`, não sobre string lexical crua. A função `within()` fatorada desde a SPEC-0012 foi reusada sem alteração, agora aplicada sobre valores resolvidos.
+
+**A arquitetura atrapalhou porque...**
+
+nada a registrar — nenhum atrito estrutural; os pontos acima são de teste/verificação (fragilidade cross-OS, confirmação de pré-existência de falha), não de desenho do sistema.
+
+**Precisamos mudar...**
+
+Nenhum encaminhamento novo agora: TOCTOU (symlink trocado entre `evaluate` e o uso pela Tool) segue como limitação remanescente conhecida, já documentada em `packages/permissions/CLAUDE.md` e na própria SPEC-0015 como fora de escopo — não é regressão, é fronteira deliberada da fatia. A fragilidade cross-OS dos testes que usam paths literais do sistema (`/etc/...`) só precisa de encaminhamento concreto quando o projeto decidir sua matriz de CI (item já listado em `NEXT_CONTEXT.md` → "Pendências Conhecidas" → "Remote/GitHub + CI"); registrar aqui evita que a fragilidade seja redescoberta do zero quando essa SPEC futura acontecer.
+
+---
+
 ## [SPEC-0014](specs/SPEC-0014-tools-confirm-in-chat.md) — Tools e `confirm` no `atlas chat` (2026-07-17)
 
 **Descobrimos que...**
