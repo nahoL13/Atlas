@@ -2,7 +2,7 @@
 
 > **Project Atlas — Log de Custo de Token por SPEC**
 
-Atualizado em: 2026-07-16 (regenerado por `python3 scripts/claude-usage-report.py`)
+Atualizado em: 2026-07-17 (regenerado por `python3 scripts/claude-usage-report.py`)
 
 Este documento existe para responder, antes de começar a implementar uma SPEC, à pergunta: *"cabe numa sessão, ou é melhor esperar a próxima janela?"*. Os totais são derivados automaticamente dos transcripts locais (heurística: sessão é atribuída à SPEC mais citada nela — uma sessão que tocou mais de uma SPEC entra só na dominante). Regenere após encerrar ou retomar trabalho em uma SPEC rodando o script acima; **não edite esta tabela manualmente**.
 
@@ -22,8 +22,8 @@ Este documento existe para responder, antes de começar a implementar uma SPEC, 
 | SPEC-0009 | Memory Service — fatos/preferências persistentes, injetados na geração cognitiva | Done | 1 | 2026-07-14 | 62.819.192 |
 | SPEC-0010 | Espinha de execução: Planner produz plano, Runtime executa Tools reais (`clock`/`calc`) | Done | 1 | 2026-07-14 | 77.529.922 |
 | SPEC-0011 | Portão de permissão na execução: primeiras Tools com efeito (`read_file`/`list_dir`) atrás do Permission Service | Done | 1 | 2026-07-15 | 57.104.371 |
-| SPEC-0012 | Primeira Tool de escrita (`write_file`) sob política de raízes de escrita (`writeRoots`), opt-in explícito, sem fluxo interativo | Done | 3 | 2026-07-17 | 78.635.726 |
-| SPEC-0013 | (SPEC não encontrada em docs/implementation/specs/) | ? | 1 | 2026-07-17 | 35.370.049 |
+| SPEC-0012 | Primeira Tool de escrita (`write_file`) sob política de raízes de escrita (`writeRoots`), opt-in explícito, sem fluxo interativo | Done | 3 | 2026-07-17 | 86.543.558 |
+| SPEC-0013 | Fluxo interativo `confirm` no Runtime + Tools `delete_file`/`mkdir`/`append_file`, restrito a `atlas ask` | Ready | 3 | 2026-07-17 | 56.234.634 |
 
 ## Detalhamento por fase
 
@@ -41,12 +41,12 @@ Fase = qual agente fez o trabalho: **Criação/Decisão** é tudo que roda no fi
 | SPEC-0009 | 62.819.192 | 0 | 0 | 0 |
 | SPEC-0010 | 77.529.922 | 0 | 0 | 0 |
 | SPEC-0011 | 32.043.571 | 0 | 0 | 25.060.800 |
-| SPEC-0012 | 78.635.726 | 0 | 0 | 0 |
-| SPEC-0013 | 35.370.049 | 0 | 0 | 0 |
+| SPEC-0012 | 86.543.558 | 0 | 0 | 0 |
+| SPEC-0013 | 56.234.634 | 0 | 0 | 0 |
 
 ## Como estimar antes de começar uma SPEC nova
 
-- SPECs concluídas (`Done`) até agora: 11. Custo médio: **62.080.655 tokens**. Faixa observada: 13.574.092 – 139.415.926 tokens.
+- SPECs concluídas (`Done`) até agora: 11. Custo médio: **62.799.549 tokens**. Faixa observada: 13.574.092 – 139.415.926 tokens.
 
 - Compare a SPEC que você está prestes a começar com as mais parecidas em tamanho na tabela acima (número de itens em "Escopo"/"Critérios de Aceitação", quantidade de "Arquivos Esperados"). Uma SPEC do porte de uma linha já concluída tende a custar perto do que ela custou.
 - Se o consumo já acumulado na sessão atual (rode o relatório detalhado, `.claude/usage-report.md`) mais a estimativa da próxima SPEC passar perto do seu limite de janela, prefira parar num ponto de commit limpo e retomar na próxima sessão em vez de começar e arriscar cortar a implementação pela metade.
