@@ -17,7 +17,8 @@ function within(target: string, roots: readonly string[]): boolean {
 
 /**
  * Avaliador puro/síncrono. Roteia por access: 'read' contra readRoots,
- * 'write' contra writeRoots. Não faz IO e não segue symlinks.
+ * 'write'/'delete' contra writeRoots ('delete' produz confirm, não allowed).
+ * Não faz IO e não segue symlinks.
  */
 export function createPermissionService(deps: PermissionServiceDeps): PermissionService {
   const readRoots = deps.readRoots.map((root) => resolve(root));
@@ -36,6 +37,14 @@ export function createPermissionService(deps: PermissionServiceDeps): Permission
       if (action.access === 'write') {
         return within(target, writeRoots)
           ? { verdict: 'allowed' }
+          : {
+              verdict: 'blocked',
+              reason: `fora do diretório permitido para escrita: ${action.resource.path}`,
+            };
+      }
+      if (action.access === 'delete') {
+        return within(target, writeRoots)
+          ? { verdict: 'confirm' }
           : {
               verdict: 'blocked',
               reason: `fora do diretório permitido para escrita: ${action.resource.path}`,

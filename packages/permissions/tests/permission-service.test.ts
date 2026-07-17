@@ -12,6 +12,11 @@ const write = (path: string): ActionRequest => ({
   access: 'write',
 });
 
+const del = (path: string): ActionRequest => ({
+  resource: { type: 'file', path },
+  access: 'delete',
+});
+
 describe('createPermissionService.evaluate — leitura', () => {
   it('permite leitura dentro de uma raiz permitida', () => {
     const service = createPermissionService({ readRoots: ['/work/repo'], writeRoots: [] });
@@ -78,5 +83,35 @@ describe('createPermissionService.evaluate — escrita', () => {
     const service = createPermissionService({ readRoots: ['/shared'], writeRoots: [] });
     expect(service.evaluate(read('/shared/a.txt')).verdict).toBe('allowed');
     expect(service.evaluate(write('/shared/a.txt')).verdict).toBe('blocked');
+  });
+});
+
+describe('createPermissionService.evaluate — delete', () => {
+  it('produz confirm para delete dentro de uma raiz de escrita permitida', () => {
+    const service = createPermissionService({ readRoots: [], writeRoots: ['/work/out'] });
+    expect(service.evaluate(del('/work/out/a.txt'))).toEqual({ verdict: 'confirm' });
+  });
+
+  it('bloqueia delete fora de toda raiz de escrita', () => {
+    const service = createPermissionService({ readRoots: [], writeRoots: ['/work/out'] });
+    const decision = service.evaluate(del('/etc/passwd'));
+    expect(decision.verdict).toBe('blocked');
+    expect(decision.reason).toContain('escrita');
+  });
+
+  it('bloqueia delete quando writeRoots está vazio (default seguro)', () => {
+    const service = createPermissionService({ readRoots: ['/work/repo'], writeRoots: [] });
+    expect(service.evaluate(del('/work/repo/a.txt')).verdict).toBe('blocked');
+  });
+
+  it('não confunde prefixo de nome no delete (/work/out-evil)', () => {
+    const service = createPermissionService({ readRoots: [], writeRoots: ['/work/out'] });
+    expect(service.evaluate(del('/work/out-evil/x')).verdict).toBe('blocked');
+  });
+
+  it('a mesma raiz produz veredictos distintos para write (allowed) e delete (confirm)', () => {
+    const service = createPermissionService({ readRoots: [], writeRoots: ['/work/out'] });
+    expect(service.evaluate(write('/work/out/a.txt')).verdict).toBe('allowed');
+    expect(service.evaluate(del('/work/out/a.txt')).verdict).toBe('confirm');
   });
 });

@@ -5,8 +5,8 @@ export interface ResourceRef {
   readonly path: string;
 }
 
-/** 'read' e 'write' são ambos produzidos: 'read' contra readRoots, 'write' contra writeRoots. */
-export type AccessMode = 'read' | 'write';
+/** 'read' contra readRoots; 'write'/'delete' contra writeRoots ('delete' produz confirm, não allowed). */
+export type AccessMode = 'read' | 'write' | 'delete';
 
 export interface ActionRequest {
   readonly resource: ResourceRef;
