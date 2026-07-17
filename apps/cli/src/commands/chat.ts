@@ -1,6 +1,7 @@
 import { AtlasError, type AtlasPlatform } from '@atlas/contracts';
 import type { OutputGateway } from '../gateway/output-gateway.js';
 import type { LineReader } from '../gateway/line-reader.js';
+import { renderSteps } from '../gateway/steps-trace.js';
 
 const EXIT_COMMANDS = new Set(['/sair', '/exit']);
 
@@ -27,6 +28,7 @@ export async function runChat(
 
       try {
         const turn = await atlas.cognitive.respond(atlas.context.getConversation(session), input);
+        renderSteps(turn.steps, output);
         output.write(`${turn.reply}\n`);
         atlas.context.updateConversation(session, turn.conversation);
       } catch (cause) {

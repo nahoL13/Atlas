@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { GenerateRequest, GenerateResult, ModelGateway, Runtime } from '@atlas/contracts';
+import type {
+  ExecutionResult,
+  GenerateRequest,
+  GenerateResult,
+  ModelGateway,
+  Runtime,
+} from '@atlas/contracts';
 import { createCognitiveCore, TASK_FRAMING } from '../src/index.js';
 
 function stubGateway(impl: (request: GenerateRequest) => Promise<GenerateResult>): {
@@ -18,11 +24,21 @@ function stubGateway(impl: (request: GenerateRequest) => Promise<GenerateResult>
   };
 }
 
-// A conversa (respond/startConversation) não usa o runtime; um runtime vazio basta.
+// A conversa (respond/startConversation) sem Tools não usa o runtime; um runtime vazio basta.
 const emptyRuntime: Runtime = {
   tools: () => [],
   execute: async () => ({ steps: [] }),
 };
+
+function runtimeWith(
+  tools: { name: string; description: string }[],
+  execution: ExecutionResult,
+): Runtime {
+  return {
+    tools: () => tools,
+    execute: async () => execution,
+  };
+}
 
 describe('createCognitiveCore conversa', () => {
   it('startConversation semeia o system prompt de tarefa (sem persona)', () => {
@@ -97,5 +113,99 @@ describe('createCognitiveCore conversa', () => {
     await expect(core.respond(core.startConversation(), 'oi')).rejects.toThrow(
       'modelo indisponível',
     );
+  });
+});
+
+describe('createCognitiveCore.respond orquestra Planejamento + Execução (SPEC-0014)', () => {
+  it('quando o modelo emite um plano, executa via runtime e compõe a resposta com os resultados', async () => {
+    let call = 0;
+    const { gateway, calls } = stubGateway(async () => {
+      call += 1;
+      return call === 1
+        ? { text: '{"steps":[{"tool":"clock","args":{}}]}' }
+        : { text: 'Hoje é 2026-07-17.' };
+    });
+    const runtime = runtimeWith([{ name: 'clock', description: 'hora' }], {
+      steps: [{ tool: 'clock', args: {}, result: { ok: true, output: '2026-07-17' } }],
+    });
+    const core = createCognitiveCore({ gateway, runtime });
+
+    const { reply, steps } = await core.respond(core.startConversation(), 'que dia é hoje?');
+
+    expect(calls).toHaveLength(2);
+    expect(reply).toBe('Hoje é 2026-07-17.');
+    expect(steps).toEqual([
+      { tool: 'clock', args: {}, result: { ok: true, output: '2026-07-17' } },
+    ]);
+    // a 1ª chamada leva a instrução de planejamento e termina no turno do usuário
+    expect(calls[0]!.messages.some((m) => m.content.includes('clock'))).toBe(true);
+    expect(calls[0]!.messages.at(-1)).toEqual({ role: 'user', content: 'que dia é hoje?' });
+    // a 2ª chamada (composição) leva os resultados
+    expect(calls[1]!.messages.at(-1)!.content).toContain('2026-07-17');
+  });
+
+  it('a conversa retornada tem a mensagem assistant e um resumo system compacto dos passos', async () => {
+    let call = 0;
+    const { gateway } = stubGateway(async () => {
+      call += 1;
+      return call === 1
+        ? { text: '{"steps":[{"tool":"delete_file","args":{"path":"x.txt"}}]}' }
+        : { text: 'Não consegui apagar o arquivo.' };
+    });
+    const runtime = runtimeWith([{ name: 'delete_file', description: 'apaga um arquivo' }], {
+      steps: [
+        {
+          tool: 'delete_file',
+          args: { path: 'x.txt' },
+          result: { ok: false, error: 'ação cancelada pelo usuário' },
+        },
+      ],
+    });
+    const core = createCognitiveCore({ gateway, runtime });
+
+    const { conversation, steps } = await core.respond(core.startConversation(), 'apague x.txt');
+
+    expect(steps![0]!.result.ok).toBe(false);
+    const last3 = conversation.messages.slice(-3);
+    expect(last3[0]).toEqual({ role: 'user', content: 'apague x.txt' });
+    expect(last3[1]).toEqual({ role: 'assistant', content: 'Não consegui apagar o arquivo.' });
+    expect(last3[2]!.role).toBe('system');
+    expect(last3[2]!.content).toContain('Tools executadas');
+    expect(last3[2]!.content).toContain('delete_file');
+    expect(last3[2]!.content).toContain('negada');
+  });
+
+  it('sem Tools executadas, nenhuma mensagem system extra é acrescentada', async () => {
+    const { gateway } = stubGateway(async () => ({ text: 'resposta comum, sem plano' }));
+    const core = createCognitiveCore({ gateway, runtime: emptyRuntime });
+
+    const { conversation, steps } = await core.respond(core.startConversation(), 'oi');
+
+    expect(steps).toBeUndefined();
+    expect(conversation.messages.at(-1)).toEqual({
+      role: 'assistant',
+      content: 'resposta comum, sem plano',
+    });
+  });
+
+  it('respond é pura: duas chamadas com a mesma entrada não vazam estado', async () => {
+    let call = 0;
+    const { gateway } = stubGateway(async () => {
+      call += 1;
+      return call % 2 === 1
+        ? { text: '{"steps":[{"tool":"clock","args":{}}]}' }
+        : { text: 'composto' };
+    });
+    const runtime = runtimeWith([{ name: 'clock', description: 'hora' }], {
+      steps: [{ tool: 'clock', args: {}, result: { ok: true, output: 'x' } }],
+    });
+    const core = createCognitiveCore({ gateway, runtime });
+    const conv0 = core.startConversation();
+
+    const turnA = await core.respond(conv0, 'oi');
+    const turnB = await core.respond(conv0, 'oi');
+
+    expect(conv0.messages).toEqual([{ role: 'system', content: TASK_FRAMING }]);
+    expect(turnA.conversation.messages).toEqual(turnB.conversation.messages);
   });
 });

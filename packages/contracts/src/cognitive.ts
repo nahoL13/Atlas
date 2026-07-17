@@ -8,6 +8,7 @@ export interface Conversation {
 export interface ConversationTurn {
   readonly reply: string;
   readonly conversation: Conversation;
+  readonly steps?: readonly ExecutedStep[];
 }
 
 export interface AskResult {

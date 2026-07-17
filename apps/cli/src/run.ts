@@ -8,6 +8,7 @@ import { runForget } from './commands/forget.js';
 import { runMemoryList } from './commands/memory.js';
 import { CliUsageError } from './gateway/input-gateway.js';
 import { createReadlineLineReader } from './gateway/line-reader.js';
+import { createLineReaderConfirmPort } from './gateway/confirm-port.js';
 import type { InputGateway, ParsedInput } from './gateway/input-gateway.js';
 import type { LineReader } from './gateway/line-reader.js';
 import type { OutputGateway } from './gateway/output-gateway.js';
@@ -76,49 +77,60 @@ export async function run(
     return 0;
   }
 
+  // Para `chat`, o LineReader nasce antes do core: o ConfirmPort injetado no
+  // Runtime (via CreateAtlasDeps.confirm) precisa reusá-lo, para que a
+  // confirmação de ações destrutivas apareça inline na conversa sem abrir um
+  // segundo `readline` sobre o mesmo stdin.
+  const chatLineReader =
+    parsed.command === 'chat' ? (deps.createLineReader ?? createReadlineLineReader)() : undefined;
+
   try {
-    const atlas = await createAtlas(
-      { config: parsed.configOverride },
-      deps.fetch !== undefined ? { fetch: deps.fetch } : {},
-    );
     try {
-      if (parsed.command === 'ask') {
-        await runAsk(atlas, parsed.objective ?? '', output);
-      } else if (parsed.command === 'chat') {
-        const lineReader = (deps.createLineReader ?? createReadlineLineReader)();
-        try {
-          await runChat(atlas, output, lineReader);
-        } finally {
-          lineReader.close();
+      const atlas = await createAtlas(
+        { config: parsed.configOverride },
+        {
+          ...(deps.fetch !== undefined ? { fetch: deps.fetch } : {}),
+          ...(chatLineReader !== undefined
+            ? { confirm: createLineReaderConfirmPort(chatLineReader) }
+            : {}),
+        },
+      );
+      try {
+        if (parsed.command === 'ask') {
+          await runAsk(atlas, parsed.objective ?? '', output);
+        } else if (parsed.command === 'chat') {
+          await runChat(atlas, output, chatLineReader!);
+        } else if (parsed.command === 'remember') {
+          await runRemember(atlas, parsed.factText ?? '', output);
+        } else if (parsed.command === 'forget') {
+          await runForget(atlas, parsed.factId ?? '', output);
+        } else if (parsed.command === 'memory') {
+          runMemoryList(atlas, output);
+        } else {
+          runStatus(atlas, output);
         }
-      } else if (parsed.command === 'remember') {
-        await runRemember(atlas, parsed.factText ?? '', output);
-      } else if (parsed.command === 'forget') {
-        await runForget(atlas, parsed.factId ?? '', output);
-      } else if (parsed.command === 'memory') {
-        runMemoryList(atlas, output);
-      } else {
-        runStatus(atlas, output);
+      } finally {
+        await atlas.shutdown();
       }
-    } finally {
-      await atlas.shutdown();
+      return 0;
+    } catch (cause) {
+      if (cause instanceof InvalidConfigError) {
+        output.error(
+          `Configuração inválida:\n${cause.issues.map((issue) => `  - ${issue}`).join('\n')}\n`,
+        );
+        return 1;
+      }
+      if (cause instanceof AtlasError && cause.code === 'ATLAS_MODEL_GATEWAY') {
+        output.error(
+          `Não foi possível obter resposta do modelo: ${cause.message}\n` +
+            `Se estiver usando o provedor local, verifique se o Ollama está rodando ` +
+            `(ollama serve) e se o modelo foi baixado (ollama pull <model>).\n`,
+        );
+        return 1;
+      }
+      throw cause;
     }
-    return 0;
-  } catch (cause) {
-    if (cause instanceof InvalidConfigError) {
-      output.error(
-        `Configuração inválida:\n${cause.issues.map((issue) => `  - ${issue}`).join('\n')}\n`,
-      );
-      return 1;
-    }
-    if (cause instanceof AtlasError && cause.code === 'ATLAS_MODEL_GATEWAY') {
-      output.error(
-        `Não foi possível obter resposta do modelo: ${cause.message}\n` +
-          `Se estiver usando o provedor local, verifique se o Ollama está rodando ` +
-          `(ollama serve) e se o modelo foi baixado (ollama pull <model>).\n`,
-      );
-      return 1;
-    }
-    throw cause;
+  } finally {
+    chatLineReader?.close();
   }
 }

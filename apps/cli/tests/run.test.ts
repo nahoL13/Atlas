@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createCliInputGateway } from '../src/gateway/input-gateway.js';
@@ -232,6 +232,48 @@ describe('run (integração apps → core)', () => {
       '0.1.0',
     );
     expect(h3.out()).toContain('Nenhum fato memorizado');
+  });
+
+  it('chat: um plano com delete_file pausa e pergunta inline; aprovado remove o arquivo', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'atlas-cli-chat-confirm-'));
+    const target = join(dir, 'apagar.txt');
+    await writeFile(target, 'conteúdo');
+    const plan = JSON.stringify({ steps: [{ tool: 'delete_file', args: { path: target } }] });
+
+    const h = harness();
+    const code = await run(
+      ['chat', '--provider', 'fake', '--allow-write', dir],
+      {},
+      h.gateways,
+      '0.1.0',
+      { createLineReader: () => scriptedReader([plan, 's', '/sair']) },
+    );
+
+    expect(code).toBe(0);
+    expect(h.out()).toContain('🔧 delete_file → removido:');
+    await expect(readFile(target)).rejects.toThrow();
+  });
+
+  it('chat: recusado no confirm inline mantém o arquivo e a conversa continua', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'atlas-cli-chat-confirm-'));
+    const target = join(dir, 'mantido.txt');
+    await writeFile(target, 'conteúdo');
+    const plan = JSON.stringify({ steps: [{ tool: 'delete_file', args: { path: target } }] });
+
+    const h = harness();
+    const code = await run(
+      ['chat', '--provider', 'fake', '--allow-write', dir],
+      {},
+      h.gateways,
+      '0.1.0',
+      { createLineReader: () => scriptedReader([plan, 'n', 'oi de novo', '/sair']) },
+    );
+
+    expect(code).toBe(0);
+    expect(h.out()).toContain('🔧 delete_file → erro: ação cancelada pelo usuário');
+    await expect(readFile(target, 'utf8')).resolves.toBe('conteúdo');
+    // a conversa continua no próximo turno (fake ecoa o próximo input)
+    expect(h.out()).toContain('[fake] oi de novo');
   });
 
   it('memory list vazio informa que não há fatos', async () => {

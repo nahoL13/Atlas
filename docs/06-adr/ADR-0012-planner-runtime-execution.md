@@ -53,3 +53,14 @@ Custos e riscos:
 **Manter `ask(): Promise<string>` e esconder a execução.** Mais fino, mas a execução ficaria invisível/inverificável no terminal. Rejeitada em favor de `AskResult` (transparência é valor do ciclo cognitivo).
 
 **Task Manager completo (fila/retry/timeout/cancelamento).** Cedo demais para execução sequencial de Tools puras (YAGNI). Adiada para quando surgir execução assíncrona/Skills.
+
+---
+
+# Atualização ([SPEC-0014](../implementation/specs/SPEC-0014-tools-confirm-in-chat.md))
+
+A orquestração Planejamento + Execução registrada nesta decisão, até aqui exclusiva de `ask`, passa a valer também para `respond`:
+
+- **`respond(conversation, input)` orquestra no mesmo padrão de `ask`.** 1ª `generate` (com a instrução do Planner) → `planner.parse` → sem plano, resposta direta em 1 chamada (comportamento anterior preservado); com plano, `runtime.execute(plan)` + 2ª `generate` de composição. A instrução do Planner entra como uma mensagem `system` adicional, posicionada **antes** do turno do usuário (não depois) — a última mensagem enviada ao modelo segue sendo o input do usuário, preservando a ordem que `ask` já usa.
+- **`ConversationTurn` ganha `steps?: readonly ExecutedStep[]`**, espelhando `AskResult { text; steps? }` — o mesmo traço de transparência (incluindo passos negados/bloqueados) chega ao `chat`, reusando a renderização já usada por `ask`.
+- **O `confirm` interativo (ADR-0013) passa a alcançar `chat`.** O Runtime já pausava em `confirm` via `ConfirmPort`; `respond` agora aguarda `runtime.execute` exatamente como `ask` já fazia — nenhuma mudança em `@atlas/runtime`. O `atlas chat` compõe um `ConfirmPort` sobre o mesmo `LineReader` da sessão (não um segundo `readline`), tornando a confirmação inline na conversa.
+- **Nada muda no Planner, no Runtime, no Permission Service nem nas Tools.** A fatia é inteiramente composição do que já existia — a mesma elegância observada na atualização da SPEC-0013 (Cognitive/CLI inalterados para `ask`) se repete aqui do lado de `respond`.

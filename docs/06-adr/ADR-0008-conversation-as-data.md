@@ -57,3 +57,14 @@ Custos e riscos:
 **Context Service mínimo agora.** Seria a colocação mais "correta", mas amplia o escopo do MVP e arrisca mal-modelar um módulo cujo papel real é maior que um buffer de chat. Adiada para quando houver necessidade que justifique o módulo inteiro. Rejeitada por ora.
 
 **Manter o Core stateless e a CLI acumular `Message[]` crus, chamando o gateway direto.** Vazaria a orquestração da conversa (montar mensagens, aplicar o system prompt) para a camada de aplicação, violando a autoridade do Cognitive Core (Regra do Module Catalog: só ele decide estratégia) e o desacoplamento apps→gateway. Rejeitada.
+
+---
+
+# Atualização ([SPEC-0014](../implementation/specs/SPEC-0014-tools-confirm-in-chat.md))
+
+A premissa "`respond` sem planejamento" (linha 45 do texto original, e a nota da SPEC-0013 que restringia Tools/`confirm` a `atlas ask`) caiu: a SPEC-0014 estende a orquestração Planejamento + Execução do [ADR-0012](ADR-0012-planner-runtime-execution.md) também a `respond`, sem alterar nada do que esta decisão estabelece:
+
+- **`respond` continua função pura e o Core continua sem estado.** `respond(conversation, input)` segue recebendo e devolvendo `Conversation` como valor; nada é retido entre chamadas. A orquestração (1ª `generate` com a instrução do Planner → parse → sem plano, resposta direta; com plano, `runtime.execute` + 2ª `generate` de composição) é só *o que acontece dentro* da função pura — o contrato de pureza desta ADR não muda.
+- **`ConversationTurn` ganha `steps?`**, espelhando `AskResult` — mesma transparência que a SPEC-0010 trouxe para `ask`.
+- **Quando Tools rodam, a `Conversation` retornada ganha uma mensagem `system` compacta** resumindo os passos executados (nunca exibida ao usuário) — o histórico como dado continua sendo o mecanismo de continuidade entre turnos; o resumo é só mais uma mensagem nesse valor, não um estado novo escondido em algum lugar.
+- **O detentor da `Conversation` continua sendo o `@atlas/context`** ([ADR-0009](ADR-0009-context-service-value-store.md)), inalterado por esta SPEC.

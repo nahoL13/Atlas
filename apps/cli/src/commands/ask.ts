@@ -1,5 +1,6 @@
 import type { AtlasPlatform } from '@atlas/contracts';
 import type { OutputGateway } from '../gateway/output-gateway.js';
+import { renderSteps } from '../gateway/steps-trace.js';
 
 export async function runAsk(
   atlas: AtlasPlatform,
@@ -7,14 +8,6 @@ export async function runAsk(
   output: OutputGateway,
 ): Promise<void> {
   const result = await atlas.cognitive.ask(objective);
-  if (result.steps !== undefined && result.steps.length > 0) {
-    for (const step of result.steps) {
-      const outcome = step.result.ok
-        ? (step.result.output ?? '')
-        : `erro: ${step.result.error ?? ''}`;
-      output.write(`🔧 ${step.tool} → ${outcome}\n`);
-    }
-    output.write('\n');
-  }
+  renderSteps(result.steps, output);
   output.write(`${result.text}\n`);
 }
