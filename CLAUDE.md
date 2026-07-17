@@ -71,6 +71,7 @@ Ideia → existe no PRD? → existe módulo responsável? → SPEC → implement
 | Escrever uma nova SPEC | `docs/implementation/templates/SPEC-TEMPLATE.md` |
 | Concluir uma SPEC; consultar aprendizados de SPECs anteriores | `docs/implementation/LESSONS_LEARNED.md` |
 | Subagents (`spec-drafter`/`spec-implementer`/`spec-validator`), skills, hooks e log de custo de token por SPEC no Claude Code | `docs/04-engineering/ClaudeCodeAutomation.md` |
+| Macro-fases de longo prazo (Núcleo completo → Interface `apps/desktop` → Expansão), sem datas; qual fase uma ideia nova pertence | `docs/04-engineering/Roadmap.md` |
 | Entry point para humanos; ordem de leitura em camadas | `PROJECT.md` |
 
 Os termos do projeto têm significado técnico preciso — na dúvida sobre um termo, consulte o Glossary antes de inferir.
@@ -79,7 +80,6 @@ Os termos do projeto têm significado técnico preciso — na dúvida sobre um t
 
 Para evitar buscas inúteis — os itens abaixo são citados pela documentação, porém **ainda não existem**:
 
-- Roadmap
 - demais packages do catálogo conforme SPECs futuras
 
 Quando um desses artefatos for criado, atualize esta seção (e remova-a quando esvaziar).

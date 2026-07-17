@@ -62,10 +62,9 @@ A fundação do MVP, a **primeira resposta cognitiva ponta a ponta** (SPEC-0005)
 # Pendências Conhecidas
 
 - **TypeScript pinado em `^5`**: typescript-eslint 8.63 quebra com TS 7.0.2 (probes falharam em 2026-07-10, 2026-07-11, 2026-07-12, 2026-07-13 (SPEC-0007), 2026-07-13 (SPEC-0008, quinto probe), 2026-07-14 (SPEC-0009, sexto probe) **e 2026-07-14 (SPEC-0010, sétimo probe)**, sempre o mesmo `TypeError: Cannot read properties of undefined (reading 'Cjs')` em `typescript-estree`). Encaminhamento: parar de repetir a cada SPEC — vincular a um gatilho externo (release do typescript-eslint que declare suporte ao TS7) em vez de re-probar por hábito.
-- **Distribuição/empacotamento da CLI** (bin publicável fora do workspace): em aberto. Hoje o `bin` usa shebang `#!/usr/bin/env -S npx tsx`, que atende só o uso em dev. Candidata a SPEC futura de distribuição.
-- Roadmap ainda não existe (citado no PROJECT.md).
+- **Distribuição/empacotamento da CLI** (bin publicável fora do workspace): em aberto. Hoje o `bin` usa shebang `#!/usr/bin/env -S npx tsx`, que atende só o uso em dev. Mapeado na Fase 3 do [Roadmap](../04-engineering/Roadmap.md).
 - Plugin Manager sem seção de detalhe no ModuleCatalog (corrigir antes da SPEC que o implementar).
-- Remote/GitHub + CI: decisão em aberto, candidata a SPEC própria (`.github/` está previsto no ProjectStructure).
+- Remote/GitHub + CI: decisão em aberto, candidata a SPEC própria (`.github/` está previsto no ProjectStructure). Mapeado na Fase 3 do [Roadmap](../04-engineering/Roadmap.md).
 
 ---
 
@@ -83,6 +82,7 @@ A fundação do MVP, a **primeira resposta cognitiva ponta a ponta** (SPEC-0005)
 # Mapa Rápido
 
 - Roteador: `CLAUDE.md` (raiz) — invariantes, comandos, gatilhos de leitura.
+- Roadmap: `docs/04-engineering/Roadmap.md` — macro-fases (Fase 0 Fundação/concluída, Fase 1 Núcleo Completo/em andamento, Fase 2 Interface Completa `apps/desktop`, Fase 3 Expansão), sem datas; direção de longo prazo, não substitui a SPEC.
 - SPECs/planos/lições: `docs/implementation/` · ADRs: `docs/06-adr/` (0001 monorepo, 0002 TS/Node, 0003 composition root, 0004 composição manual, 0005 execução de apps via tsx, 0006 precedência de config, 0007 promoção do contrato do Model Gateway, 0008 conversa como dado — nota da SPEC-0014 derruba a premissa "`respond` sem planejamento", 0009 Context Service como store de valor, 0010 Persona injetada na geração, 0011 Memory Service persistência por porta injetável, 0012 espinha de execução Planner-driven — nota da SPEC-0014 estende a orquestração a `respond`, 0013 Permission Service como portão puro na execução — notas de atualização da SPEC-0013 (concretiza `confirm`) e da SPEC-0015 (fecha o escape por symlink via `realpath`, `evaluate` segue síncrono)).
 - CLI: `apps/cli` (`@atlas/cli`) — `main.ts` (casca) → `run()` → gateways locais + comandos `status`, `ask` (`commands/ask.ts`), `chat` (`commands/chat.ts` + `gateway/line-reader.ts` + `gateway/confirm-port.ts`), `remember`/`forget`/`memory` (`commands/`). `--memory-path`/`ATLAS_MEMORY_PATH` selecionam o arquivo de memória; `--allow-read`/`ATLAS_ALLOW_READ`/`--allow-write`/`ATLAS_ALLOW_WRITE` selecionam raízes de leitura/escrita; `status` exibe `readRoots`/`writeRoots`. `gateway/steps-trace.ts` (`renderSteps`) é o traço compacto de `steps` compartilhado por `ask`/`chat`.
 - Cognitive Core: `packages/cognitive` (`@atlas/cognitive`) — `createCognitiveCore({ gateway, runtime, personaPrompt?, memoryPrompt? })` → `ask(objetivo)` **e** `respond(conversation, input)` **orquestram** Planejamento + Execução no mesmo padrão (retornam `AskResult`/`ConversationTurn` com `steps?`, ADR-0012, nota SPEC-0014) + `startConversation()`; **Planner** consolidado (`createPlanner()` puro: `instruction`/`parse`); system prompt composto (ADR-0010/0011); `respond` segue função pura, Core sem estado (conversa é dado — ADR-0008).
