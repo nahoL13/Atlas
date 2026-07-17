@@ -57,6 +57,23 @@ def extract_text(content) -> str:
     return ""
 
 
+# Pesos relativos ao preço do token de input (proporções iguais em todos os
+# modelos Anthropic): cache read custa ~10% do input, cache write ~125%,
+# output ~500%. "Tokens efetivos" = tokens equivalentes em input, para que
+# sessões agênticas longas (dominadas por cache read barato) não pareçam
+# ordens de magnitude mais caras do que realmente são.
+EFFECTIVE_WEIGHTS = {
+    "input": 1.0,
+    "cache_creation": 1.25,
+    "cache_read": 0.1,
+    "output": 5.0,
+}
+
+
+def effective_total(bucket: dict) -> int:
+    return int(sum(bucket.get(k, 0) * w for k, w in EFFECTIVE_WEIGHTS.items()))
+
+
 def parse_session(path: Path) -> dict:
     totals_by_model = defaultdict(lambda: defaultdict(int))
     spec_mentions = defaultdict(int)
@@ -99,6 +116,9 @@ def parse_session(path: Path) -> dict:
     grand_total = sum(
         v for bucket in totals_by_model.values() for v in bucket.values()
     )
+    grand_effective = sum(
+        effective_total(bucket) for bucket in totals_by_model.values()
+    )
 
     top_spec = None
     if spec_mentions:
@@ -110,6 +130,7 @@ def parse_session(path: Path) -> dict:
         "last_ts": last_ts,
         "by_model": dict(totals_by_model),
         "grand_total": grand_total,
+        "grand_effective": grand_effective,
         "spec_tag": top_spec,
         "spec_mentions": dict(spec_mentions),
     }
@@ -174,7 +195,9 @@ def read_spec_meta(spec_id: str) -> tuple[str | None, str | None]:
 
 
 def build_spec_log(sessions: list[dict], subagent_records: list[dict]) -> str:
-    per_spec = defaultdict(lambda: {"total": 0, "sessions": 0, "last_ts": None})
+    per_spec = defaultdict(
+        lambda: {"total": 0, "effective": 0, "sessions": 0, "last_ts": None}
+    )
     phase_totals = defaultdict(lambda: defaultdict(int))
 
     for s in sessions:
@@ -183,17 +206,19 @@ def build_spec_log(sessions: list[dict], subagent_records: list[dict]) -> str:
             continue
         bucket = per_spec[tag]
         bucket["total"] += s["grand_total"]
+        bucket["effective"] += s["grand_effective"]
         bucket["sessions"] += 1
         if s["last_ts"] and (bucket["last_ts"] is None or s["last_ts"] > bucket["last_ts"]):
             bucket["last_ts"] = s["last_ts"]
-        phase_totals[tag][PHASE_MAIN_THREAD] += s["grand_total"]
+        phase_totals[tag][PHASE_MAIN_THREAD] += s["grand_effective"]
 
     for rec in subagent_records:
         tag = rec["spec_tag"]
         if not tag:
             continue
-        phase_totals[tag][rec["phase"]] += rec["grand_total"]
+        phase_totals[tag][rec["phase"]] += rec["grand_effective"]
         per_spec[tag]["total"] += rec["grand_total"]
+        per_spec[tag]["effective"] += rec["grand_effective"]
 
     done_totals = []
     lines = []
@@ -212,10 +237,21 @@ def build_spec_log(sessions: list[dict], subagent_records: list[dict]) -> str:
         "dominante). Regenere após encerrar ou retomar trabalho em uma SPEC "
         "rodando o script acima; **não edite esta tabela manualmente**.\n"
     )
+    lines.append(
+        "**Tokens brutos** somam input + output + cache com o mesmo peso; "
+        "**tokens efetivos** ponderam cada tipo pelo preço relativo ao token "
+        "de input (cache read ~10%, cache write ~125%, output ~500%) — é o "
+        "número que reflete custo/limite real e o usado para estimar. Sessões "
+        "agênticas longas são dominadas por cache read barato, por isso o "
+        "bruto pode ser ~10× o efetivo.\n"
+    )
     lines.append("---\n")
     lines.append("## Por SPEC\n")
-    lines.append("| SPEC | Título | Status | Sessões | Última atividade | Tokens totais |")
-    lines.append("|---|---|---|---:|---|---:|")
+    lines.append(
+        "| SPEC | Título | Status | Sessões | Última atividade | "
+        "Tokens brutos | Tokens efetivos |"
+    )
+    lines.append("|---|---|---|---:|---|---:|---:|")
     for spec_id, bucket in sorted(per_spec.items(), key=lambda kv: kv[0]):
         title, status = read_spec_meta(spec_id)
         title = title or "(SPEC não encontrada em docs/implementation/specs/)"
@@ -223,10 +259,10 @@ def build_spec_log(sessions: list[dict], subagent_records: list[dict]) -> str:
         last = (bucket["last_ts"] or "-")[:10]
         lines.append(
             f"| {spec_id} | {title} | {status} | {bucket['sessions']} | {last} | "
-            f"{fmt(bucket['total'])} |"
+            f"{fmt(bucket['total'])} | {fmt(bucket['effective'])} |"
         )
         if status == "Done":
-            done_totals.append(bucket["total"])
+            done_totals.append(bucket["effective"])
     lines.append("")
 
     phases_present = sorted(
@@ -244,7 +280,7 @@ def build_spec_log(sessions: list[dict], subagent_records: list[dict]) -> str:
         "qualquer outro subagent (ex. `Explore`, `code-reviewer`) invocado "
         "durante o trabalho na SPEC. SPECs antigas, implementadas antes de "
         "esses agentes existirem, aparecem 100% em Criação/Decisão — não é "
-        "erro, é a fase real que ocorreu.\n"
+        "erro, é a fase real que ocorreu. Valores em **tokens efetivos**.\n"
     )
     header = ["SPEC", PHASE_MAIN_THREAD, "Implementação", "Verificação"] + (
         [PHASE_OTHER_AGENTS] if PHASE_OTHER_AGENTS in phases_present else []
@@ -269,8 +305,9 @@ def build_spec_log(sessions: list[dict], subagent_records: list[dict]) -> str:
         avg = sum(done_totals) // len(done_totals)
         lines.append(
             f"- SPECs concluídas (`Done`) até agora: {len(done_totals)}. "
-            f"Custo médio: **{fmt(avg)} tokens**. "
-            f"Faixa observada: {fmt(min(done_totals))} – {fmt(max(done_totals))} tokens.\n"
+            f"Custo médio: **{fmt(avg)} tokens efetivos**. "
+            f"Faixa observada: {fmt(min(done_totals))} – {fmt(max(done_totals))} "
+            "tokens efetivos.\n"
         )
     lines.append(
         "- Compare a SPEC que você está prestes a começar com as mais parecidas "
@@ -305,47 +342,58 @@ def build_report(sessions: list[dict], top_n: int) -> str:
 
     grand_total = sum(s["grand_total"] for s in sessions)
 
+    grand_effective = sum(s["grand_effective"] for s in sessions)
+
     lines.append("## Totais gerais\n")
     lines.append(f"- Sessões analisadas: {len(sessions)}")
-    lines.append(f"- Tokens totais (input + output + cache): {fmt(grand_total)}\n")
+    lines.append(f"- Tokens brutos (input + output + cache): {fmt(grand_total)}")
+    lines.append(
+        f"- Tokens efetivos (ponderados pelo preço relativo ao input — "
+        f"cache read ~10%, cache write ~125%, output ~500%): {fmt(grand_effective)}\n"
+    )
 
     lines.append("### Por modelo\n")
-    lines.append("| Modelo | Input | Output | Cache read | Cache creation | Total |")
-    lines.append("|---|---:|---:|---:|---:|---:|")
+    lines.append(
+        "| Modelo | Input | Output | Cache read | Cache creation | Total | Efetivo |"
+    )
+    lines.append("|---|---:|---:|---:|---:|---:|---:|")
     for model, bucket in sorted(
         overall_by_model.items(), key=lambda kv: -sum(kv[1].values())
     ):
         total = sum(bucket.values())
         lines.append(
             f"| {model} | {fmt(bucket['input'])} | {fmt(bucket['output'])} | "
-            f"{fmt(bucket['cache_read'])} | {fmt(bucket['cache_creation'])} | {fmt(total)} |"
+            f"{fmt(bucket['cache_read'])} | {fmt(bucket['cache_creation'])} | "
+            f"{fmt(total)} | {fmt(effective_total(bucket))} |"
         )
     lines.append("")
 
-    by_spec = defaultdict(int)
+    by_spec = defaultdict(lambda: [0, 0])
     for s in sessions:
         tag = s["spec_tag"] or "(sem SPEC identificada)"
-        by_spec[tag] += s["grand_total"]
+        by_spec[tag][0] += s["grand_total"]
+        by_spec[tag][1] += s["grand_effective"]
 
     lines.append(
         "## Por SPEC (heurístico — sessão marcada pela SPEC mais citada nela)\n"
     )
-    lines.append("| SPEC | Tokens totais |")
-    lines.append("|---|---:|")
-    for tag, total in sorted(by_spec.items(), key=lambda kv: -kv[1]):
-        lines.append(f"| {tag} | {fmt(total)} |")
+    lines.append("| SPEC | Tokens brutos | Tokens efetivos |")
+    lines.append("|---|---:|---:|")
+    for tag, (total, effective) in sorted(by_spec.items(), key=lambda kv: -kv[1][1]):
+        lines.append(f"| {tag} | {fmt(total)} | {fmt(effective)} |")
     lines.append("")
 
-    lines.append(f"## Top {top_n} sessões por consumo\n")
-    lines.append("| Sessão | Início | SPEC | Modelo(s) | Tokens totais |")
-    lines.append("|---|---|---|---|---:|")
-    top_sessions = sorted(sessions, key=lambda s: -s["grand_total"])[:top_n]
+    lines.append(f"## Top {top_n} sessões por consumo efetivo\n")
+    lines.append("| Sessão | Início | SPEC | Modelo(s) | Tokens brutos | Tokens efetivos |")
+    lines.append("|---|---|---|---|---:|---:|")
+    top_sessions = sorted(sessions, key=lambda s: -s["grand_effective"])[:top_n]
     for s in top_sessions:
         models = ", ".join(sorted(s["by_model"].keys())) or "-"
         started = (s["first_ts"] or "-")[:10]
         tag = s["spec_tag"] or "-"
         lines.append(
-            f"| {s['session'][:8]} | {started} | {tag} | {models} | {fmt(s['grand_total'])} |"
+            f"| {s['session'][:8]} | {started} | {tag} | {models} | "
+            f"{fmt(s['grand_total'])} | {fmt(s['grand_effective'])} |"
         )
     lines.append("")
 

@@ -31,6 +31,11 @@ Durante a implementação:
 - Escreva os testes descritos em "Estratégia de Testes".
 - Não crie módulos, Skills ou Personas novos, não mova responsabilidades
   entre módulos — isso é decisão arquitetural fora do seu escopo.
+- **Verifique em lotes, não a cada micro-edição.** Rodar testes/lint/typecheck
+  reprocessa todo o contexto acumulado a cada chamada — o custo cresce com o
+  tamanho da conversa. Complete um item inteiro do Escopo (código + testes)
+  antes de rodar a suíte daquele item; deixe `pnpm lint` e `pnpm typecheck`
+  para a verificação final, a menos que um erro real exija diagnosticar antes.
 
 Ao final:
 
