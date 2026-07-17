@@ -43,6 +43,7 @@ Ideia → existe no PRD? → existe módulo responsável? → SPEC → implement
 - Processo completo, características de uma boa SPEC e diretrizes para IA: `docs/04-engineering/DevelopmentGuide.md`
 - Estrutura obrigatória de toda SPEC: `docs/implementation/templates/SPEC-TEMPLATE.md`; SPECs vivem em `docs/implementation/specs/`
 - Ao concluir uma SPEC: registre as lições aprendidas em `docs/implementation/LESSONS_LEARNED.md` — é parte da Definition of Done
+- Antes de começar uma SPEC nova: consulte `docs/05-context/TOKEN_USAGE_LOG.md` para estimar o custo em tokens pela SPEC concluída mais parecida em tamanho, e decidir se cabe na sessão atual ou se é melhor esperar a próxima janela (regenere com `python3 scripts/claude-usage-report.py`)
 - Conflito entre documentos: prevalece a ordem de prioridade definida em `docs/04-engineering/DevelopmentGuide.md` (PROJECT.md → Vision → Constitution → ... → SPEC).
 
 ## Mapa da documentação (leia sob demanda)
@@ -68,6 +69,7 @@ Ideia → existe no PRD? → existe módulo responsável? → SPEC → implement
 | Processo oficial de desenvolvimento e SPECs | `docs/04-engineering/DevelopmentGuide.md` |
 | Escrever uma nova SPEC | `docs/implementation/templates/SPEC-TEMPLATE.md` |
 | Concluir uma SPEC; consultar aprendizados de SPECs anteriores | `docs/implementation/LESSONS_LEARNED.md` |
+| Subagents (`spec-drafter`/`spec-implementer`/`spec-validator`), skills, hooks e log de custo de token por SPEC no Claude Code | `docs/04-engineering/ClaudeCodeAutomation.md` |
 | Entry point para humanos; ordem de leitura em camadas | `PROJECT.md` |
 
 Os termos do projeto têm significado técnico preciso — na dúvida sobre um termo, consulte o Glossary antes de inferir.

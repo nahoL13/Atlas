@@ -1,0 +1,54 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); pkg=$(echo \"$f\" | grep -oE '/(packages|apps)/[^/]+/src' | sed -E 's#/(packages|apps)/([^/]+)/src#\\2#'); if [ -n \"$pkg\" ]; then cd \"${CLAUDE_PROJECT_DIR:-.}\" || exit 0; hit=$(grep -ril \"$pkg\" docs/implementation/specs/*.md 2>/dev/null); if [ -z \"$hit\" ]; then reason=\"Nenhuma SPEC em docs/implementation/specs/ menciona '$pkg'. Confirme que existe uma SPEC aprovada cobrindo esta mudanca (use a skill spec-check) antes de prosseguir.\"; jq -n --arg reason \"$reason\" '{hookSpecificOutput:{hookEventName:\"PreToolUse\",permissionDecision:\"ask\",permissionDecisionReason:$reason}}'; exit 0; fi; fi; exit 0",
+            "timeout": 15,
+            "statusMessage": "Verificando SPEC correspondente..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_input.file_path // .tool_response.filePath // empty'); if echo \"$f\" | grep -qE '/(packages|apps)/[^/]+/src/.*\\.ts$'; then cd \"${CLAUDE_PROJECT_DIR:-.}\" || exit 0; lint_out=$(pnpm exec eslint \"$f\" 2>&1); lint_rc=$?; tsc_out=$(pnpm exec tsc -p tsconfig.json --noEmit 2>&1); tsc_rc=$?; if [ \"$lint_rc\" -ne 0 ] || [ \"$tsc_rc\" -ne 0 ]; then { [ \"$lint_rc\" -ne 0 ] && printf 'ESLint:\\n%s\\n' \"$lint_out\"; [ \"$tsc_rc\" -ne 0 ] && printf 'tsc:\\n%s\\n' \"$tsc_out\"; } >&2; exit 2; fi; fi; exit 0",
+            "timeout": 120,
+            "statusMessage": "Rodando typecheck + lint..."
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PROJECT_DIR:-.}\"/scripts/hooks/spec-prompt-nudge.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"${CLAUDE_PROJECT_DIR:-.}\" && python3 scripts/claude-usage-report.py >/dev/null 2>&1 || true",
+            "timeout": 30,
+            "async": true,
+            "statusMessage": "Atualizando log de uso de tokens..."
+          }
+        ]
+      }
+    ]
+  }
+}

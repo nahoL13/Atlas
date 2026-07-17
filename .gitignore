@@ -6,9 +6,15 @@ coverage/
 .env
 .env.*
 !.env.example
+__pycache__/
+*.pyc
 
 # Obsidian: docs/ é vault — versiona config compartilhada (app.json, plugins),
 # ignora estado local de sessão/máquina
 docs/.obsidian/workspace.json
 docs/.obsidian/workspace-mobile.json
 docs/.obsidian/cache
+
+# scripts/claude-usage-report.py: relatório pessoal gerado a partir de
+# transcripts locais (~/.claude/projects/...), não é documentação do Atlas
+.claude/usage-report.md
