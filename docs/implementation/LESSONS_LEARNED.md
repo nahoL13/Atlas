@@ -53,6 +53,34 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## [SPEC-0014](specs/SPEC-0014-tools-confirm-in-chat.md) — Tools e `confirm` no `atlas chat` (2026-07-17)
+
+**Descobrimos que...**
+
+A **posição** da instrução do Planner na lista de mensagens importa de um jeito que a SPEC não previu: acrescentá-la como mensagem `system` **depois** do turno do usuário quebrou os testes existentes do provedor `fake`, que ecoa a **última** mensagem (`[fake] <conteúdo>`) — a "última mensagem" virou a instrução do Planner em vez do input do usuário. A correção foi inserir a instrução **antes** da mensagem final do usuário, espelhando exatamente a ordenação que o `ask` já usava. O sintoma só apareceu rodando os testes de integração existentes (`run.test.ts`), não os novos — mais um caso em que a suíte antiga é o detector de regressão de contrato implícito.
+
+O atrito "erro que só aparece no `tsc`, não no `vitest run`" (registrado nas SPECs 0012 e 0013) recorreu em forma nova: literais de `Message[]` dentro de expressões condicionais/callbacks tiveram `role` **alargado para `string`** pela inferência, falhando apenas no typecheck — exigiu anotações explícitas de tipo em dois pontos de `cognitive-core.ts`.
+
+Não havia padrão estabelecido para testar um plano Planner-driven **de ponta a ponta pela CLI** (os testes de CLI existentes sempre stubavam `atlas.cognitive` ou nunca exercitavam um plano JSON). O teste de integração novo usou o comportamento de eco do provedor `fake` para "contrabandear" um plano JSON literal como input do usuário — funcional, mas é técnica não usual que merece padronização se SPECs futuras precisarem de cobertura semelhante.
+
+Mover a criação do `LineReader` para **antes** do `createAtlas` (necessário para injetar o `ConfirmPort` sobre ele) introduziu um risco sutil de vazamento de recurso que não existia na estrutura original: se `createAtlas` lançasse, o reader não seria fechado. Resolvido com `try/finally` externo fechando o reader incondicionalmente — lembrete de que reordenar aquisição de recursos muda quem é responsável pela liberação.
+
+Esta foi a segunda SPEC pelo fluxo completo `spec-drafter` → `spec-implementer` → `spec-validator`. O gate do validator funcionou de novo: pegou como bloqueadores exatamente a entrada ausente neste arquivo e o `CLAUDE.md` de `contracts` não atualizado, antes da aprovação humana.
+
+**A arquitetura ajudou porque...**
+
+A fatia inteira coube em **compor o que já existia**: o Planner consolidado, o Runtime com `ConfirmPort` (SPEC-0013), o ponto de injeção `CreateAtlasDeps.confirm` e o `LineReader` injetável (SPEC-0006) — Runtime, Permissions e Tools **não mudaram uma linha**. `respond` ganhou orquestração pelo mesmo helper interno que `ask` usa (`runPlanCycle`), deduplicando em vez de duplicar. O `ConfirmPort` sobre o `LineReader` da sessão coube como adaptador local em `apps/cli` (satisfação estrutural do tipo), sem dependência nova de package.
+
+**A arquitetura atrapalhou porque...**
+
+nada a registrar — os atritos acima são de processo/tooling (ordenação de mensagens do provedor `fake`, inferência do TS, técnica de teste), não de desenho do sistema.
+
+**Precisamos mudar...**
+
+Padronizar a técnica de teste de plano ponta a ponta pela CLI (eco do `fake` como veículo do plano JSON) se ela se repetir — por ora fica registrada aqui como precedente, sem encaminhamento estrutural (não é decisão de arquitetura). A recorrência do "erro só no typecheck" já tem regra em `NEXT_CONTEXT.md` (SPEC-0013); a variação nova (widening de literais) não muda a regra, reforça-a — sem encaminhamento novo.
+
+---
+
 ## [SPEC-0013](specs/SPEC-0013-confirm-flow-destructive-tools.md) — Fluxo `confirm` + Tools destrutivas (2026-07-17)
 
 **Descobrimos que...**
