@@ -68,6 +68,13 @@ Não se aplica a: edição de documentação (`docs/**`), configuração de tool
    fase. Só implemente diretamente aqui se o usuário pedir explicitamente
    para não delegar.
 
+   **Importante — o subagent começa com contexto zerado:** a SPEC é o único
+   canal entre as fases. Se nesta conversa foram tomadas decisões relevantes
+   que não estão no texto da SPEC (um detalhe acertado com o usuário, uma
+   restrição descoberta durante a discussão), inclua-as explicitamente no
+   prompt de delegação — o spec-implementer não tem como conhecê-las de
+   outra forma.
+
 7. **Depois que a implementação terminar**, antes de considerar a SPEC
    pronta para `Done`, invoque o Agent tool com `subagent_type:
    spec-validator` (`.claude/agents/spec-validator.md`) para conferir

@@ -21,7 +21,8 @@
       "Bash(obsidian search *)",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(obsidian backlinks *)"
+      "Bash(obsidian backlinks *)",
+      "Skill(update-config)"
     ]
   }
 }

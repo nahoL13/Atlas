@@ -2,7 +2,7 @@
 
 > **Project Atlas — Automação de Workflow no Claude Code**
 
-Version: 1.0
+Version: 1.1
 
 Status: Documento vivo (não segue o processo de SPEC/ADR — é tooling de
 workflow do Claude Code, não arquitetura da plataforma Atlas)
@@ -14,7 +14,7 @@ workflow do Claude Code, não arquitetura da plataforma Atlas)
 Este documento descreve a automação construída dentro do Claude Code para
 apoiar o processo oficial de desenvolvimento do Atlas (definido em
 [Development Guide](DevelopmentGuide.md)): três subagents (um por fase do
-ciclo de uma SPEC), duas skills, quatro hooks e um script de análise de
+ciclo de uma SPEC), três skills, quatro hooks e um script de análise de
 custo de token.
 
 Nada aqui altera o processo em si — o fluxo Ideia → PRD → SPEC →
@@ -69,11 +69,13 @@ identificado foi economia de contexto/token, não orquestração.
         ↓
 "valida a SPEC-XXXX"
         ↓
-  spec-validator (Haiku)  →  veredicto: pronta p/ Done ou não
+  spec-validator (Sonnet)  →  veredicto: pronta p/ Done ou não
         ↓
   [aprovação humana: Review → Done]
         ↓
   lessons-learned (skill)  →  entrada em LESSONS_LEARNED.md
+        ↓
+  doc-sync (skill)  →  CLAUDE.md raiz/packages, NEXT_CONTEXT, CURRENT_SPRINT
 ```
 
 Em cada seta de pedido do usuário ("cria uma SPEC pra X", "implementa a
@@ -92,30 +94,54 @@ modelo escolhido pelo tipo de trabalho, não o mais caro por padrão.
 | Agente | Modelo | Fase | O que faz | O que NÃO faz |
 |---|---|---|---|---|
 | [`spec-drafter`](../../.claude/agents/spec-drafter.md) | Opus | Criação/Decisão | Cruza PRD, ADRs e Module Catalog; preenche o `SPEC-TEMPLATE.md`; todo campo rastreia a uma fonte documentada | Não decide escopo sem base documental; nunca sai de `Status: Draft`; não cria módulo novo por conta própria |
-| [`spec-implementer`](../../.claude/agents/spec-implementer.md) | Sonnet | Implementação | Implementa apenas o que está em "Escopo" de uma SPEC `Ready`/`In Progress`; roda testes/lint/typecheck | Não implementa o que está em "Fora do Escopo"; não marca `Done`; não decide arquitetura |
-| [`spec-validator`](../../.claude/agents/spec-validator.md) | Haiku | Verificação | Roda testes/lint/typecheck; confere cada "Critério de Aceitação" e item da "Definition of Done" item a item | Não edita código; não decide se algo deveria ser diferente; não muda `Status` sozinho |
+| [`spec-implementer`](../../.claude/agents/spec-implementer.md) | Sonnet | Implementação | Implementa apenas o que está em "Escopo" de uma SPEC `Ready`/`In Progress`; roda testes/lint/typecheck; reporta os atritos encontrados no relatório final (insumo do Lessons Learned) | Não implementa o que está em "Fora do Escopo"; não marca `Done`; não decide arquitetura |
+| [`spec-validator`](../../.claude/agents/spec-validator.md) | Sonnet | Verificação | Roda testes/lint/typecheck; confere cada "Critério de Aceitação" e item da "Definition of Done" item a item | Não edita código; não decide se algo deveria ser diferente; não muda `Status` sozinho |
 
 O Opus no `spec-drafter` é intencional: síntese de escopo a partir de
-documentação exige mais julgamento que os outros dois, que são mecânicos
-(seguir um Escopo já definido / checar uma lista já definida).
+documentação exige mais julgamento que os outros dois. O `spec-validator`
+começou em Haiku, mas foi promovido a Sonnet antes do primeiro uso real:
+rodar comandos é mecânico, porém conferir se cada Critério de Aceitação
+está de fato atendido no código e se o diff ficou dentro do "Escopo" exige
+compreensão de código × documento — e o validator é o último portão
+automatizado antes do gate humano `Review → Done`. Um verificador fraco
+depois de um implementador mais forte inverteria a lógica do controle de
+qualidade.
+
+**Contexto zerado é o recurso e o risco:** cada subagent começa frio, e a
+SPEC vira o único canal entre as fases. Por isso a skill `spec-check` e os
+lembretes do hook instruem a incluir no prompt de delegação as decisões da
+conversa que não estão no texto da SPEC, e o `spec-implementer` é obrigado
+a reportar atritos no relatório final — sem isso, esse conhecimento morre
+com o contexto descartado do subagent.
 
 ---
 
-# As duas skills
+# As três skills
 
 Definidas em `.claude/skills/`. Diferente dos subagents (que fazem o
-trabalho), skills são instruções que eu sigo no fio principal.
+trabalho), skills são instruções que eu sigo no fio principal. Importante:
+o disparo de uma skill é **probabilístico** — o modelo decide invocá-la a
+partir da descrição, não é garantido pelo harness. O backstop determinístico
+é o hook `PreToolUse` (abaixo), que roda sempre.
 
-- **[`spec-check`](../../.claude/skills/spec-check/SKILL.md)** — dispara
-  antes de qualquer edição em `packages/*/src`, `apps/*/src`,
+- **[`spec-check`](../../.claude/skills/spec-check/SKILL.md)** — antes de
+  qualquer edição em `packages/*/src`, `apps/*/src`,
   `tooling/*/src`. Verifica se existe SPEC aprovada cobrindo a mudança (e
   para se não existir); depois de confirmar, instrui a delegar para
   `spec-implementer` (e depois `spec-validator`) em vez de implementar
-  direto ali.
+  direto ali, passando no prompt de delegação as decisões da conversa que
+  não estão no texto da SPEC.
 - **[`lessons-learned`](../../.claude/skills/lessons-learned/SKILL.md)** —
-  dispara ao concluir uma SPEC. Reconstrói o que aconteceu de fato (via
-  `git log`/`git diff`, não o plano original) e preenche o formato exigido
-  por `docs/implementation/LESSONS_LEARNED.md`.
+  ao concluir uma SPEC. Reconstrói o que aconteceu de fato (via
+  `git log`/`git diff` e o relatório de atritos do `spec-implementer`) e
+  preenche o formato exigido por `docs/implementation/LESSONS_LEARNED.md`.
+- **[`doc-sync`](../../.claude/skills/doc-sync/SKILL.md)** — também no
+  fechamento de uma SPEC, complementar à `lessons-learned`: enquanto aquela
+  cuida do registro histórico, esta sincroniza o **estado vivo** — checklist
+  estrutural cobrindo o `CLAUDE.md` raiz (parágrafo "Estado" + seção
+  "ainda não criado"), os `CLAUDE.md` dos packages tocados,
+  `NEXT_CONTEXT.md`, `CURRENT_SPRINT.md` e notas em ADRs previstas pela
+  SPEC.
 
 ---
 
@@ -126,10 +152,21 @@ time).
 
 | Evento | O que faz | Bloqueia? |
 |---|---|---|
-| `PreToolUse` (Write\|Edit) | Antes de editar `packages/*/src`/`apps/*/src`, verifica se alguma SPEC menciona o pacote | Só `ask` (pede confirmação) — nunca `deny` automático |
-| `PostToolUse` (Write\|Edit) | Depois de editar um `.ts` nesses caminhos, roda `eslint` + `tsc --noEmit`; erros voltam como feedback bloqueante | Sim, via exit code 2 — mas só depois da edição já ter acontecido |
-| `UserPromptSubmit` | Roda `scripts/hooks/spec-prompt-nudge.sh`; se o pedido menciona criar/implementar/validar uma SPEC, injeta lembrete para usar o subagent certo | Não — só injeta contexto |
+| `PreToolUse` (Write\|Edit) | Antes de editar `packages/*/src`/`apps/*/src`/`tooling/*/src`, verifica se alguma SPEC **ativa** (`Status: Ready` ou `In Progress`) menciona o pacote — SPECs `Done` não contam, senão o gate perde o sentido conforme o corpus de SPECs cresce | Só `ask` (pede confirmação) — nunca `deny` automático |
+| `PostToolUse` (Write\|Edit) | Depois de editar um `.ts` nesses caminhos, roda `eslint` no arquivo; erros voltam como feedback bloqueante | Sim, via exit code 2 — mas só depois da edição já ter acontecido |
+| `UserPromptSubmit` | Roda `scripts/hooks/spec-prompt-nudge.sh`; se o pedido menciona criar/implementar/validar/concluir uma SPEC (ou lições aprendidas), injeta lembrete para usar o subagent/skill certo | Não — só injeta contexto |
 | `Stop` | Depois de cada resposta minha, roda `scripts/claude-usage-report.py` em background (`async: true`) para manter os relatórios de token atualizados | Não — assíncrono, nunca trava a conversa |
+
+**Por que o `PostToolUse` roda só eslint, sem typecheck:** duas razões. A
+versão original rodava `tsc -p tsconfig.json --noEmit`, mas o `tsconfig.json`
+da raiz só cobre `tests/**` — o typecheck que vale é o por package
+(`pnpm -r --if-present typecheck`), então o hook validava a coisa errada.
+Além disso, numa mudança multi-arquivo as edições intermediárias falham
+typecheck **por definição** (estado transitório), e cada falha injetaria a
+saída inteira do tsc como feedback — ruído que atrapalha o subagent e gasta
+tokens, contrariando o objetivo da automação. O typecheck completo continua
+obrigatório, mas no lugar certo: o `spec-implementer` roda `pnpm typecheck`
+ao final da implementação e o `spec-validator` roda de novo na validação.
 
 **Por que nenhum hook bloqueia edição direta com `deny`:** o payload do
 hook não permite distinguir com segurança se uma chamada de `Write`/`Edit`
@@ -203,6 +240,7 @@ Depois:
   skills/
     spec-check/SKILL.md
     lessons-learned/SKILL.md
+    doc-sync/SKILL.md
   settings.json            (os 4 hooks)
 
 scripts/

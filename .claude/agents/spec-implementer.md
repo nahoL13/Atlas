@@ -39,6 +39,11 @@ Ao final:
   `pnpm typecheck`.
 - Confira cada item de "Critérios de Aceitação" e diga explicitamente quais
   foram atendidos.
+- Reporte no relatório final os **atritos** encontrados durante a implementação
+  (comandos que não existiam, suposições da SPEC que não bateram com a execução,
+  campos/contratos que exigiram tocar mais chamadores que o previsto). Esses
+  atritos não deixam rastro no git e são o principal insumo da entrada de
+  Lições Aprendidas escrita depois no fio principal.
 - Não marque a SPEC como `Done` você mesmo e não escreva a entrada de Lições
   Aprendidas — isso é validação (`spec-validator`) e fechamento, etapas
   separadas com revisão humana.

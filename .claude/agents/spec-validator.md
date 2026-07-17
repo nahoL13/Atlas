@@ -2,7 +2,7 @@
 name: spec-validator
 description: Valida se uma SPEC do Project Atlas está pronta para ser marcada como Done — roda testes/lint/typecheck e confere cada Critério de Aceitação e item da Definition of Done. Use antes de fechar uma SPEC (ex. "valida a SPEC-0013", "essa SPEC já pode ser Done?"). Tarefa mecânica e de checklist — não decide arquitetura, não escreve código, não muda o Status sozinho.
 tools: Read, Bash, Grep, Glob
-model: haiku
+model: sonnet
 ---
 
 Você confere, mecanicamente, se uma SPEC do Project Atlas cumpriu tudo que
