@@ -7,14 +7,16 @@ import type {
   ToolDescriptor,
   ToolRegistry,
 } from '@atlas/contracts';
+import type { ConfirmPort } from './confirm-port.js';
 
 export interface RuntimeDeps {
   registry: ToolRegistry;
   permissions: PermissionService;
+  confirm: ConfirmPort;
 }
 
 export function createRuntime(deps: RuntimeDeps): Runtime {
-  const { registry, permissions } = deps;
+  const { registry, permissions, confirm } = deps;
   return {
     tools(): readonly ToolDescriptor[] {
       return registry.list().map((tool) => ({ name: tool.name, description: tool.description }));
@@ -35,7 +37,17 @@ export function createRuntime(deps: RuntimeDeps): Runtime {
         const requirement = tool.requirements?.(step.args) ?? null;
         if (requirement !== null) {
           const decision = permissions.evaluate(requirement);
-          if (decision.verdict !== 'allowed') {
+          if (decision.verdict === 'confirm') {
+            const approved = await confirm.request(requirement);
+            if (!approved) {
+              steps.push({
+                tool: step.tool,
+                args: step.args,
+                result: { ok: false, error: 'ação cancelada pelo usuário' },
+              });
+              continue;
+            }
+          } else if (decision.verdict !== 'allowed') {
             steps.push({
               tool: step.tool,
               args: step.args,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Tool, ToolRegistry } from '@atlas/contracts';
 import type { PermissionDecision, PermissionService } from '@atlas/contracts';
+import type { ConfirmPort } from '../src/index.js';
 import { createRuntime } from '../src/index.js';
 
 function fakeRegistry(tools: Tool[]): ToolRegistry {
@@ -34,6 +35,25 @@ function recordingPermissions(): { service: PermissionService; calls: number } {
   };
 }
 
+function fakeConfirm(approved: boolean): ConfirmPort {
+  return { request: async () => approved };
+}
+
+function recordingConfirm(approved: boolean): { port: ConfirmPort; calls: number } {
+  const state = { calls: 0 };
+  return {
+    port: {
+      request: async () => {
+        state.calls += 1;
+        return approved;
+      },
+    },
+    get calls() {
+      return state.calls;
+    },
+  };
+}
+
 describe('createRuntime.execute', () => {
   it('executa os passos em ordem e agrega os resultados', async () => {
     const calls: string[] = [];
@@ -56,6 +76,7 @@ describe('createRuntime.execute', () => {
     const runtime = createRuntime({
       registry: fakeRegistry([a, b]),
       permissions: fakePermissions(),
+      confirm: fakeConfirm(true),
     });
 
     const result = await runtime.execute({
@@ -73,7 +94,11 @@ describe('createRuntime.execute', () => {
 
   it('Tool inexistente vira falha estruturada e a execução continua', async () => {
     const b: Tool = { name: 'b', description: 'B', run: async () => ({ ok: true, output: 'b' }) };
-    const runtime = createRuntime({ registry: fakeRegistry([b]), permissions: fakePermissions() });
+    const runtime = createRuntime({
+      registry: fakeRegistry([b]),
+      permissions: fakePermissions(),
+      confirm: fakeConfirm(true),
+    });
 
     const result = await runtime.execute({
       steps: [
@@ -98,6 +123,7 @@ describe('createRuntime.execute', () => {
     const runtime = createRuntime({
       registry: fakeRegistry([boom]),
       permissions: fakePermissions(),
+      confirm: fakeConfirm(true),
     });
 
     const result = await runtime.execute({ steps: [{ tool: 'boom', args: {} }] });
@@ -112,6 +138,7 @@ describe('createRuntime.execute', () => {
     const runtime = createRuntime({
       registry: fakeRegistry([a, b]),
       permissions: fakePermissions(),
+      confirm: fakeConfirm(true),
     });
 
     expect(runtime.tools()).toEqual([
@@ -127,7 +154,11 @@ describe('createRuntime.execute', () => {
       run: async () => ({ ok: true, output: 'ok' }),
     };
     const perms = recordingPermissions();
-    const runtime = createRuntime({ registry: fakeRegistry([free]), permissions: perms.service });
+    const runtime = createRuntime({
+      registry: fakeRegistry([free]),
+      permissions: perms.service,
+      confirm: fakeConfirm(true),
+    });
 
     const result = await runtime.execute({ steps: [{ tool: 'free', args: {} }] });
 
@@ -149,9 +180,12 @@ describe('createRuntime.execute', () => {
     const runtime = createRuntime({
       registry: fakeRegistry([gated]),
       permissions: fakePermissions({ verdict: 'allowed' }),
+      confirm: fakeConfirm(true),
     });
 
-    const result = await runtime.execute({ steps: [{ tool: 'gated', args: { path: '/repo/a' } }] });
+    const result = await runtime.execute({
+      steps: [{ tool: 'gated', args: { path: '/repo/a' } }],
+    });
 
     expect(ran).toBe(true);
     expect(result.steps[0]!.result).toEqual({ ok: true, output: 'conteúdo' });
@@ -176,6 +210,7 @@ describe('createRuntime.execute', () => {
     const runtime = createRuntime({
       registry: fakeRegistry([gated, after]),
       permissions: fakePermissions({ verdict: 'blocked', reason: 'fora da raiz' }),
+      confirm: fakeConfirm(true),
     });
 
     const result = await runtime.execute({
@@ -188,6 +223,88 @@ describe('createRuntime.execute', () => {
     expect(ran).toBe(false);
     expect(result.steps[0]!.result.ok).toBe(false);
     expect(result.steps[0]!.result.error).toContain('fora da raiz');
+    expect(result.steps[1]!.result.ok).toBe(true);
+  });
+
+  it('bloqueado por política NÃO consulta confirm', async () => {
+    const gated: Tool = {
+      name: 'gated',
+      description: 'x',
+      requirements: () => ({ resource: { type: 'file', path: '/etc/passwd' }, access: 'read' }),
+      run: async () => ({ ok: true, output: 'nunca' }),
+    };
+    const confirm = recordingConfirm(true);
+    const runtime = createRuntime({
+      registry: fakeRegistry([gated]),
+      permissions: fakePermissions({ verdict: 'blocked', reason: 'fora da raiz' }),
+      confirm: confirm.port,
+    });
+
+    await runtime.execute({ steps: [{ tool: 'gated', args: { path: '/etc/passwd' } }] });
+
+    expect(confirm.calls).toBe(0);
+  });
+
+  it('veredicto confirm aprovado: aguarda confirm.request e executa a Tool normalmente', async () => {
+    let ran = false;
+    const destructive: Tool = {
+      name: 'delete_file',
+      description: 'x',
+      requirements: () => ({ resource: { type: 'file', path: '/out/a.txt' }, access: 'delete' }),
+      run: async () => {
+        ran = true;
+        return { ok: true, output: 'removido: /out/a.txt' };
+      },
+    };
+    const confirm = recordingConfirm(true);
+    const runtime = createRuntime({
+      registry: fakeRegistry([destructive]),
+      permissions: fakePermissions({ verdict: 'confirm' }),
+      confirm: confirm.port,
+    });
+
+    const result = await runtime.execute({
+      steps: [{ tool: 'delete_file', args: { path: '/out/a.txt' } }],
+    });
+
+    expect(confirm.calls).toBe(1);
+    expect(ran).toBe(true);
+    expect(result.steps[0]!.result).toEqual({ ok: true, output: 'removido: /out/a.txt' });
+  });
+
+  it('veredicto confirm recusado: ExecutedStep negado (motivo distinto de blocked), Tool não roda, execução continua', async () => {
+    let ran = false;
+    const destructive: Tool = {
+      name: 'delete_file',
+      description: 'x',
+      requirements: () => ({ resource: { type: 'file', path: '/out/a.txt' }, access: 'delete' }),
+      run: async () => {
+        ran = true;
+        return { ok: true, output: 'nunca' };
+      },
+    };
+    const after: Tool = {
+      name: 'after',
+      description: 'x',
+      run: async () => ({ ok: true, output: 'after' }),
+    };
+    const runtime = createRuntime({
+      registry: fakeRegistry([destructive, after]),
+      permissions: fakePermissions({ verdict: 'confirm' }),
+      confirm: fakeConfirm(false),
+    });
+
+    const result = await runtime.execute({
+      steps: [
+        { tool: 'delete_file', args: { path: '/out/a.txt' } },
+        { tool: 'after', args: {} },
+      ],
+    });
+
+    expect(ran).toBe(false);
+    expect(result.steps[0]!.result.ok).toBe(false);
+    expect(result.steps[0]!.result.error).not.toContain('fora');
+    expect(result.steps[0]!.result.error).toContain('cancelada');
     expect(result.steps[1]!.result.ok).toBe(true);
   });
 });
