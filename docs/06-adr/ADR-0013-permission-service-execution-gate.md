@@ -65,3 +65,17 @@ A SPEC-0012 concretizou o `access: 'write'` que esta decisão deixou **reservado
 - **Política de escrita separada, com default `[]`.** Grants de leitura e escrita são independentes (ter leitura não concede escrita). O default vazio significa "não escreve em lugar nenhum" — escrever exige **opt-in explícito** (`--allow-write`/`ATLAS_ALLOW_WRITE`). Isso materializa "não presumir consentimento para ações destrutivas": enquanto o `confirm` interativo não existe como segunda barreira, o consentimento é o gesto deliberado de conceder a raiz.
 - **O Runtime não mudou uma linha.** O portão registrado nesta ADR já era agnóstico ao `access` — transforma qualquer veredicto ≠ `allowed` em `ExecutedStep` negado sem tocar a Tool. A primeira Tool de escrita (`write_file`, via `FsWritePort` injetável) fluiu pelo mesmo caminho da leitura.
 - **`confirm` segue reservado.** O fluxo interativo de confirmação continua fora — é a próxima fatia. Symlink/`realpath` seguem não seguidos (a limitação conhecida vale igual para escrita).
+
+---
+
+# Atualização ([SPEC-0013](../implementation/specs/SPEC-0013-confirm-flow-destructive-tools.md))
+
+A SPEC-0013 concretizou o veredicto `confirm`, reservado desde esta decisão e ainda não produzido pela SPEC-0012:
+
+- **`confirm` passou de reservado a produzido.** `access: 'delete'` dentro de `writeRoots` agora produz `{ verdict: 'confirm' }` (não `allowed` direto) — a mesma contenção lexical fatorada (`within()`) usada por `read`/`write`. Fora de `writeRoots` (ou vazio) segue `blocked`, como as demais rotas.
+- **O Runtime ganhou a única dependência nova desta fatia: `ConfirmPort`.** `createRuntime({ registry, permissions, confirm })` — ao encontrar veredicto `confirm`, aguarda `confirm.request(requirement)` antes de decidir: aprovado executa a Tool normalmente; recusado vira `ExecutedStep` negado com um motivo distinto de "bloqueado" (`'ação cancelada pelo usuário'`), sem rodar a Tool, e a execução **nunca lança** — o mesmo padrão de falha estruturada já usado para `blocked`.
+- **`ConfirmPort` é interno ao Runtime**, no mesmo critério de placement do `FsReadPort`/`FsWritePort` (sem 2º consumidor real, não sobe a `@atlas/contracts`). A implementação real, `nodeReadlineConfirmPort()` sobre `node:readline`, **nunca trava**: `stdin` não-TTY ou que fecha (EOF) antes de uma resposta resolve como recusado.
+- **Três Tools novas exercitam o vocabulário completo.** `delete_file` (`access: 'delete'`, a única desta fatia que apaga dado existente — por isso é a única que pede confirmação) e `mkdir`/`append_file` (`access: 'write'`, não destroem nada, seguem `allowed`/`blocked` como `write_file`).
+- **Nada mudou no Permission Service além da rota nova**: continua puro e síncrono, sem IO — quem faz IO de terminal é o `ConfirmPort`, consultado pelo Runtime, nunca pelo `evaluate`.
+- **`@atlas/cognitive` e a CLI não mudaram.** A pausa é interna a `runtime.execute()`, que `cognitive.ask()` já aguarda — transparente ao resto da orquestração (ADR-0012).
+- Symlink/`realpath` seguem não seguidos (limitação conhecida, vale igual para `delete`); múltiplas raízes e contexto de ambiente seguem fora de escopo.

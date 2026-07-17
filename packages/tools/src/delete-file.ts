@@ -24,7 +24,10 @@ export function createDeleteFileTool(deps: DeleteFileDeps = {}): Tool {
         await fs.deleteFile(path);
         return { ok: true, output: `removido: ${path}` };
       } catch (cause) {
-        return { ok: false, error: `não foi possível remover ${path}: ${(cause as Error).message}` };
+        return {
+          ok: false,
+          error: `não foi possível remover ${path}: ${(cause as Error).message}`,
+        };
       }
     },
   };

@@ -23,9 +23,9 @@ Fluxo interativo `confirm` no Runtime + Tools `delete_file`/`mkdir`/`append_file
 **Status**
 
 - [ ] Draft
-- [x] Ready
+- [ ] Ready
 - [ ] In Progress
-- [ ] Review
+- [x] Review
 - [ ] Done
 
 ---
