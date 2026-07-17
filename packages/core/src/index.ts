@@ -5,7 +5,7 @@ import { createContextService } from '@atlas/context';
 import { createPersonaService } from '@atlas/persona';
 import { createFileMemoryStorage, createMemoryService, type MemoryStorage } from '@atlas/memory';
 import { createPermissionService } from '@atlas/permissions';
-import { createRuntime } from '@atlas/runtime';
+import { createRuntime, nodeReadlineConfirmPort, type ConfirmPort } from '@atlas/runtime';
 import {
   createToolRegistry,
   createClockTool,
@@ -13,6 +13,9 @@ import {
   createReadFileTool,
   createListDirTool,
   createWriteFileTool,
+  createDeleteFileTool,
+  createMkdirTool,
+  createAppendFileTool,
   nodeFsReadPort,
   nodeFsWritePort,
   type FsReadPort,
@@ -30,6 +33,7 @@ export interface CreateAtlasDeps {
   memoryStorage?: MemoryStorage;
   fsRead?: FsReadPort;
   fsWrite?: FsWritePort;
+  confirm?: ConfirmPort;
 }
 
 export async function createAtlas(
@@ -45,6 +49,7 @@ export async function createAtlas(
   const gateway = createModelGateway(config.model, { fetch: deps.fetch ?? globalThis.fetch });
   const fsRead = deps.fsRead ?? nodeFsReadPort();
   const fsWrite = deps.fsWrite ?? nodeFsWritePort();
+  const confirm = deps.confirm ?? nodeReadlineConfirmPort();
   const permissions = createPermissionService({
     readRoots: config.permissions.readRoots,
     writeRoots: config.permissions.writeRoots,
@@ -55,7 +60,10 @@ export async function createAtlas(
   registry.register(createReadFileTool({ fs: fsRead }));
   registry.register(createListDirTool({ fs: fsRead }));
   registry.register(createWriteFileTool({ fs: fsWrite }));
-  const runtime = createRuntime({ registry, permissions });
+  registry.register(createDeleteFileTool({ fs: fsWrite }));
+  registry.register(createMkdirTool({ fs: fsWrite }));
+  registry.register(createAppendFileTool({ fs: fsWrite }));
+  const runtime = createRuntime({ registry, permissions, confirm });
   const cognitive = createCognitiveCore({
     gateway,
     runtime,

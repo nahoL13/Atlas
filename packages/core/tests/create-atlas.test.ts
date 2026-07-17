@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { InvalidConfigError } from '@atlas/contracts';
-import type { Fact } from '@atlas/contracts';
+import type { Fact, Tool } from '@atlas/contracts';
 import type { MemoryStorage } from '@atlas/memory';
 import { createPermissionService } from '@atlas/permissions';
 import { createRuntime } from '@atlas/runtime';
-import { createReadFileTool, createToolRegistry, createWriteFileTool } from '@atlas/tools';
-import type { FsReadPort } from '@atlas/tools';
+import type { ConfirmPort } from '@atlas/runtime';
+import {
+  createDeleteFileTool,
+  createReadFileTool,
+  createToolRegistry,
+  createWriteFileTool,
+} from '@atlas/tools';
+import type { FsReadPort, FsWritePort } from '@atlas/tools';
 import { createAtlas } from '../src/index.js';
 
 function fakeStorage(initial: Fact[] = []): MemoryStorage {
@@ -18,6 +24,20 @@ function fakeStorage(initial: Fact[] = []): MemoryStorage {
       facts = [...next];
     },
   };
+}
+
+function fullFsWrite(overrides: Partial<FsWritePort> = {}): FsWritePort {
+  return {
+    writeFile: async () => {},
+    deleteFile: async () => {},
+    mkdir: async () => {},
+    appendFile: async () => {},
+    ...overrides,
+  };
+}
+
+function fakeConfirm(approved: boolean): ConfirmPort {
+  return { request: async () => approved };
 }
 
 describe('createAtlas', () => {
@@ -144,7 +164,7 @@ describe('createAtlas', () => {
   it('compõe com fsWrite injetado e resolve writeRoots sem erro', async () => {
     const atlas = await createAtlas(
       { config: { model: { provider: 'fake' }, permissions: { writeRoots: ['/out'] } } },
-      { memoryStorage: fakeStorage(), fsWrite: { writeFile: async () => {} } },
+      { memoryStorage: fakeStorage(), fsWrite: fullFsWrite() },
     );
     expect(atlas.config.permissions.writeRoots).toEqual(['/out']);
     await atlas.shutdown();
@@ -162,7 +182,7 @@ describe('createAtlas', () => {
     const permissions = createPermissionService({ readRoots: ['/repo'], writeRoots: [] });
     const registry = createToolRegistry();
     registry.register(createReadFileTool({ fs: fsRead }));
-    const runtime = createRuntime({ registry, permissions });
+    const runtime = createRuntime({ registry, permissions, confirm: fakeConfirm(true) });
 
     const ok = await runtime.execute({
       steps: [{ tool: 'read_file', args: { path: '/repo/README.md' } }],
@@ -178,15 +198,15 @@ describe('createAtlas', () => {
 
   it('write_file escreve dentro da raiz permitida e é bloqueada fora dela, sem tocar o fs', async () => {
     const writes: Array<{ path: string; content: string }> = [];
-    const fsWrite = {
+    const fsWrite = fullFsWrite({
       writeFile: async (path: string, content: string) => {
         writes.push({ path, content });
       },
-    };
+    });
     const permissions = createPermissionService({ readRoots: [], writeRoots: ['/out'] });
     const registry = createToolRegistry();
     registry.register(createWriteFileTool({ fs: fsWrite }));
-    const runtime = createRuntime({ registry, permissions });
+    const runtime = createRuntime({ registry, permissions, confirm: fakeConfirm(true) });
 
     const ok = await runtime.execute({
       steps: [{ tool: 'write_file', args: { path: '/out/a.txt', content: 'olá' } }],
@@ -199,5 +219,59 @@ describe('createAtlas', () => {
     });
     expect(blocked.steps[0]!.result.ok).toBe(false);
     expect(writes).toHaveLength(1);
+  });
+
+  it('compõe o ConfirmPort default no Runtime e aceita CreateAtlasDeps.confirm para testes', async () => {
+    const atlas = await createAtlas(
+      { config: { model: { provider: 'fake' } } },
+      { memoryStorage: fakeStorage(), confirm: fakeConfirm(true) },
+    );
+    expect(atlas.state).toBe('ready');
+    await atlas.shutdown();
+  });
+
+  it('delete_file pede confirmação: aprovado remove, recusado mantém e execução segue', async () => {
+    const deleted: string[] = [];
+    const fsWrite = fullFsWrite({
+      deleteFile: async (path: string) => {
+        deleted.push(path);
+      },
+    });
+    const permissions = createPermissionService({ readRoots: [], writeRoots: ['/out'] });
+    const registry = createToolRegistry();
+    registry.register(createDeleteFileTool({ fs: fsWrite }));
+    const after: Tool = {
+      name: 'after',
+      description: 'x',
+      run: async () => ({ ok: true, output: 'after' }),
+    };
+    registry.register(after);
+
+    const approvedRuntime = createRuntime({
+      registry,
+      permissions,
+      confirm: fakeConfirm(true),
+    });
+    const approvedResult = await approvedRuntime.execute({
+      steps: [{ tool: 'delete_file', args: { path: '/out/a.txt' } }],
+    });
+    expect(approvedResult.steps[0]!.result).toEqual({ ok: true, output: 'removido: /out/a.txt' });
+    expect(deleted).toEqual(['/out/a.txt']);
+
+    const declinedRuntime = createRuntime({
+      registry,
+      permissions,
+      confirm: fakeConfirm(false),
+    });
+    const declinedResult = await declinedRuntime.execute({
+      steps: [
+        { tool: 'delete_file', args: { path: '/out/b.txt' } },
+        { tool: 'after', args: {} },
+      ],
+    });
+    expect(declinedResult.steps[0]!.result.ok).toBe(false);
+    expect(declinedResult.steps[0]!.result.error).toContain('cancelada');
+    expect(declinedResult.steps[1]!.result.ok).toBe(true);
+    expect(deleted).toEqual(['/out/a.txt']);
   });
 });
