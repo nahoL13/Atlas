@@ -14,9 +14,9 @@ export interface ActionRequest {
 }
 
 /**
- * Vocabulário dos 4 do Module Catalog. Nesta fatia o serviço só produz
- * 'allowed'/'blocked'; 'free' = ausência de requirement (o Runtime nem
- * consulta o serviço); 'confirm' é reservado ao fluxo interativo futuro.
+ * Vocabulário dos 4 do Module Catalog. O serviço produz 'allowed'/'blocked'
+ * (read/write) e 'confirm' (delete, SPEC-0013); 'free' = ausência de
+ * requirement (o Runtime nem consulta o serviço).
  */
 export type PermissionVerdict = 'free' | 'allowed' | 'confirm' | 'blocked';
 

@@ -53,6 +53,32 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## [SPEC-0013](specs/SPEC-0013-confirm-flow-destructive-tools.md) — Fluxo `confirm` + Tools destrutivas (2026-07-17)
+
+**Descobrimos que...**
+
+O vocabulário de 4 veredictos do Permission Service, desenhado desde o [ADR-0013](../06-adr/ADR-0013-permission-service-execution-gate.md), levou 3 SPECs (0011 → 0012 → 0013) para entrar inteiramente em uso: `free`/`allowed`/`blocked` já existiam; só agora `confirm` foi produzido de verdade. `ConfirmPort` seguiu o mesmo critério de placement de `FsReadPort`/`FsWritePort` (port interno ao package, sem 2º consumidor real, implementação real por default) mas com uma variação: em vez de um "fake port" inteiro substituindo a implementação real nos testes, o teste do próprio port real (`nodeReadlineConfirmPort`) injeta `input`/`output` (streams fake) para simular TTY/EOF sem tocar `process.stdin` de verdade — porque aqui o "real" é exatamente o que precisa ser testado, ao contrário de `nodeFsReadPort`/`nodeFsWritePort`, cujo real nunca é exercitado diretamente em nenhum teste do projeto.
+
+O atrito de "campo obrigatório novo em `Deps` exige atualizar todos os chamadores na mesma task" (catalogado desde a SPEC-0011, repetido "pela sétima vez" na entrada da SPEC-0012) recorreu **pela oitava vez** com `RuntimeDeps.confirm` — e desta vez o próprio plano (escrito nesta sessão, via `superpowers:writing-plans`) deixou passar uma chamada real: `packages/core/tests/create-atlas.test.ts` tinha **dois** testes chamando `createRuntime({ registry, permissions })` diretamente (um no cenário de `write_file`, outro no de `read_file`), mas o plano só previu atualizar o primeiro. O segundo só quebrou no `tsc`, não no `vitest run` (que transpila via esbuild e não faz checagem de tipo) — o mesmo padrão de "passa verde no teste, falha só no typecheck" já registrado na entrada da SPEC-0012, agora causando um gap real no próprio plano, não apenas uma observação sem consequência.
+
+Esta foi a primeira SPEC a passar pelo fluxo `spec-implementer` → `spec-validator` descrito em `docs/04-engineering/ClaudeCodeAutomation.md` (documento que, até aqui, se descrevia como "ainda não testado em uso real"). Funcionou como desenhado: o `spec-implementer` implementou as 5 tasks do plano com um commit por task, corretamente se absteve de escrever a entrada de Lessons Learned e de marcar `Done` (fora do seu escopo, por definição do próprio agente), e o `spec-validator` pegou exatamente essa ausência como bloqueador de Definition of Done antes da aprovação humana — o gate funcionou como pretendido.
+
+Também descobrimos, antes de chegar ao `spec-implementer`, uma lacuna de processo separada: `CLAUDE.md` e `docs/05-context/NEXT_CONTEXT.md` ainda descreviam o fluxo pré-automação ("execução inline" via `superpowers:executing-plans`) como "processo obrigatório", em conflito direto com `ClaudeCodeAutomation.md` — o que levou a implementação desta SPEC a quase começar pelo fio principal em vez de delegada ao `spec-implementer`. Documentação desatualizada, não ausente: os dois documentos existiam, mas não tinham sido atualizados quando a automação foi introduzida.
+
+**A arquitetura ajudou porque...**
+
+O Runtime absorveu `confirm` sem que `@atlas/cognitive` ou a CLI precisassem mudar uma linha — `ask()` já fazia `await runtime.execute(plan)`, então a pausa interna ficou invisível para quem chama. É a mesma elegância que a SPEC-0012 observou para escrita: um limite bem desenhado absorve capacidade nova sem tocar o coordenador. A rota `delete` no Permission Service reusou a mesma `within()` fatorada desde a SPEC-0012 — nenhuma duplicação de lógica de contenção lexical.
+
+**A arquitetura atrapalhou porque...**
+
+Nada estrutural. O único atrito real foi o já descrito acima (campo obrigatório em `Deps` + `vitest` não pegando erro de tipo) — atrito de processo/tooling, não de desenho do sistema.
+
+**Precisamos mudar...**
+
+Reforçamos em `docs/05-context/NEXT_CONTEXT.md` ("Padrões estabelecidos") duas regras concretas para quebrar a recorrência: (1) ao tornar um campo de `Deps` obrigatório, rodar `grep` pela função construtora em **todo o repo**, não só nos arquivos que o plano lista; (2) um passo de TDD "RED" que depende de erro de *tipo* (não de lógica) deve ser verificado via `pnpm --filter <pkg> typecheck`, nunca assumido a partir de `vitest run` sozinho. Sem ADR novo — não é decisão estrutural, é disciplina de execução (encaminhamento: os dois pontos acima já aplicados em `NEXT_CONTEXT.md`, commit desta mesma sessão). A lacuna de `CLAUDE.md`/`NEXT_CONTEXT.md` desatualizados quanto à automação já foi corrigida separadamente (commit `69bd4d5`, antes da implementação desta SPEC começar) — sem encaminhamento pendente.
+
+---
+
 ## [SPEC-0012](specs/SPEC-0012-write-file-tool.md) — Tool de escrita (`write_file`) + política `writeRoots` (2026-07-16)
 
 **Descobrimos que...**
