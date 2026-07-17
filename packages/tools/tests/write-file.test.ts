@@ -10,6 +10,9 @@ function fakeFs(): { port: FsWritePort; writes: Array<{ path: string; content: s
       writeFile: async (path, content) => {
         writes.push({ path, content });
       },
+      deleteFile: async () => {},
+      mkdir: async () => {},
+      appendFile: async () => {},
     },
   };
 }
@@ -33,7 +36,12 @@ describe('createWriteFileTool', () => {
   });
 
   it('erro quando path não é string não vazia — não chama a porta', async () => {
-    const port = { writeFile: vi.fn() };
+    const port: FsWritePort = {
+      writeFile: vi.fn(),
+      deleteFile: vi.fn(),
+      mkdir: vi.fn(),
+      appendFile: vi.fn(),
+    };
     const tool = createWriteFileTool({ fs: port });
     expect((await tool.run({ content: 'x' })).ok).toBe(false);
     expect((await tool.run({ path: '   ', content: 'x' })).ok).toBe(false);
@@ -41,7 +49,12 @@ describe('createWriteFileTool', () => {
   });
 
   it('erro quando content não é string — não chama a porta', async () => {
-    const port = { writeFile: vi.fn() };
+    const port: FsWritePort = {
+      writeFile: vi.fn(),
+      deleteFile: vi.fn(),
+      mkdir: vi.fn(),
+      appendFile: vi.fn(),
+    };
     const tool = createWriteFileTool({ fs: port });
     expect((await tool.run({ path: '/out/a.txt' })).ok).toBe(false);
     expect((await tool.run({ path: '/out/a.txt', content: 42 })).ok).toBe(false);
@@ -54,6 +67,9 @@ describe('createWriteFileTool', () => {
         writeFile: async () => {
           throw new Error('EACCES: denied');
         },
+        deleteFile: async () => {},
+        mkdir: async () => {},
+        appendFile: async () => {},
       },
     });
     const result = await tool.run({ path: '/out/a.txt', content: 'x' });
