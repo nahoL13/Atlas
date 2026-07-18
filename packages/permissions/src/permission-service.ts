@@ -1,5 +1,10 @@
 import { basename, dirname, join, resolve, sep } from 'node:path';
-import type { ActionRequest, PermissionDecision, PermissionService } from '@atlas/contracts';
+import type {
+  AccessMode,
+  ActionRequest,
+  PermissionDecision,
+  PermissionService,
+} from '@atlas/contracts';
 import { nodePathResolverPort, type PathResolverPort } from './path-resolver-port.js';
 
 export interface PermissionServiceDeps {
@@ -117,6 +122,12 @@ export function createPermissionService(deps: PermissionServiceDeps): Permission
         verdict: 'blocked',
         reason: `acesso "${action.access}" não suportado`,
       };
+    },
+
+    isContained(canonicalPath: string, access: AccessMode): boolean {
+      if (access === 'read') return within(canonicalPath, readRoots);
+      if (access === 'write' || access === 'delete') return within(canonicalPath, writeRoots);
+      return false;
     },
   };
 }

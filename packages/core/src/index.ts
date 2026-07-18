@@ -47,13 +47,14 @@ export async function createAtlas(
   const memory = await createMemoryService({ storage });
   const memoryPrompt = memory.prompt();
   const gateway = createModelGateway(config.model, { fetch: deps.fetch ?? globalThis.fetch });
-  const fsRead = deps.fsRead ?? nodeFsReadPort();
-  const fsWrite = deps.fsWrite ?? nodeFsWritePort();
   const confirm = deps.confirm ?? nodeReadlineConfirmPort();
   const permissions = createPermissionService({
     readRoots: config.permissions.readRoots,
     writeRoots: config.permissions.writeRoots,
   });
+  const verify = permissions.isContained.bind(permissions);
+  const fsRead = deps.fsRead ?? nodeFsReadPort({ verify });
+  const fsWrite = deps.fsWrite ?? nodeFsWritePort({ verify });
   const registry = createToolRegistry();
   registry.register(createClockTool());
   registry.register(createCalcTool());

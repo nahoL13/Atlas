@@ -17,7 +17,7 @@ function fakeRegistry(tools: Tool[]): ToolRegistry {
 }
 
 function fakePermissions(verdict: PermissionDecision = { verdict: 'allowed' }): PermissionService {
-  return { evaluate: () => verdict };
+  return { evaluate: () => verdict, isContained: () => true };
 }
 
 function recordingPermissions(): { service: PermissionService; calls: number } {
@@ -28,6 +28,7 @@ function recordingPermissions(): { service: PermissionService; calls: number } {
         state.calls += 1;
         return { verdict: 'allowed' };
       },
+      isContained: () => true,
     },
     get calls() {
       return state.calls;

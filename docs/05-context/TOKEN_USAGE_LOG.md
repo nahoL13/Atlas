@@ -2,7 +2,7 @@
 
 > **Project Atlas — Log de Custo de Token por SPEC**
 
-Atualizado em: 2026-07-17 (regenerado por `python3 scripts/claude-usage-report.py`)
+Atualizado em: 2026-07-18 (regenerado por `python3 scripts/claude-usage-report.py`)
 
 Este documento existe para responder, antes de começar a implementar uma SPEC, à pergunta: *"cabe numa sessão, ou é melhor esperar a próxima janela?"*. Os totais são derivados automaticamente dos transcripts locais (heurística: sessão é atribuída à SPEC mais citada nela — uma sessão que tocou mais de uma SPEC entra só na dominante). Regenere após encerrar ou retomar trabalho em uma SPEC rodando o script acima; **não edite esta tabela manualmente**.
 
@@ -27,8 +27,9 @@ Este documento existe para responder, antes de começar a implementar uma SPEC, 
 | SPEC-0012 | Primeira Tool de escrita (`write_file`) sob política de raízes de escrita (`writeRoots`), opt-in explícito, sem fluxo interativo | Done | 3 | 2026-07-17 | 86.543.558 | 14.292.483 |
 | SPEC-0013 | Fluxo interativo `confirm` no Runtime + Tools `delete_file`/`mkdir`/`append_file`, restrito a `atlas ask` | Done | 5 | 2026-07-17 | 130.998.448 | 19.844.227 |
 | SPEC-0014 | Tools e fluxo `confirm` no `atlas chat`: cada turno pode planejar e executar Tools, mantendo histórico multi-turno | Done | 1 | 2026-07-17 | 27.117.382 | 4.326.745 |
-| SPEC-0015 | Contenção resolvida por `realpath` no Permission Service: fecha o escape por symlink dentro de uma raiz permitida (limitação conhecida do ADR-0013), mantendo `evaluate` puro e síncrono | Done | 3 | 2026-07-18 | 22.400.305 | 5.036.225 |
-| SPEC-0016 | Remote (GitHub) + CI básico — primeira infraestrutura de desenvolvimento: publica o repositório (hoje só local) num remote privado no GitHub e valida `lint`/`typecheck`/`test`/`format:check` a cada push/PR. | Review | 2 | 2026-07-18 | 20.974.301 | 4.819.596 |
+| SPEC-0015 | Contenção resolvida por `realpath` no Permission Service: fecha o escape por symlink dentro de uma raiz permitida (limitação conhecida do ADR-0013), mantendo `evaluate` puro e síncrono | Done | 3 | 2026-07-18 | 23.508.291 | 5.584.322 |
+| SPEC-0016 | Remote (GitHub) + CI básico — primeira infraestrutura de desenvolvimento: publica o repositório (hoje só local) num remote privado no GitHub e valida `lint`/`typecheck`/`test`/`format:check` a cada push/PR. | Done | 2 | 2026-07-18 | 27.723.632 | 5.753.140 |
+| SPEC-0017 | Fecho atômico da janela TOCTOU em `read_file`/`write_file`/`append_file`: as portas de IO abrem o fd com `O_NOFOLLOW`, ancoram na identidade do fd (`fstat` × `stat` do `realpath`) e aplicam sobre o handle real um veredicto de contenção do Permission Service (método novo, puro/síncrono), mantendo `evaluate` intacto como pré-check e o Runtime inalterado | Done | 1 | 2026-07-18 | 29.127.126 | 5.844.569 |
 
 ## Detalhamento por fase
 
@@ -49,12 +50,13 @@ Fase = qual agente fez o trabalho: **Criação/Decisão** é tudo que roda no fi
 | SPEC-0012 | 14.292.483 | 0 | 0 | 0 |
 | SPEC-0013 | 15.651.542 | 3.026.716 | 694.252 | 471.717 |
 | SPEC-0014 | 1.375.432 | 2.502.843 | 448.470 | 0 |
-| SPEC-0015 | 3.163.147 | 1.041.596 | 831.482 | 0 |
-| SPEC-0016 | 3.160.286 | 221.879 | 281.154 | 1.156.277 |
+| SPEC-0015 | 3.163.147 | 1.041.596 | 831.482 | 548.097 |
+| SPEC-0016 | 4.093.830 | 221.879 | 281.154 | 1.156.277 |
+| SPEC-0017 | 3.101.759 | 2.195.810 | 547.000 | 0 |
 
 ## Como estimar antes de começar uma SPEC nova
 
-- SPECs concluídas (`Done`) até agora: 14. Custo médio: **11.488.891 tokens efetivos**. Faixa observada: 3.308.128 – 35.026.030 tokens efetivos.
+- SPECs concluídas (`Done`) até agora: 16. Custo médio: **10.811.893 tokens efetivos**. Faixa observada: 3.308.128 – 35.026.030 tokens efetivos.
 
 - Compare a SPEC que você está prestes a começar com as mais parecidas em tamanho na tabela acima (número de itens em "Escopo"/"Critérios de Aceitação", quantidade de "Arquivos Esperados"). Uma SPEC do porte de uma linha já concluída tende a custar perto do que ela custou.
 - Se o consumo já acumulado na sessão atual (rode o relatório detalhado, `.claude/usage-report.md`) mais a estimativa da próxima SPEC passar perto do seu limite de janela, prefira parar num ponto de commit limpo e retomar na próxima sessão em vez de começar e arriscar cortar a implementação pela metade.

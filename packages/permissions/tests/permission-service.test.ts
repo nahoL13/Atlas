@@ -371,3 +371,65 @@ describe('resolução do ancestral existente (algoritmo interno, via fake)', () 
     expect(service.evaluate(read('/work/a/b/c/d.txt')).verdict).toBe('allowed');
   });
 });
+
+describe('isContained — método novo (SPEC-0017/ADR-0014), puro/síncrono sobre caminho canônico', () => {
+  it('julga um caminho já canônico contido em readRoots como true para access "read"', () => {
+    const { resolver } = createFakeResolver({ real: { '/work/repo': '/work/repo' } });
+    const service = createPermissionService({
+      readRoots: ['/work/repo'],
+      writeRoots: [],
+      pathResolver: resolver,
+    });
+    expect(service.isContained('/work/repo/a.txt', 'read')).toBe(true);
+  });
+
+  it('julga um caminho já canônico fora de readRoots como false para access "read"', () => {
+    const { resolver } = createFakeResolver({ real: { '/work/repo': '/work/repo' } });
+    const service = createPermissionService({
+      readRoots: ['/work/repo'],
+      writeRoots: [],
+      pathResolver: resolver,
+    });
+    expect(service.isContained('/etc/passwd', 'read')).toBe(false);
+  });
+
+  it('roteia "write" e "delete" contra writeRoots, independente de readRoots', () => {
+    const { resolver } = createFakeResolver({
+      real: { '/out': '/out', '/work/repo': '/work/repo' },
+    });
+    const service = createPermissionService({
+      readRoots: ['/work/repo'],
+      writeRoots: ['/out'],
+      pathResolver: resolver,
+    });
+    expect(service.isContained('/out/a.txt', 'write')).toBe(true);
+    expect(service.isContained('/out/a.txt', 'delete')).toBe(true);
+    expect(service.isContained('/work/repo/a.txt', 'write')).toBe(false);
+    expect(service.isContained('/work/repo/a.txt', 'read')).toBe(true);
+  });
+
+  it('não faz IO nem re-resolve caminho: o resolver injetado não é chamado por isContained', () => {
+    const { resolver, calls } = createFakeResolver({ real: { '/work/repo': '/work/repo' } });
+    const service = createPermissionService({
+      readRoots: ['/work/repo'],
+      writeRoots: [],
+      pathResolver: resolver,
+    });
+    const callsBefore = calls.length;
+    service.isContained('/work/repo/a.txt', 'read');
+    service.isContained('/etc/passwd', 'read');
+    expect(calls.length).toBe(callsBefore);
+  });
+
+  it('permanece síncrono: devolve boolean diretamente, não Promise', () => {
+    const { resolver } = createFakeResolver({ real: { '/work/repo': '/work/repo' } });
+    const service = createPermissionService({
+      readRoots: ['/work/repo'],
+      writeRoots: [],
+      pathResolver: resolver,
+    });
+    const result = service.isContained('/work/repo/a.txt', 'read');
+    expect(result).not.toBeInstanceOf(Promise);
+    expect(typeof result).toBe('boolean');
+  });
+});

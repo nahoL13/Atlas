@@ -66,7 +66,7 @@ A priorização fina — qual SPEC vem agora — continua sendo decidida sessão
 
 Continuação direta das SPECs 0010–0015 — itens menores, mais próximos de "pronto":
 
-- `gate · SPEC direta` — TOCTOU no Permission Service (symlink trocado entre `evaluate` e o uso real pela Tool).
+- `gate · ADR primeiro` — TOCTOU no Permission Service (symlink trocado entre `evaluate` e o uso real pela Tool) — reclassificado de `SPEC direta` para `ADR primeiro` ao desenhar a solução: o fecho atômico revisita a fronteira estrutural do ADR-0013 (decisão pura antes da execução × enforcement no instante do uso). Decisão registrada no [ADR-0014](../06-adr/ADR-0014-toctou-atomic-enforcement.md); implementado pela [SPEC-0017](../implementation/specs/SPEC-0017-toctou-atomic-enforcement.md) (`read_file`/`write_file`/`append_file`; `delete_file`/`mkdir`/`list_dir` e troca de ancestral seguem residuais documentados, candidatos futuros).
 - `gate · SPEC direta` — Múltiplas raízes de leitura/escrita por invocação (hoje `readRoots`/`writeRoots` são avaliadas como conjunto único).
 - `candidato · SPEC direta` — `rmdir` / remoção recursiva de diretório (hoje `delete_file` só remove arquivo único).
 - `candidato · SPEC direta` — Flag de auto-aprovação não interativa de `confirm` (ex.: `--confirm-destructive`), para uso em automação/scripts.

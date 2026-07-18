@@ -53,6 +53,30 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## [SPEC-0017](specs/SPEC-0017-toctou-atomic-enforcement.md) — Fecho atômico de TOCTOU (2026-07-18)
+
+**Descobrimos que...**
+
+O item saiu do brainstorming com a marcação do Roadmap **contradita pelo próprio desenho**: 1.1 TOCTOU estava como `gate · SPEC direta`, mas fechar a janela de forma **atômica** (o check e o uso compartilharem o mesmo file handle) move parte da fronteira de segurança do pré-check puro para o instante do uso — o que revisita a decisão estrutural do [ADR-0013](../06-adr/ADR-0013-permission-service-execution-gate.md). Logo virou `ADR primeiro`, com o [ADR-0014](../06-adr/ADR-0014-toctou-atomic-enforcement.md) escrito **antes** da SPEC. As marcações `SPEC direta`/`ADR primeiro` do Roadmap são, portanto, provisórias: só sobrevivem ao contato com o desenho da solução, e é no brainstorming que se confirma qual das duas o item realmente é.
+
+O atrito recorrente de "membro obrigatório novo exige tocar todos os chamadores" (visto em 0011→0016, sempre resolvido com `grep` pelo nome da **função construtora** — `createRuntime(`, `createPermissionService(`) **apareceu numa variante que o grep-por-construtor não pega**: adicionar `isContained` à **interface** `PermissionService` quebrou o `typecheck` em `packages/runtime/tests/runtime.test.ts`, onde dois fakes locais implementam o tipo diretamente (não via factory). A busca certa aqui era `git grep 'PermissionService'` (o **nome do tipo**), não o nome do construtor — porque o consumidor é um implementador-de-tipo, não um call-site de fábrica. E, como já registrado antes, o `vitest run` não pega isso: só `pnpm typecheck` revelou a quebra (esbuild remove tipos).
+
+A decisão de dar ao `verify` das portas default um **default permissivo (`() => true`)** — para não tocar os call-sites zero-arg de `mkdir.ts`/`delete-file.ts`/`list-dir.ts` (que a SPEC exige não mudar) — cria um residual real e sutil: um consumidor que chame `nodeFsReadPort()`/`nodeFsWritePort()` **fora** de `createAtlas`, sem injetar `verify`, herda `O_NOFOLLOW` + ancoragem de identidade mas **não** o veredicto de contenção. Só `@atlas/core` (`createAtlas`) fia o predicado real, então em produção o fecho está ativo; mas a segurança-por-default não é "fail-closed" para consumidores futuros da porta crua.
+
+**A arquitetura ajudou porque...**
+
+O padrão de **porta injetável** provou-se genérico pela enésima vez: o fecho atômico coube numa nova porta interna `FsPrimitivesPort` (`open`/`realpath`/`stat`, default sobre `node:fs/promises`, fake nos testes) — mesmo critério de placement de `FsReadPort`/`FsWritePort`/`PathResolverPort` (sem 2º consumidor real → não sobe a `@atlas/contracts`) — e permitiu simular symlink-no-último-hop (`open` lança `ELOOP`) e troca de identidade (`fstat`×`stat` divergentes) **sem corrida real no disco**. Como na SPEC-0015, não foi preciso tornar `evaluate` assíncrono nem tocar uma linha do Runtime: a atomicidade morou onde o handle existe (a porta), e a autoridade de contenção ficou inteira no Permission Service via um predicado estreito injetado (`verify(realpath, access)`), preservando a Regra 5 (`@atlas/tools` não importa `@atlas/permissions`). A separação "Tool descreve / Permission Service julga / Runtime aplica" do ADR-0013 absorveu a segunda barreira sem reabrir o contrato além do único método novo.
+
+**A arquitetura atrapalhou porque...**
+
+nada a registrar — o desenho comportou a mudança sem forçar concessão estrutural. Os atritos foram de tipagem (fake implementando a interface) e de segurança-por-default (o `verify` permissivo), não de limite de módulo.
+
+**Precisamos mudar...**
+
+O guia de "campo/membro obrigatório novo → `grep` por construtor em todo o repo", hoje afirmado no `NEXT_CONTEXT.md` (Padrões estabelecidos), precisa cobrir também o caso **membro novo numa interface de contrato**: a busca deve ser pelo **nome do tipo** (`git grep '<Interface>'`), para achar fakes/implementações diretas em testes, não só os call-sites de fábrica — encaminhamento: `doc-sync` desta SPEC amplia essa nota no `NEXT_CONTEXT.md`. O residual do `verify` permissivo (porta crua fora do `createAtlas` sem contenção) fica documentado no código (`NodeFsPortDeps.verify`) e no `packages/core/CLAUDE.md`, e é candidato a endurecimento futuro (tornar `verify` obrigatório, ou o default fail-closed) — encaminhamento: item candidato registrado no `NEXT_CONTEXT.md` (Fase 1.1 hardening), não bloqueia esta fatia. Os residuais de escopo do próprio ADR-0014 (`delete_file`/`mkdir`/`list_dir` sem fecho atômico; troca de diretório **ancestral**, que Node sem `openat` não fecha; Windows sem `O_NOFOLLOW`) seguem abertos com dono claro — encaminhamento: já documentados no ADR-0014 e nos `CLAUDE.md`, candidatos a fatias futuras da Fase 1.1, não reabrem o critério de gate desta.
+
+---
+
 ## [SPEC-0016](specs/SPEC-0016-remote-and-ci.md) — Remote (GitHub) + CI (2026-07-18)
 
 **Descobrimos que...**
