@@ -40,8 +40,12 @@ Options:
       --data-dir <p>   Sobrepõe o diretório de dados
       --persona <id>   Persona ativa (jarvis|neutral)
       --memory-path <p> Caminho do arquivo de memória
-      --allow-read <p> Diretório permitido para leitura (default: cwd)
-      --allow-write <p> Diretório permitido para escrita (default: nenhum)
+      --allow-read <p> Diretório permitido para leitura (repetível; default: cwd).
+                       ATLAS_ALLOW_READ aceita lista separada por
+                       path.delimiter do SO (":" no POSIX, ";" no Windows)
+      --allow-write <p> Diretório permitido para escrita (repetível; default: nenhum).
+                       ATLAS_ALLOW_WRITE aceita lista separada por
+                       path.delimiter do SO (":" no POSIX, ";" no Windows)
       --provider <p>   Provedor de modelo (local|remote|fake)
       --model <m>      Nome do modelo
       --base-url <u>   Base URL do provedor de modelo

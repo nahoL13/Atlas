@@ -67,7 +67,7 @@ A priorização fina — qual SPEC vem agora — continua sendo decidida sessão
 Continuação direta das SPECs 0010–0015 — itens menores, mais próximos de "pronto":
 
 - `gate · ADR primeiro` — TOCTOU no Permission Service (symlink trocado entre `evaluate` e o uso real pela Tool) — reclassificado de `SPEC direta` para `ADR primeiro` ao desenhar a solução: o fecho atômico revisita a fronteira estrutural do ADR-0013 (decisão pura antes da execução × enforcement no instante do uso). Decisão registrada no [ADR-0014](../06-adr/ADR-0014-toctou-atomic-enforcement.md); implementado pela [SPEC-0017](../implementation/specs/SPEC-0017-toctou-atomic-enforcement.md) (`read_file`/`write_file`/`append_file`; `delete_file`/`mkdir`/`list_dir` e troca de ancestral seguem residuais documentados, candidatos futuros).
-- `gate · SPEC direta` — Múltiplas raízes de leitura/escrita por invocação (hoje `readRoots`/`writeRoots` são avaliadas como conjunto único).
+- ✅ `gate · SPEC direta` — Múltiplas raízes de leitura/escrita — **entregue pela [SPEC-0018](../implementation/specs/SPEC-0018-multiple-permission-roots-cli.md)**. Nota de precisão: o núcleo (`@atlas/permissions`, `load-config`, contracts/runtime/tools) já avaliava listas desde as SPECs 0011–0012 (`within` = `roots.some(...)`); o gate era só a **borda de entrada da CLI** aceitar mais de uma raiz. Agora `--allow-read`/`--allow-write` são flags repetíveis e `ATLAS_ALLOW_READ`/`ATLAS_ALLOW_WRITE` aceitam lista por `path.delimiter`.
 - `candidato · SPEC direta` — `rmdir` / remoção recursiva de diretório (hoje `delete_file` só remove arquivo único).
 - `candidato · SPEC direta` — Flag de auto-aprovação não interativa de `confirm` (ex.: `--confirm-destructive`), para uso em automação/scripts.
 - `candidato · ADR primeiro` — Dependência de dados entre passos do plano (revisita a decisão de passos independentes do ADR-0012).
@@ -117,7 +117,7 @@ O empacotamento/distribuição da CLI permanece na Fase 3 — aqui entra só o q
 A Fase 1 é considerada completa quando todos os itens marcados **`gate`** estiverem entregues:
 
 - O Cognitive Lifecycle está implementado nas sete etapas (Compreensão → Raciocínio → Planejamento → Execução → **Observação** → **Aprendizado** → Resposta) — hoje faltam as duas em negrito (gates de 1.2).
-- As limitações de segurança marcadas como gate em 1.1 estão fechadas (TOCTOU e múltiplas raízes). Limitações novas descobertas depois entram como itens novos com sua própria marcação — este critério cobre a lista atual, não é aberto.
+- ✅ As limitações de segurança marcadas como gate em 1.1 estão fechadas (TOCTOU — [SPEC-0017](../implementation/specs/SPEC-0017-toctou-atomic-enforcement.md) — e múltiplas raízes — [SPEC-0018](../implementation/specs/SPEC-0018-multiple-permission-roots-cli.md)). Limitações novas descobertas depois entram como itens novos com sua própria marcação — este critério cobre a lista atual, não é aberto.
 - Skills existem como conceito implementado, não só documentado (gate de 1.4).
 - A Memory Service cobre mais de uma categoria de conhecimento, não só fatos explícitos (gate de 1.3).
 - Os contratos centrais (`@atlas/contracts`) estão estáveis o suficiente para que uma segunda interface (Fase 2) possa consumi-los sem esperar mudanças estruturais frequentes.

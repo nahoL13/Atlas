@@ -1,4 +1,6 @@
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { loadConfig } from '@atlas/core';
 import { createCliInputGateway, CliUsageError } from '../src/gateway/input-gateway.js';
 
 const gw = createCliInputGateway();
@@ -137,5 +139,124 @@ describe('CliInputGateway.normalize', () => {
     const gateway = createCliInputGateway();
     const parsed = gateway.normalize(['status'], {} as NodeJS.ProcessEnv);
     expect(parsed.configOverride.permissions).toBeUndefined();
+  });
+
+  it('--allow-read repetido produz múltiplas readRoots, em ordem', () => {
+    const gateway = createCliInputGateway();
+    const parsed = gateway.normalize(
+      ['status', '--allow-read', 'a', '--allow-read', 'b'],
+      {} as NodeJS.ProcessEnv,
+    );
+    expect(parsed.configOverride.permissions).toEqual({ readRoots: ['a', 'b'] });
+  });
+
+  it('--allow-write repetido produz múltiplas writeRoots, em ordem', () => {
+    const gateway = createCliInputGateway();
+    const parsed = gateway.normalize(
+      ['status', '--allow-write', 'a', '--allow-write', 'b'],
+      {} as NodeJS.ProcessEnv,
+    );
+    expect(parsed.configOverride.permissions).toEqual({ writeRoots: ['a', 'b'] });
+  });
+
+  it('ATLAS_ALLOW_READ com path.delimiter produz múltiplas readRoots', () => {
+    const gateway = createCliInputGateway();
+    const parsed = gateway.normalize(['status'], {
+      ATLAS_ALLOW_READ: `a${path.delimiter}b`,
+    } as NodeJS.ProcessEnv);
+    expect(parsed.configOverride.permissions).toEqual({ readRoots: ['a', 'b'] });
+  });
+
+  it('ATLAS_ALLOW_WRITE com path.delimiter produz múltiplas writeRoots', () => {
+    const gateway = createCliInputGateway();
+    const parsed = gateway.normalize(['status'], {
+      ATLAS_ALLOW_WRITE: `a${path.delimiter}b`,
+    } as NodeJS.ProcessEnv);
+    expect(parsed.configOverride.permissions).toEqual({ writeRoots: ['a', 'b'] });
+  });
+
+  it('flag --allow-read presente substitui por inteiro a env (sem merge)', () => {
+    const gateway = createCliInputGateway();
+    const parsed = gateway.normalize(['status', '--allow-read', 'x'], {
+      ATLAS_ALLOW_READ: `y${path.delimiter}z`,
+    } as NodeJS.ProcessEnv);
+    expect(parsed.configOverride.permissions).toEqual({ readRoots: ['x'] });
+  });
+
+  it('flag --allow-write presente substitui por inteiro a env (sem merge)', () => {
+    const gateway = createCliInputGateway();
+    const parsed = gateway.normalize(['status', '--allow-write', 'x'], {
+      ATLAS_ALLOW_WRITE: `y${path.delimiter}z`,
+    } as NodeJS.ProcessEnv);
+    expect(parsed.configOverride.permissions).toEqual({ writeRoots: ['x'] });
+  });
+
+  it('ATLAS_ALLOW_READ filtra segmento vazio à direita do delimitador', () => {
+    const gateway = createCliInputGateway();
+    const parsed = gateway.normalize(['status'], {
+      ATLAS_ALLOW_READ: `a${path.delimiter}`,
+    } as NodeJS.ProcessEnv);
+    expect(parsed.configOverride.permissions).toEqual({ readRoots: ['a'] });
+  });
+
+  it('ATLAS_ALLOW_READ aplica trim em cada segmento', () => {
+    const gateway = createCliInputGateway();
+    const parsed = gateway.normalize(['status'], {
+      ATLAS_ALLOW_READ: ` a ${path.delimiter} b `,
+    } as NodeJS.ProcessEnv);
+    expect(parsed.configOverride.permissions).toEqual({ readRoots: ['a', 'b'] });
+  });
+
+  it('ATLAS_ALLOW_READ vazia não define readRoots (cai no default)', () => {
+    const gateway = createCliInputGateway();
+    const parsed = gateway.normalize(['status'], {
+      ATLAS_ALLOW_READ: '',
+    } as NodeJS.ProcessEnv);
+    expect(parsed.configOverride.permissions).toBeUndefined();
+  });
+
+  it('ATLAS_ALLOW_READ só com o delimitador não define readRoots (cai no default)', () => {
+    const gateway = createCliInputGateway();
+    const parsed = gateway.normalize(['status'], {
+      ATLAS_ALLOW_READ: path.delimiter,
+    } as NodeJS.ProcessEnv);
+    expect(parsed.configOverride.permissions).toBeUndefined();
+  });
+
+  it('ATLAS_ALLOW_WRITE vazia não define writeRoots (cai no default)', () => {
+    const gateway = createCliInputGateway();
+    const parsed = gateway.normalize(['status'], {
+      ATLAS_ALLOW_WRITE: '',
+    } as NodeJS.ProcessEnv);
+    expect(parsed.configOverride.permissions).toBeUndefined();
+  });
+
+  it('ATLAS_ALLOW_WRITE só com o delimitador não define writeRoots (cai no default)', () => {
+    const gateway = createCliInputGateway();
+    const parsed = gateway.normalize(['status'], {
+      ATLAS_ALLOW_WRITE: path.delimiter,
+    } as NodeJS.ProcessEnv);
+    expect(parsed.configOverride.permissions).toBeUndefined();
+  });
+
+  it('override com múltiplas raízes de read e write passa intacto pelo loadConfig do core', () => {
+    const gateway = createCliInputGateway();
+    const parsed = gateway.normalize(
+      [
+        'status',
+        '--allow-read',
+        '/a',
+        '--allow-read',
+        '/b',
+        '--allow-write',
+        '/c',
+        '--allow-write',
+        '/d',
+      ],
+      {} as NodeJS.ProcessEnv,
+    );
+    const config = loadConfig(parsed.configOverride);
+    expect(config.permissions.readRoots).toEqual(['/a', '/b']);
+    expect(config.permissions.writeRoots).toEqual(['/c', '/d']);
   });
 });

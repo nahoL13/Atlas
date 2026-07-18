@@ -53,6 +53,30 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## [SPEC-0018](specs/SPEC-0018-multiple-permission-roots-cli.md) — Múltiplas raízes de leitura/escrita na CLI (2026-07-18)
+
+**Descobrimos que...**
+
+o gate do Roadmap ("Múltiplas raízes de leitura/escrita por invocação", item 1.1, texto _"hoje `readRoots`/`writeRoots` são avaliadas como conjunto único"_) estava **factualmente errado sobre o próprio código**: a investigação no brainstorming mostrou que o núcleo já suportava múltiplas raízes desde que foram escritas — `within(target, roots)` em `packages/permissions` sempre foi `roots.some(...)`, `load-config.ts` sempre validou **listas**, e `evaluate`/`isContained`/contracts/runtime/tools/`status.ts` já operavam sobre arrays. O único afunilamento vivia na **borda de entrada da CLI** (`input-gateway.ts` lia `--allow-read`/`ATLAS_ALLOW_READ` como string única e embrulhava em `[valor]`). A capacidade já existia latente; faltava só expô-la. Resultado: a fatia fechou o gate tocando **três arquivos** (`input-gateway.ts`, `run.ts`, teste), **zero linha** em qualquer package — a SPEC mais barata desde a fundação.
+
+Isto é a **recorrência, em sentido inverso, da lição da [SPEC-0017](specs/SPEC-0017-toctou-atomic-enforcement.md)**: lá a marcação `SPEC direta` do Roadmap virou `ADR primeiro` ao contato com o desenho (o item era maior do que parecia); aqui a marcação `gate · SPEC direta` continuou `SPEC direta` mas o item revelou-se **muito menor** do que o texto do Roadmap sugeria. Confirma que as descrições e marcações do Roadmap são hipóteses a validar no brainstorming/leitura de código, não fatos — e que ler o código-alvo **antes** de dimensionar a SPEC muda materialmente o escopo (evitou desenhar mudança em `@atlas/permissions` que teria sido inteiramente supérflua).
+
+O atrito recorrente "membro/campo obrigatório novo exige tocar chamadores" **não apareceu** — porque não houve membro novo em nenhuma interface nem `Deps`. A mudança de tipo (`CliValues['allow-read']` de `string` para `string[] | undefined` via `multiple: true`) ficou contida no próprio `input-gateway.ts`, e o `pnpm typecheck` (não o `vitest run`, como já sabido) confirmou que nada mais consumia esse tipo.
+
+**A arquitetura ajudou porque...**
+
+a separação de camadas do [ADR-0006](../06-adr/ADR-0006-config-source-precedence.md) (Input Gateway **coleta** valores crus → core **valida** → Permission Service **julga**) confinou a mudança inteiramente na coleta. Como a validação e o julgamento já falavam "lista", expor múltiplas raízes foi só remover o embrulho-de-um-elemento na borda. O modelo de precedência `flags > env > defaults` absorveu "lista substitui lista" sem reabrir nada — a substituição por-fonte já era a semântica; só passou de string para array. A biblioteca padrão cobriu o resto: `parseArgs` com `multiple: true` produziu o array direto, e `path.delimiter` deu o split de env portátil sem inventar formato. E `status.ts`, que já fazia `readRoots.join(', ')`, exibiu múltiplas raízes sem uma linha de mudança — sinal de que a abstração de lista já estava certa ponta a ponta.
+
+**A arquitetura atrapalhou porque...**
+
+nada a registrar — o desenho não ofereceu nenhuma resistência; ao contrário, a fatia foi um teste de que os limites escolhidos nas SPECs 0011–0017 já estavam no lugar certo (a capacidade "cair" pronta ao expor a borda é a evidência).
+
+**Precisamos mudar...**
+
+o texto do item 1.1 no [Roadmap](../04-engineering/Roadmap.md) (_"hoje `readRoots`/`writeRoots` são avaliadas como conjunto único"_) está impreciso e deve ser corrigido/marcado como entregue, deixando explícito que o núcleo já operava sobre listas e que o gate era de **borda de entrada** — encaminhamento: `doc-sync` desta SPEC atualiza o Roadmap (item 1.1 + nota no critério de conclusão da Fase 1, linha 120: ambos os gates de segurança do 1.1 — TOCTOU e múltiplas raízes — agora fechados) e o `NEXT_CONTEXT.md`. Nenhuma mudança estrutural pendente (sem ADR): a fatia não revisitou nenhuma fronteira. Os itens deliberadamente fora de escopo (remoção seletiva de raiz por flag, globs/wildcards, expansão de `~`, config por arquivo do slot `arquivo` do ADR-0006) seguem como candidatos sem dono novo — encaminhamento: já anotados na seção Fora de Escopo da própria SPEC e nas candidatas do `NEXT_CONTEXT.md`, não reabrem gate.
+
+---
+
 ## [SPEC-0017](specs/SPEC-0017-toctou-atomic-enforcement.md) — Fecho atômico de TOCTOU (2026-07-18)
 
 **Descobrimos que...**

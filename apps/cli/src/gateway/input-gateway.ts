@@ -1,4 +1,5 @@
 import { parseArgs } from 'node:util';
+import path from 'node:path';
 import type {
   AtlasConfigOverride,
   LogLevel,
@@ -30,12 +31,40 @@ interface CliValues {
   'data-dir'?: string | undefined;
   persona?: string | undefined;
   'memory-path'?: string | undefined;
-  'allow-read'?: string | undefined;
-  'allow-write'?: string | undefined;
+  'allow-read'?: string[] | undefined;
+  'allow-write'?: string[] | undefined;
   provider?: string | undefined;
   model?: string | undefined;
   'base-url'?: string | undefined;
   'api-key'?: string | undefined;
+}
+
+function filterNonEmpty(segments: readonly string[]): string[] {
+  return segments.map((segment) => segment.trim()).filter((segment) => segment.length > 0);
+}
+
+/**
+ * Resolve a lista final de raízes (read ou write) a partir da env (string
+ * separada por `path.delimiter`) e da flag repetível (`string[]`), aplicando
+ * a precedência `flag > env` por **substituição** (nunca merge) e tratando o
+ * colapso de qualquer fonte para uma lista vazia como "não fornecida".
+ */
+function resolveRootList(
+  envValue: string | undefined,
+  flagValue: string[] | undefined,
+): string[] | undefined {
+  const fromFlag = flagValue !== undefined ? filterNonEmpty(flagValue) : undefined;
+  if (fromFlag !== undefined && fromFlag.length > 0) {
+    return fromFlag;
+  }
+
+  const fromEnv =
+    envValue !== undefined ? filterNonEmpty(envValue.split(path.delimiter)) : undefined;
+  if (fromEnv !== undefined && fromEnv.length > 0) {
+    return fromEnv;
+  }
+
+  return undefined;
 }
 
 function resolveConfigOverride(values: CliValues, env: NodeJS.ProcessEnv): AtlasConfigOverride {
@@ -74,27 +103,15 @@ function resolveConfigOverride(values: CliValues, env: NodeJS.ProcessEnv): Atlas
     override.memory = { path: memoryPath };
   }
 
-  let readRoot: string | undefined;
-  if (env.ATLAS_ALLOW_READ !== undefined) {
-    readRoot = env.ATLAS_ALLOW_READ;
-  }
-  if (values['allow-read'] !== undefined) {
-    readRoot = values['allow-read'];
-  }
-  let writeRoot: string | undefined;
-  if (env.ATLAS_ALLOW_WRITE !== undefined) {
-    writeRoot = env.ATLAS_ALLOW_WRITE;
-  }
-  if (values['allow-write'] !== undefined) {
-    writeRoot = values['allow-write'];
-  }
-  if (readRoot !== undefined || writeRoot !== undefined) {
+  const readRoots = resolveRootList(env.ATLAS_ALLOW_READ, values['allow-read']);
+  const writeRoots = resolveRootList(env.ATLAS_ALLOW_WRITE, values['allow-write']);
+  if (readRoots !== undefined || writeRoots !== undefined) {
     const permissions: { readRoots?: readonly string[]; writeRoots?: readonly string[] } = {};
-    if (readRoot !== undefined) {
-      permissions.readRoots = [readRoot];
+    if (readRoots !== undefined) {
+      permissions.readRoots = readRoots;
     }
-    if (writeRoot !== undefined) {
-      permissions.writeRoots = [writeRoot];
+    if (writeRoots !== undefined) {
+      permissions.writeRoots = writeRoots;
     }
     override.permissions = permissions;
   }
@@ -146,8 +163,8 @@ function parseArgvOrThrow(argv: string[]) {
         'data-dir': { type: 'string' },
         persona: { type: 'string' },
         'memory-path': { type: 'string' },
-        'allow-read': { type: 'string' },
-        'allow-write': { type: 'string' },
+        'allow-read': { type: 'string', multiple: true },
+        'allow-write': { type: 'string', multiple: true },
         provider: { type: 'string' },
         model: { type: 'string' },
         'base-url': { type: 'string' },
