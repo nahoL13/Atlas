@@ -53,6 +53,32 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## [SPEC-0016](specs/SPEC-0016-remote-and-ci.md) — Remote (GitHub) + CI (2026-07-18)
+
+**Descobrimos que...**
+
+O critério "CI verde" tem uma forma de verificação **diferente de toda SPEC anterior**: não se confirma rodando comandos localmente, só **observando um run real** no GitHub Actions. A própria SPEC previu isso e escreveu os Critérios de Aceitação em cima de `gh run view ... conclusion: success` — e foi providencial, porque o **primeiro run real falhou** por um motivo que a verificação local jamais pegaria: `actions/setup-node` com `cache: pnpm` precisa do binário `pnpm` já no PATH no momento em que roda, mas o workflow tinha `corepack enable` **depois** do `setup-node` → `Unable to locate executable file: pnpm`. O loop observar → corrigir → observar viveu no **fio principal**, não no `spec-implementer`: o subagent fez o trabalho local e o commit, mas não tem como enxergar/iterar sobre um run remoto — a natureza "só verificável no remoto" desta SPEC empurrou o fechamento para o fio principal por desenho, não por acaso.
+
+A correção trocou "pnpm via corepack" (a convenção de dev local, repetida em `CLAUDE.md`, no `NEXT_CONTEXT.md` e na própria SPEC) por `pnpm/action-setup@v4` pinado em `11.11.0` **antes** do `setup-node` — o padrão documentado do próprio `setup-node` para cache de pnpm. Ou seja: a convenção de ambiente local **não se traduz automaticamente para o CI**; o runner limpo expôs uma suposição implícita ("pnpm está disponível") que a máquina do autor sempre teve satisfeita.
+
+A lição da [SPEC-0015](specs/SPEC-0015-permission-symlink-hardening.md) previu explicitamente que a fragilidade cross-OS dos testes com paths literais do sistema (`/etc/...`, symlink para `/private/etc` no macOS) precisaria de encaminhamento "quando o projeto decidir sua matriz de CI". Esta SPEC decidiu a matriz — e escolheu **OS único** (`ubuntu-latest`), deliberadamente fora de escopo qualquer matriz. Logo, a previsão fica **adiada, não resolvida**: no Linux o `/etc` não é symlink, então a fragilidade permanece dormente, sem run que a exercite. Continua sendo um item para uma futura SPEC que introduza matriz de OS, não algo que esta fatia fechou.
+
+O padrão de **checkpoint para ação outward** funcionou como desenhado: o `spec-implementer` parou antes de `gh repo create ... --push`, devolveu o comando exato, e o push (publicar todo o histórico local num serviço externo) só aconteceu com o "go" humano explícito. Nenhum arquivo de produto foi tocado — `git diff --stat` em `packages/`/`apps/` ficou vazio, confirmando que infraestrutura de desenvolvimento vive inteiramente em `.github/`/`.prettierignore`, fora dos módulos, como o `ProjectStructure.md` já previa.
+
+**A arquitetura ajudou porque...**
+
+O tema não pertencia a nenhum módulo do produto, e isso não gerou atrito: `.github/` e `.prettierignore` são exatamente os lugares que o `ProjectStructure.md` reserva, então "onde isto mora?" teve resposta imediata sem reabrir o Module Catalog. O checkpoint de ação outward (herdado do padrão de confirmação de operações irreversíveis) isolou o único passo perigoso — publicar o repositório — num gate humano nítido, sem contaminar o resto do trabalho local, que fluiu sem confirmações.
+
+**A arquitetura atrapalhou porque...**
+
+nada a registrar — não há arquitetura de plataforma envolvida (é tooling de desenvolvimento, não um módulo do Atlas). Os atritos foram de CI (ordem de passos, convenção local × runner limpo), não de desenho do sistema.
+
+**Precisamos mudar...**
+
+A convenção "pnpm via corepack", afirmada em `CLAUDE.md`/`NEXT_CONTEXT.md`/SPEC, agora convive com "CI usa `pnpm/action-setup@v4`" — a documentação viva precisa refletir que o CI **não** usa corepack, para não induzir a próxima pessoa a "consertar" o workflow de volta para corepack e reintroduzir o run vermelho. Encaminhamento: `doc-sync` desta SPEC atualiza `CLAUDE.md` raiz, `NEXT_CONTEXT.md` e `CURRENT_SPRINT.md` registrando remote+CI ativos e a escolha `pnpm/action-setup` no CI. Considerar (sem compromisso, como candidato de fatia futura) adicionar o campo `packageManager: "pnpm@11.11.0"` ao `package.json` raiz, que alinharia corepack (local) e `pnpm/action-setup` (CI) numa única fonte de versão — encaminhamento: item candidato em `NEXT_CONTEXT.md` (Fase 1.4/1.5 do Roadmap), não bloqueia esta SPEC. A fragilidade cross-OS dos testes com paths literais segue aberta e agora com dono claro: só é acionável por uma futura SPEC que introduza **matriz de OS** no CI (esta entregou OS único por escopo) — encaminhamento: permanece registrada aqui e no `NEXT_CONTEXT.md` como fora do escopo desta fatia.
+
+---
+
 ## [SPEC-0015](specs/SPEC-0015-permission-symlink-hardening.md) — Endurecimento de symlink no Permission Service (2026-07-17)
 
 **Descobrimos que...**

@@ -2,7 +2,7 @@
 
 > **Project Atlas — Estado do Trabalho Atual**
 
-Atualizado em: 2026-07-17 (SPEC-0015)
+Atualizado em: 2026-07-18 (SPEC-0016)
 
 ---
 
@@ -27,5 +27,6 @@ Objetivo: plataforma mínima operável + primeira interface executável (CLI) + 
 | [SPEC-0013](../implementation/specs/SPEC-0013-confirm-flow-destructive-tools.md) | Fluxo `confirm` + Tools destrutivas (`delete_file`/`mkdir`/`append_file`) | Done |
 | [SPEC-0014](../implementation/specs/SPEC-0014-tools-confirm-in-chat.md) | Tools e `confirm` no `atlas chat` (`respond` orquestra Planejamento + Execução) | Done |
 | [SPEC-0015](../implementation/specs/SPEC-0015-permission-symlink-hardening.md) | Endurecimento de symlink no Permission Service (`realpath`, `evaluate` síncrono) | Done |
+| [SPEC-0016](../implementation/specs/SPEC-0016-remote-and-ci.md) | Remote (GitHub) + CI (`nahoL13/Atlas` privado, `.github/workflows/ci.yml`) | Done |
 
 Detalhes de retomada: `docs/05-context/NEXT_CONTEXT.md`.
