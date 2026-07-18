@@ -27,8 +27,8 @@ Este documento existe para responder, antes de começar a implementar uma SPEC, 
 | SPEC-0012 | Primeira Tool de escrita (`write_file`) sob política de raízes de escrita (`writeRoots`), opt-in explícito, sem fluxo interativo | Done | 3 | 2026-07-17 | 86.543.558 | 14.292.483 |
 | SPEC-0013 | Fluxo interativo `confirm` no Runtime + Tools `delete_file`/`mkdir`/`append_file`, restrito a `atlas ask` | Done | 5 | 2026-07-17 | 130.998.448 | 19.844.227 |
 | SPEC-0014 | Tools e fluxo `confirm` no `atlas chat`: cada turno pode planejar e executar Tools, mantendo histórico multi-turno | Done | 1 | 2026-07-17 | 27.117.382 | 4.326.745 |
-| SPEC-0015 | Contenção resolvida por `realpath` no Permission Service: fecha o escape por symlink dentro de uma raiz permitida (limitação conhecida do ADR-0013), mantendo `evaluate` puro e síncrono | Done | 2 | 2026-07-17 | 20.139.177 | 4.055.479 |
-| SPEC-0016 | (SPEC não encontrada em docs/implementation/specs/) | ? | 1 | 2026-07-17 | 4.868.650 | 1.095.540 |
+| SPEC-0015 | Contenção resolvida por `realpath` no Permission Service: fecha o escape por symlink dentro de uma raiz permitida (limitação conhecida do ADR-0013), mantendo `evaluate` puro e síncrono | Done | 3 | 2026-07-18 | 22.400.305 | 5.036.225 |
+| SPEC-0016 | (SPEC não encontrada em docs/implementation/specs/) | ? | 1 | 2026-07-17 | 5.483.531 | 1.162.901 |
 
 ## Detalhamento por fase
 
@@ -49,12 +49,12 @@ Fase = qual agente fez o trabalho: **Criação/Decisão** é tudo que roda no fi
 | SPEC-0012 | 14.292.483 | 0 | 0 | 0 |
 | SPEC-0013 | 15.651.542 | 3.026.716 | 694.252 | 471.717 |
 | SPEC-0014 | 1.375.432 | 2.502.843 | 448.470 | 0 |
-| SPEC-0015 | 2.182.401 | 1.041.596 | 831.482 | 0 |
-| SPEC-0016 | 890.564 | 0 | 0 | 204.976 |
+| SPEC-0015 | 3.163.147 | 1.041.596 | 831.482 | 0 |
+| SPEC-0016 | 957.925 | 0 | 0 | 204.976 |
 
 ## Como estimar antes de começar uma SPEC nova
 
-- SPECs concluídas (`Done`) até agora: 14. Custo médio: **11.418.838 tokens efetivos**. Faixa observada: 3.308.128 – 35.026.030 tokens efetivos.
+- SPECs concluídas (`Done`) até agora: 14. Custo médio: **11.488.891 tokens efetivos**. Faixa observada: 3.308.128 – 35.026.030 tokens efetivos.
 
 - Compare a SPEC que você está prestes a começar com as mais parecidas em tamanho na tabela acima (número de itens em "Escopo"/"Critérios de Aceitação", quantidade de "Arquivos Esperados"). Uma SPEC do porte de uma linha já concluída tende a custar perto do que ela custou.
 - Se o consumo já acumulado na sessão atual (rode o relatório detalhado, `.claude/usage-report.md`) mais a estimativa da próxima SPEC passar perto do seu limite de janela, prefira parar num ponto de commit limpo e retomar na próxima sessão em vez de começar e arriscar cortar a implementação pela metade.

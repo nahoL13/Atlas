@@ -2,7 +2,7 @@
 
 > **Project Atlas — Implementation Specification**
 
-Version: 1.1
+Version: 1.2
 
 ---
 
@@ -36,6 +36,16 @@ Nome curto e objetivo da implementação.
 - High
 - Medium
 - Low
+
+---
+
+**Item do Roadmap**
+
+Fase e item de `docs/04-engineering/Roadmap.md` que esta SPEC consome.
+
+Exemplo: `Fase 1 — 1.1 Hardening de Execução/Permissão (múltiplas raízes)`.
+
+Se nenhum item corresponder, atualize o Roadmap antes de prosseguir — ou registre aqui, explicitamente, que é uma exceção consciente.
 
 ---
 
