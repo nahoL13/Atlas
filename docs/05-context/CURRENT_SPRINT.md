@@ -2,7 +2,7 @@
 
 > **Project Atlas — Estado do Trabalho Atual**
 
-Atualizado em: 2026-07-18 (SPEC-0018)
+Atualizado em: 2026-07-19 (SPEC-0019)
 
 ---
 
@@ -30,5 +30,6 @@ Objetivo: plataforma mínima operável + primeira interface executável (CLI) + 
 | [SPEC-0016](../implementation/specs/SPEC-0016-remote-and-ci.md) | Remote (GitHub) + CI (`nahoL13/Atlas` privado, `.github/workflows/ci.yml`) | Done |
 | [SPEC-0017](../implementation/specs/SPEC-0017-toctou-atomic-enforcement.md) | Fecho atômico de TOCTOU (`read_file`/`write_file`/`append_file`, `O_NOFOLLOW` + identidade do fd + `PermissionService.isContained`) | Done |
 | [SPEC-0018](../implementation/specs/SPEC-0018-multiple-permission-roots-cli.md) | Múltiplas raízes de leitura/escrita na CLI (`--allow-read`/`--allow-write` repetíveis, env por `path.delimiter`) | Done |
+| [SPEC-0019](../implementation/specs/SPEC-0019-observation-replan-loop.md) | Observação: laço plano→executa→observa→replaneja (`runPlanCycle` limitado a 1 replan, `observe` puro, `ExecutedStep.denialKind`) | Done |
 
 Detalhes de retomada: `docs/05-context/NEXT_CONTEXT.md`.

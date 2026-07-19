@@ -53,6 +53,32 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## [SPEC-0019](specs/SPEC-0019-observation-replan-loop.md) — Observação: laço plano→executa→observa→replaneja (2026-07-19)
+
+**Descobrimos que...**
+
+a premissa central do [ADR-0015](../06-adr/ADR-0015-observation-replan-loop.md) — "`@atlas/contracts` e Runtime **intactos**" — **não sobreviveu ao contato com o código**, e foi o `spec-drafter` (não o brainstorming) quem a derrubou ao ler o contrato de execução para redigir a SPEC. O desenho assumira que o observador distinguiria "falha de Tool" de "terminal" (bloqueio/recusa) sem tocar contrato; mas `ExecutedStep`/`ToolResult` (`packages/contracts/src/execution.ts`) só carregam `{ ok, output?, error? }` — **nenhum discriminador estruturado**: todos os casos negados são `ok: false`, diferenciados só pela **string livre** de `error` que o Runtime escreve. O ADR-0012 modelou o resultado da execução como sucesso/erro binário e jogou fora a **causa** da negação — que o Runtime conhece (são branches distintos), mas dissolve num texto. Recuperar essa distinção parseando a redação das mensagens acoplaria `@atlas/cognitive` a um detalhe interno do `@atlas/runtime`, ferindo o Artigo 4. A solução foi corrigir o ADR-0015 e adicionar o campo **opcional** `ExecutedStep.denialKind?: 'blocked' | 'declined'`, rotulado pelo Runtime nos dois branches de negação que ele já produzia.
+
+Isto é a **terceira recorrência seguida** (0017, 0018, agora 0019) da mesma lição: **a afirmação de fronteira de um ADR/Roadmap é hipótese, não fato — só resolve ao ler o código-alvo.** A novidade desta vez é _quando_ o erro foi pego: o brainstorming e a escrita do ADR **afirmaram** "contrato intacto" sem verificar que o contrato de fato carregava a informação que o desenho precisava; quem verificou foi o code-read do drafting. Um ADR que assevera "o contrato X não muda" precisa **conferir, no momento de escrevê-lo, que X já carrega o dado que a decisão consome** — senão a asserção é um palpite que o implementador (ou o drafter) terá de desmentir.
+
+O atrito recorrente "membro novo em interface de contrato exige tocar todos os implementadores/fakes" (que **mordeu** na SPEC-0017 com `isContained` obrigatório quebrando fakes de `PermissionService`) **não mordeu aqui** — precisamente porque `denialKind` é **opcional/aditivo**: os construtores existentes de `ExecutedStep` (em `runtime.ts`, testes, `cognitive-core.ts`) seguiram válidos e o `pnpm typecheck` passou verde. O implementador ainda rodou `git grep 'ExecutedStep'` como prescrito (higiene correta), mas não achou quebra. Confirma o corolário: **campo de contrato opcional/aditivo evita a cascata de chamadores; o atrito é específico de membro _obrigatório_ novo.**
+
+**A arquitetura ajudou porque...**
+
+o observador coube como uma **função pura** no exato molde do Planner (precedente do [ADR-0012](../06-adr/ADR-0012-planner-runtime-execution.md)): sem gateway, testável isolado, consolidado em `@atlas/cognitive` sem package novo — e o [Module Catalog](../03-architecture/ModuleCatalog.md) já enquadrava o replanejamento como orquestração do Cognitive Core (Artigo 4), então não houve fronteira nova a inventar. O `runPlanCycle` já ser **compartilhado** por `ask` e `respond` desde a [SPEC-0014](specs/SPEC-0014-tools-confirm-in-chat.md) fez o laço cobrir os dois caminhos **de graça** (uma única mudança, dois comandos). Os `steps` já existirem em `AskResult`/`ConversationTurn` e o CLI já reusar `renderSteps` significou **zero linha** em `apps/cli` para mostrar o retry. E o Artigo 4 não foi ornamento: ele **decidiu** o desenho — foi o critério explícito que rejeitou o parse-de-string e escolheu o campo de contrato.
+
+**A arquitetura atrapalhou porque...**
+
+o contrato de execução do ADR-0012 **sub-modelou o resultado**: ao reduzir todo passo negado a `ok: false` + string, descartou a taxonomia de causa (bloqueio × recusa × falha-de-Tool × ferramenta-desconhecida) que o Runtime tinha na mão. A Observação foi a primeira etapa a **precisar** dessa distinção, e pagou o preço de reintroduzi-la como `denialKind`. Não é um defeito grave — o campo aditivo resolveu barato —, mas é o sinal de que "resultado da execução" merecia desde o início ser um dado mais rico que um booleano, e a próxima etapa que dependa de causa (ex.: Aprendizado, ou observador semântico) provavelmente pedirá mais taxonomia.
+
+**Precisamos mudar...**
+
+1. **Contradição real entre o template de SPEC e o fluxo de automação sobre quem atualiza docs vivas.** O `spec-implementer` sobre-executou (atualizou `CLAUDE.md`/`NEXT_CONTEXT.md`/`CURRENT_SPRINT.md`/`Roadmap.md`), percebeu e reverteu a zero-diff — porque a seção "Escopo/Definition of Done" da própria SPEC (herdada do [SPEC-TEMPLATE.md](templates/SPEC-TEMPLATE.md)) lista essas atualizações como escopo do implementador, enquanto [ClaudeCodeAutomation.md](../04-engineering/ClaudeCodeAutomation.md) as trata como o passo de fecho `doc-sync`, separado e posterior. Encaminhamento: **atualizar `docs/implementation/templates/SPEC-TEMPLATE.md`** (e, se preciso, uma nota em `docs/04-engineering/ClaudeCodeAutomation.md`) para deixar explícito que a sincronização de docs vivas é passo de fecho (`doc-sync`), **não** escopo do implementador — evitando o trabalho-e-reversão em toda SPEC futura.
+2. **Marcar a Etapa 5 (Observação) como entregue** no [Roadmap](../04-engineering/Roadmap.md) (item 1.2) e no `NEXT_CONTEXT.md`/`CURRENT_SPRINT.md`, deixando claro que a Etapa 6 (Aprendizado) segue o único gate aberto do 1.2. Encaminhamento: `doc-sync` desta SPEC.
+3. Nenhuma mudança estrutural pendente além do já registrado no ADR-0015 — os residuais conscientes (observador semântico guiado por modelo, teto de replan configurável, replan em bloqueio de permissão, dependência de dados entre passos, Task Manager) seguem como candidatos sem dono novo, já anotados na seção "Fora do Escopo" da SPEC e nas candidatas do `NEXT_CONTEXT.md`. Não reabrem gate.
+
+---
+
 ## [SPEC-0018](specs/SPEC-0018-multiple-permission-roots-cli.md) — Múltiplas raízes de leitura/escrita na CLI (2026-07-18)
 
 **Descobrimos que...**

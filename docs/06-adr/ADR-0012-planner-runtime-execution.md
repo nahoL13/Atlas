@@ -64,3 +64,13 @@ A orquestração Planejamento + Execução registrada nesta decisão, até aqui 
 - **`ConversationTurn` ganha `steps?: readonly ExecutedStep[]`**, espelhando `AskResult { text; steps? }` — o mesmo traço de transparência (incluindo passos negados/bloqueados) chega ao `chat`, reusando a renderização já usada por `ask`.
 - **O `confirm` interativo (ADR-0013) passa a alcançar `chat`.** O Runtime já pausava em `confirm` via `ConfirmPort`; `respond` agora aguarda `runtime.execute` exatamente como `ask` já fazia — nenhuma mudança em `@atlas/runtime`. O `atlas chat` compõe um `ConfirmPort` sobre o mesmo `LineReader` da sessão (não um segundo `readline`), tornando a confirmação inline na conversa.
 - **Nada muda no Planner, no Runtime, no Permission Service nem nas Tools.** A fatia é inteiramente composição do que já existia — a mesma elegância observada na atualização da SPEC-0013 (Cognitive/CLI inalterados para `ask`) se repete aqui do lado de `respond`.
+
+---
+
+# Atualização ([SPEC-0019](../implementation/specs/SPEC-0019-observation-replan-loop.md) / [ADR-0015](ADR-0015-observation-replan-loop.md))
+
+A decisão de **"passos independentes / execução em passe único"** registrada acima ("grafo de dependências / threading de dados é fatia futura") foi **parcialmente revisitada** pela Etapa 5 (Observação), decidida no [ADR-0015](ADR-0015-observation-replan-loop.md):
+
+- O `runPlanCycle` deixa de ser passe único e vira um **laço com teto fixo (1 replanejamento)**: plano → `runtime.execute` → **`observe`** (função pura/determinística nova em `@atlas/cognitive`) → se houver falha de Tool e restar orçamento, uma chamada de replanejamento (com resumo compacto das falhas) produz novo plano e reexecuta.
+- **Os passos seguem independentes dentro de cada passe** — o ADR-0015 fecha a lacuna de *reavaliação/replanejamento* do ciclo, não a de *dependência de dados entre passos* (esta continua fatia futura, agora explicitamente listada como candidata).
+- A única mudança de contrato é o campo opcional `ExecutedStep.denialKind?: 'blocked' | 'declined'`, que o Runtime rotula nos dois branches de negação — o modelo de resultado da execução deste ADR (`ok`/`error`) ganhou o discriminador que a Observação precisava para distinguir falha de Tool de negação de política/consentimento sem parsear strings.

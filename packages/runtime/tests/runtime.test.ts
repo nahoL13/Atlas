@@ -110,6 +110,7 @@ describe('createRuntime.execute', () => {
 
     expect(result.steps[0]!.result.ok).toBe(false);
     expect(result.steps[0]!.result.error).toContain('desconhecida');
+    expect(result.steps[0]!.denialKind).toBeUndefined();
     expect(result.steps[1]!.result.ok).toBe(true);
   });
 
@@ -131,6 +132,7 @@ describe('createRuntime.execute', () => {
 
     expect(result.steps[0]!.result.ok).toBe(false);
     expect(result.steps[0]!.result.error).toContain('kaboom');
+    expect(result.steps[0]!.denialKind).toBeUndefined();
   });
 
   it('tools() expõe os descritores (nome + descrição) do registry', () => {
@@ -224,6 +226,7 @@ describe('createRuntime.execute', () => {
     expect(ran).toBe(false);
     expect(result.steps[0]!.result.ok).toBe(false);
     expect(result.steps[0]!.result.error).toContain('fora da raiz');
+    expect(result.steps[0]!.denialKind).toBe('blocked');
     expect(result.steps[1]!.result.ok).toBe(true);
   });
 
@@ -306,6 +309,7 @@ describe('createRuntime.execute', () => {
     expect(result.steps[0]!.result.ok).toBe(false);
     expect(result.steps[0]!.result.error).not.toContain('fora');
     expect(result.steps[0]!.result.error).toContain('cancelada');
+    expect(result.steps[0]!.denialKind).toBe('declined');
     expect(result.steps[1]!.result.ok).toBe(true);
   });
 });

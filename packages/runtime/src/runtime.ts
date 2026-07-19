@@ -44,6 +44,7 @@ export function createRuntime(deps: RuntimeDeps): Runtime {
                 tool: step.tool,
                 args: step.args,
                 result: { ok: false, error: 'ação cancelada pelo usuário' },
+                denialKind: 'declined',
               });
               continue;
             }
@@ -55,6 +56,7 @@ export function createRuntime(deps: RuntimeDeps): Runtime {
                 ok: false,
                 error: decision.reason ?? `ação não permitida (${decision.verdict})`,
               },
+              denialKind: 'blocked',
             });
             continue;
           }

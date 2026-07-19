@@ -11,6 +11,14 @@ import type {
   Runtime,
 } from '@atlas/contracts';
 import { createPlanner } from './planner.js';
+import { observe } from './observer.js';
+
+/**
+ * Teto fixo do laço de replanejamento (ADR-0015): no máximo 1 replanejamento
+ * (até 2 passes de plano/execução). Constante embutida — não configurável
+ * por flag/env nesta fatia.
+ */
+const REPLAN_BUDGET = 1;
 
 export const TASK_FRAMING =
   'Responda ao objetivo do usuário de forma clara, correta e objetiva, ' +
@@ -49,6 +57,17 @@ function summarizeSteps(steps: readonly ExecutedStep[]): string {
   return `[Tools executadas: ${parts.join('; ')}]`;
 }
 
+/**
+ * Resumo compacto das falhas de um passe, injetado na chamada `generate` de
+ * replanejamento (ADR-0015, mesmo padrão de `summarizeSteps` da SPEC-0014).
+ */
+function summarizeFailures(steps: readonly ExecutedStep[]): string {
+  const failures = steps.filter((step) => !step.result.ok);
+  return failures
+    .map((step) => `${step.tool}(${JSON.stringify(step.args)}) → ERRO: ${step.result.error ?? ''}`)
+    .join('\n');
+}
+
 interface PlanCycleResult {
   firstText: string;
   plan: Plan | null;
@@ -64,24 +83,66 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
   const planner = createPlanner();
 
   /**
-   * Orquestração comum a `ask` e `respond` (ADR-0012): 1ª chamada `generate`,
-   * parse do plano; sem plano, retorna só o texto; com plano, executa e faz
-   * uma 2ª chamada `generate` de composição com os resultados.
+   * Orquestração comum a `ask` e `respond` (ADR-0012, revisado pelo
+   * ADR-0015): 1ª chamada `generate`, parse do plano; sem plano, retorna só
+   * o texto (1 chamada, zero regressão). Com plano, `runtime.execute` →
+   * `observe` (Etapa 5, determinístico e puro). Se `observe` indicar
+   * `replan` e ainda houver orçamento (teto fixo `REPLAN_BUDGET`), uma nova
+   * chamada `generate` de replanejamento recebe um resumo compacto das
+   * falhas do passe anterior; senão (`complete`, orçamento esgotado, ou
+   * replan sem plano) cai direto na composição final. `steps` acumulam os
+   * passos de todos os passes. Nunca lança, nunca laça sem limite.
    */
   async function runPlanCycle(
     firstMessages: Message[],
     buildComposeMessages: (resultsSummary: string) => Message[],
   ): Promise<PlanCycleResult> {
-    const first = await gateway.generate({ messages: firstMessages });
+    let messages = [...firstMessages];
+    const first = await gateway.generate({ messages });
     const plan = planner.parse(first.text);
     if (plan === null) {
       return { firstText: first.text, plan: null };
     }
 
-    const execution = await runtime.execute(plan);
-    const resultsSummary = formatResults(execution.steps);
+    const allSteps: ExecutedStep[] = [];
+    let execution = await runtime.execute(plan);
+    allSteps.push(...execution.steps);
+    let observation = observe(execution);
+    let planText = first.text;
+    let budget = REPLAN_BUDGET;
+
+    while (observation.verdict === 'replan' && budget > 0) {
+      budget -= 1;
+      const failuresSummary = summarizeFailures(execution.steps);
+      messages = [
+        ...messages,
+        { role: 'assistant', content: planText },
+        {
+          role: 'user',
+          content:
+            `A execução do plano anterior teve falhas:\n${failuresSummary}\n\n` +
+            'Ajuste o plano e tente novamente, seguindo o mesmo formato.',
+        },
+      ];
+      const replanResult = await gateway.generate({ messages });
+      planText = replanResult.text;
+      const replanPlan = planner.parse(replanResult.text);
+      if (replanPlan === null) {
+        break;
+      }
+      execution = await runtime.execute(replanPlan);
+      allSteps.push(...execution.steps);
+      observation = observe(execution);
+    }
+
+    const resultsSummary = formatResults(allSteps);
     const composed = await gateway.generate({ messages: buildComposeMessages(resultsSummary) });
-    return { firstText: first.text, plan, execution, composedText: composed.text };
+    return {
+      firstText: first.text,
+      plan,
+      execution: { steps: allSteps },
+      composedText: composed.text,
+    };
   }
 
   return {

@@ -39,6 +39,13 @@ export interface ExecutedStep {
   readonly tool: string;
   readonly args: Record<string, unknown>;
   readonly result: ToolResult;
+  /**
+   * Discrimina a natureza de uma negação: `blocked` (veredicto de permissão
+   * ≠ allowed/confirm) ou `declined` (recusa do usuário no confirm). Ausente
+   * quando o passo teve sucesso ou quando `ok: false` veio de falha de Tool
+   * (Tool lançou, erro de IO, ferramenta desconhecida, contenção-no-uso).
+   */
+  readonly denialKind?: 'blocked' | 'declined';
 }
 
 export interface ExecutionResult {

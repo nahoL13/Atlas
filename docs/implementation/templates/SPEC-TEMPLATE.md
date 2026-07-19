@@ -259,6 +259,8 @@ Esta SPEC será considerada concluída somente quando:
 - revisão concluída;
 - lições aprendidas registradas em `docs/implementation/LESSONS_LEARNED.md`.
 
+**Quem faz o quê na documentação** (evita retrabalho — ver Lessons Learned da SPEC-0019): a **sincronização das docs vivas** (`CLAUDE.md` raiz + dos packages tocados, `docs/05-context/NEXT_CONTEXT.md`, `docs/05-context/CURRENT_SPRINT.md`, `Roadmap.md`) **não é escopo do `spec-implementer`** — é o passo de fecho `doc-sync`, executado no fio principal **após** a validação, junto com `lessons-learned`, imediatamente antes de o humano aprovar `Review → Done` (ver `docs/04-engineering/ClaudeCodeAutomation.md`). O implementador só toca a documentação **específica da própria SPEC** (o arquivo da SPEC, notas de atualização em ADRs que a SPEC prevê). "Documentação atualizada" acima refere-se ao estado final combinado dos dois passos, não a uma tarefa única do implementador.
+
 ---
 
 # Restrições
