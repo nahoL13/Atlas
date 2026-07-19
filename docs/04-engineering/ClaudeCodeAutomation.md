@@ -2,7 +2,7 @@
 
 > **Project Atlas — Automação de Workflow no Claude Code**
 
-Version: 1.1
+Version: 1.2
 
 Status: Documento vivo (não segue o processo de SPEC/ADR — é tooling de
 workflow do Claude Code, não arquitetura da plataforma Atlas)
@@ -13,9 +13,9 @@ workflow do Claude Code, não arquitetura da plataforma Atlas)
 
 Este documento descreve a automação construída dentro do Claude Code para
 apoiar o processo oficial de desenvolvimento do Atlas (definido em
-[Development Guide](DevelopmentGuide.md)): três subagents (um por fase do
-ciclo de uma SPEC), três skills, quatro hooks e um script de análise de
-custo de token.
+[Development Guide](DevelopmentGuide.md)): quatro subagents (um por fase do
+ciclo de uma SPEC, mais um revisor adversarial de arquitetura), três skills,
+quatro hooks e um script de análise de custo de token.
 
 Nada aqui altera o processo em si — o fluxo Ideia → PRD → SPEC →
 Implementação → Testes → Documentação → Review → Merge continua sendo o
@@ -61,7 +61,9 @@ identificado foi economia de contexto/token, não orquestração.
         ↓
   spec-drafter (Opus)  →  Status: Draft
         ↓
-  [aprovação humana: Draft → Ready]
+  architecture-reviewer (Opus)  →  parecer adversarial + decisões em formato de veto
+        ↓                             (achados voltam ao spec-drafter até sanar)
+  [veto humano: Draft → Ready]
         ↓
 "implementa a SPEC-XXXX"
         ↓
@@ -86,14 +88,15 @@ conversa longa.
 
 ---
 
-# Os três subagents
+# Os quatro subagents
 
 Definidos em `.claude/agents/`. Cada um cobre exatamente uma fase e usa o
 modelo escolhido pelo tipo de trabalho, não o mais caro por padrão.
 
 | Agente | Modelo | Fase | O que faz | O que NÃO faz |
 |---|---|---|---|---|
-| [`spec-drafter`](../../.claude/agents/spec-drafter.md) | Opus | Criação/Decisão | Cruza PRD, ADRs e Module Catalog; preenche o `SPEC-TEMPLATE.md`; todo campo rastreia a uma fonte documentada | Não decide escopo sem base documental; nunca sai de `Status: Draft`; não cria módulo novo por conta própria |
+| [`spec-drafter`](../../.claude/agents/spec-drafter.md) | Opus | Criação/Decisão | Cruza PRD, ADRs e Module Catalog; preenche o `SPEC-TEMPLATE.md`; todo campo rastreia a uma fonte documentada; decisões sem fonte viram recomendação em formato de veto (recomendação + porquê + alternativa descartada) | Não decide escopo sem base documental; nunca sai de `Status: Draft`; não cria módulo novo por conta própria |
+| [`architecture-reviewer`](../../.claude/agents/architecture-reviewer.md) | Opus | Revisão de arquitetura (Draft → Ready) | Ataca o rascunho contra Constituição, Module Catalog, ADRs e PRD; devolve parecer com veredicto, achados rastreados à fonte e as decisões arquiteturais em formato de veto para o gate humano | Não edita nenhum arquivo (correções voltam ao `spec-drafter`); não muda `Status`; não expande escopo; sua aprovação **não substitui** o veto humano |
 | [`spec-implementer`](../../.claude/agents/spec-implementer.md) | Sonnet | Implementação | Implementa apenas o que está em "Escopo" de uma SPEC `Ready`/`In Progress`; roda testes/lint/typecheck; reporta os atritos encontrados no relatório final (insumo do Lessons Learned) | Não implementa o que está em "Fora do Escopo"; não marca `Done`; não decide arquitetura; **não sincroniza docs vivas** (`CLAUDE.md` raiz/packages, `NEXT_CONTEXT.md`, `CURRENT_SPRINT.md`, `Roadmap.md` — isso é o passo de fecho `doc-sync`) |
 | [`spec-validator`](../../.claude/agents/spec-validator.md) | Sonnet | Verificação | Roda testes/lint/typecheck; confere cada "Critério de Aceitação" e item da "Definition of Done" item a item | Não edita código; não decide se algo deveria ser diferente; não muda `Status` sozinho |
 
@@ -106,6 +109,24 @@ compreensão de código × documento — e o validator é o último portão
 automatizado antes do gate humano `Review → Done`. Um verificador fraco
 depois de um implementador mais forte inverteria a lógica do controle de
 qualidade.
+
+**Por que um revisor adversarial, e não um "agente arquiteto":** o gate
+humano `Draft → Ready` vinha degenerando em teatro — sem conhecimento
+arquitetural para julgar, o humano sempre aceitava a opção recomendada, ou
+seja, o portão não adicionava informação. A primeira ideia (um agente que
+decide arquitetura sozinho) foi descartada por violar frontalmente a
+Constituição ("a IA é colaboradora, não arquiteta") e por esconder o
+problema em vez de resolvê-lo. A solução adotada muda a **qualidade do que
+chega ao portão**, não quem segura o portão: o `architecture-reviewer`
+ataca o rascunho (violação de Constituição/ADR/Module Catalog, alternativa
+mais simples, custo 2–3 SPECs adiante) e devolve cada decisão em **formato
+de veto** — decisão, porquê, alternativa descartada, consequência se
+estiver errada. O humano deixa de escolher entre opções que não domina e
+passa a **aprovar por veto** com contexto para discordar — o que também é
+transferência de conhecimento a cada SPEC, não só controle. O Opus aqui é
+intencional pelo mesmo motivo do `spec-drafter`: crítica arquitetural exige
+o julgamento mais caro do pipeline, e duas instâncias fortes discordando
+valem mais que uma recomendando e um humano assentindo.
 
 **Contexto zerado é o recurso e o risco:** cada subagent começa frio, e a
 SPEC vira o único canal entre as fases. Por isso a skill `spec-check` e os
@@ -229,9 +250,12 @@ Depois:
 2. **Pedir a criação/implementação/validação nomeando a SPEC** — o hook
    `UserPromptSubmit` já lembra automaticamente de delegar para o subagent
    certo.
-3. **Aprovar manualmente as transições de status** (`Draft → Ready`,
-   `Review → Done`) — isso não mudou e não deveria mudar: é exatamente o
-   gate que a Constituição de Arquitetura reserva para o humano.
+3. **Aprovar as transições de status por veto** (`Draft → Ready`,
+   `Review → Done`) — o gate continua humano, como a Constituição de
+   Arquitetura exige. O que mudou é o insumo: antes de `Draft → Ready`, o
+   `architecture-reviewer` entrega as decisões em formato de veto (decisão,
+   porquê, alternativa descartada, consequência se errada); o humano veta o
+   que discordar em vez de escolher entre opções sem contexto.
 4. **Ao final de cada resposta**, o log de tokens já está atualizado
    sozinho — não precisa rodar nada manualmente, mesmo se a sessão cair no
    meio da SPEC.
@@ -243,9 +267,10 @@ Depois:
 ```text
 .claude/
   agents/
-    spec-drafter.md       (Opus — Criação/Decisão)
-    spec-implementer.md   (Sonnet — Implementação)
-    spec-validator.md     (Haiku — Verificação)
+    spec-drafter.md            (Opus — Criação/Decisão)
+    architecture-reviewer.md   (Opus — Revisão de arquitetura, Draft → Ready)
+    spec-implementer.md        (Sonnet — Implementação)
+    spec-validator.md          (Sonnet — Verificação)
   skills/
     spec-check/SKILL.md
     lessons-learned/SKILL.md

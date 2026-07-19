@@ -16,13 +16,17 @@ has() {
 }
 
 if has '(cria|criar|rascunha|rascunhar).*spec|nova spec'; then
-  emit "Lembrete automático (hook UserPromptSubmit): esta SPEC deve ser rascunhada delegando para o subagent spec-drafter via Agent tool (subagent_type: spec-drafter), não diretamente no fio principal. Inclua no prompt de delegação as decisões relevantes já tomadas nesta conversa. O spec-drafter sempre entrega Status Draft para aprovação humana."
+  emit "Lembrete automático (hook UserPromptSubmit): esta SPEC deve ser rascunhada delegando para o subagent spec-drafter via Agent tool (subagent_type: spec-drafter), não diretamente no fio principal. Inclua no prompt de delegação as decisões relevantes já tomadas nesta conversa. O spec-drafter sempre entrega Status Draft; depois do rascunho, delegue a revisão adversarial ao subagent architecture-reviewer antes do veto humano Draft → Ready."
   exit 0
 fi
 
 if has 'spec'; then
   if has 'implementa'; then
     emit "Lembrete automático (hook UserPromptSubmit): esta SPEC deve ser implementada delegando para o subagent spec-implementer via Agent tool (subagent_type: spec-implementer), não diretamente no fio principal. Inclua no prompt de delegação decisões relevantes desta conversa que não estejam no texto da SPEC. Isso isola o contexto de exploração e mantém docs/05-context/TOKEN_USAGE_LOG.md preciso por fase."
+    exit 0
+  fi
+  if has 'revisa|revisar|review.*arquitet|arquitet.*review'; then
+    emit "Lembrete automático (hook UserPromptSubmit): a revisão de arquitetura de uma SPEC Draft deve ser delegada ao subagent architecture-reviewer via Agent tool (subagent_type: architecture-reviewer), não feita no fio principal. Ele devolve um parecer com as decisões em formato de veto; correções voltam ao spec-drafter e a transição Draft → Ready continua sendo veto humano."
     exit 0
   fi
   if has 'valida|verifica'; then

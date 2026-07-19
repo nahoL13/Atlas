@@ -34,10 +34,14 @@ não pule nem reordene seções.
 Regra central: **todo campo precisa rastrear a uma fonte** — o pedido
 explícito do usuário, o PRD, um ADR, ou o Module Catalog. Se um campo exigir
 uma decisão que nenhuma dessas fontes sustenta (ex.: qual estratégia técnica
-usar, se algo deveria virar um módulo novo, que prioridade tem), não decida
-por conta própria: preencha com a pergunta em aberto e sinalize
-explicitamente no fim do rascunho que aquele ponto precisa da decisão do
-usuário antes de `Draft` virar `Ready`.
+usar, que prioridade tem), não deixe uma pergunta aberta seca: **proponha uma
+recomendação em formato de veto** — o que você recomenda, o porquê, qual
+alternativa foi descartada e por quê — e sinalize no fim do rascunho que
+aquele ponto passa pelo architecture-reviewer e pelo veto humano antes de
+`Draft` virar `Ready`. O humano aprova vetando o que discordar, não
+escolhendo entre opções sem contexto. Exceção que continua sendo parada
+obrigatória: criar módulo novo ou mover responsabilidade entre módulos é
+decisão arquitetural fora do seu escopo — sinalize e pare, não recomende.
 
 Atenção especial a estas seções (onde a IA mais erra por excesso de
 iniciativa):
