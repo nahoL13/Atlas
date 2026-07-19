@@ -68,6 +68,33 @@ grep -rn "SPEC-XXXX" CLAUDE.md docs/05-context/ packages/*/CLAUDE.md
 Cada ocorrência deve refletir o status/estado novo. Datas sempre em
 `AAAA-MM-DD`, com a data de hoje.
 
+## Commit e push de fechamento (parte do fluxo)
+
+Depois que o doc-sync está completo e a verificação final está limpa,
+**commite e faça push** — não deixe como passo separado que exige nova
+aprovação humana (o usuário confirmou essa preferência no fechamento da
+SPEC-0018). Um único commit cobre a implementação + a SPEC (Status `Done`)
++ a entrada de `LESSONS_LEARNED.md` + toda a sincronização de docs vivas.
+
+```bash
+git add -A
+git commit -m "<tipo>(<escopo>): SPEC-XXXX <resumo>
+
+<corpo em PT-BR: o que mudou, escopo, gate do Roadmap fechado, contagem de testes>
+
+Co-Authored-By: <modelo em uso> <noreply@anthropic.com>"
+git push
+```
+
+- Mensagem em **PT-BR**, seguindo o padrão dos commits do repo
+  (`feat(cli): SPEC-XXXX ...`, `docs(spec): SPEC-XXXX ...`).
+- Trailer `Co-Authored-By` obrigatório, com o modelo em uso.
+- O repo é **single-branch `main`** com remote privado (`origin`); commite
+  em `main` e dê `push` para `origin/main`.
+- Push publica todo o histórico num serviço externo — se por algum motivo o
+  push falhar ou o remote estiver indisponível, reporte e não trave o
+  fechamento (o commit local já preserva o trabalho).
+
 ## O que esta skill NÃO cobre
 
 - `LESSONS_LEARNED.md` — é a skill `lessons-learned`.
