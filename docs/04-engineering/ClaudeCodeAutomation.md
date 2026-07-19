@@ -94,7 +94,7 @@ modelo escolhido pelo tipo de trabalho, não o mais caro por padrão.
 | Agente | Modelo | Fase | O que faz | O que NÃO faz |
 |---|---|---|---|---|
 | [`spec-drafter`](../../.claude/agents/spec-drafter.md) | Opus | Criação/Decisão | Cruza PRD, ADRs e Module Catalog; preenche o `SPEC-TEMPLATE.md`; todo campo rastreia a uma fonte documentada | Não decide escopo sem base documental; nunca sai de `Status: Draft`; não cria módulo novo por conta própria |
-| [`spec-implementer`](../../.claude/agents/spec-implementer.md) | Sonnet | Implementação | Implementa apenas o que está em "Escopo" de uma SPEC `Ready`/`In Progress`; roda testes/lint/typecheck; reporta os atritos encontrados no relatório final (insumo do Lessons Learned) | Não implementa o que está em "Fora do Escopo"; não marca `Done`; não decide arquitetura |
+| [`spec-implementer`](../../.claude/agents/spec-implementer.md) | Sonnet | Implementação | Implementa apenas o que está em "Escopo" de uma SPEC `Ready`/`In Progress`; roda testes/lint/typecheck; reporta os atritos encontrados no relatório final (insumo do Lessons Learned) | Não implementa o que está em "Fora do Escopo"; não marca `Done`; não decide arquitetura; **não sincroniza docs vivas** (`CLAUDE.md` raiz/packages, `NEXT_CONTEXT.md`, `CURRENT_SPRINT.md`, `Roadmap.md` — isso é o passo de fecho `doc-sync`) |
 | [`spec-validator`](../../.claude/agents/spec-validator.md) | Sonnet | Verificação | Roda testes/lint/typecheck; confere cada "Critério de Aceitação" e item da "Definition of Done" item a item | Não edita código; não decide se algo deveria ser diferente; não muda `Status` sozinho |
 
 O Opus no `spec-drafter` é intencional: síntese de escopo a partir de
@@ -142,6 +142,15 @@ partir da descrição, não é garantido pelo harness. O backstop determinístic
   "ainda não criado"), os `CLAUDE.md` dos packages tocados,
   `NEXT_CONTEXT.md`, `CURRENT_SPRINT.md` e notas em ADRs previstas pela
   SPEC.
+  **A sincronização dessas docs vivas é passo de fecho, rodado no fio
+  principal _após_ a validação — nunca escopo do `spec-implementer`.** O
+  implementador toca só a documentação **específica da própria SPEC** (o
+  arquivo da SPEC, notas de atualização em ADRs que a SPEC prevê); as docs
+  vivas listadas acima são deste passo. Se o campo "Definition of
+  Done → documentação atualizada" do `SPEC-TEMPLATE.md` for lido como se o
+  implementador devesse atualizá-las, é engano: o template foi anotado
+  (Lessons Learned da [SPEC-0019](../implementation/specs/SPEC-0019-observation-replan-loop.md))
+  justamente para deixar essa fronteira explícita e evitar o trabalho-e-reversão.
 
 ---
 
