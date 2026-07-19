@@ -1,7 +1,7 @@
 import { AtlasError, type AtlasPlatform } from '@atlas/contracts';
 import type { OutputGateway } from '../gateway/output-gateway.js';
 import type { LineReader } from '../gateway/line-reader.js';
-import { renderSteps } from '../gateway/steps-trace.js';
+import { renderLearned, renderSteps } from '../gateway/steps-trace.js';
 
 const EXIT_COMMANDS = new Set(['/sair', '/exit']);
 
@@ -31,6 +31,11 @@ export async function runChat(
         renderSteps(turn.steps, output);
         output.write(`${turn.reply}\n`);
         atlas.context.updateConversation(session, turn.conversation);
+        // Etapa 6 (Aprendizado, SPEC-0020/ADR-0016): grava e anuncia, por turno.
+        for (const fact of turn.learned ?? []) {
+          await atlas.memory.remember(fact, 'learned');
+          renderLearned(fact, output);
+        }
       } catch (cause) {
         if (cause instanceof AtlasError && cause.code === 'ATLAS_MODEL_GATEWAY') {
           output.error(

@@ -9,11 +9,13 @@ export interface ConversationTurn {
   readonly reply: string;
   readonly conversation: Conversation;
   readonly steps?: readonly ExecutedStep[];
+  readonly learned?: readonly string[];
 }
 
 export interface AskResult {
   readonly text: string;
   readonly steps?: readonly ExecutedStep[];
+  readonly learned?: readonly string[];
 }
 
 export interface CognitiveCore {

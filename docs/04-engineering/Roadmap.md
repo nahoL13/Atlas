@@ -78,7 +78,9 @@ Continuação direta das SPECs 0010–0015 — itens menores, mais próximos de 
 As duas etapas do Cognitive Lifecycle que ainda não têm módulo correspondente:
 
 - ✅ `gate · ADR primeiro` — **Observação** — **entregue pela [SPEC-0019](../implementation/specs/SPEC-0019-observation-replan-loop.md)** (consome o [ADR-0015](../06-adr/ADR-0015-observation-replan-loop.md)). O `runPlanCycle` do Cognitive Core deixou de ser passe único e virou laço com teto fixo (1 replanejamento): a função pura `observe(executionResult)` decide `replan` (só falha de Tool) × `complete` (bloqueio de permissão e recusa no `confirm` são terminais), lendo o campo novo `ExecutedStep.denialKind`. Observador **semântico** guiado por modelo, teto configurável e replan em bloqueio ficam como residuais documentados, candidatos futuros.
-- `gate · ADR primeiro` — **Aprendizado**: o Cognitive decide sozinho quais informações preservar na Memory — hoje a Memory só grava por comando explícito do usuário (`atlas remember`).
+- ✅ `gate · ADR primeiro` — **Aprendizado** — **entregue pela [SPEC-0020](../implementation/specs/SPEC-0020-learning-post-turn-extraction.md)** (consome o [ADR-0016](../06-adr/ADR-0016-learning-proposed-extraction.md)). O Cognitive decide — via +1 chamada `generate` de extração após a resposta final de cada turno — quais fatos valem preservar (`learner` puro, framing restrito a fatos afirmados pelo usuário, Artigo 13) e os **propõe** como dado (`learned?`); a borda grava via `memory.remember(texto, 'learned')` e avisa; proveniência `Fact.source?: 'user' | 'learned'`. Dedup/consolidação, retenção/curadoria, gatilho heurístico e recomposição ao vivo do `memoryPrompt` ficam como residuais documentados, candidatos futuros (o último resolve também a duplicação intra-sessão, custo aceito da SPEC).
+
+**Com as SPECs 0019 e 0020, o item 1.2 está fechado por inteiro — o Cognitive Lifecycle está implementado nas sete etapas.**
 
 Estas são mudanças arquiteturais novas (exigem brainstorming + possivelmente ADR próprio), não continuação incremental de uma SPEC existente.
 
@@ -116,7 +118,7 @@ O empacotamento/distribuição da CLI permanece na Fase 3 — aqui entra só o q
 
 A Fase 1 é considerada completa quando todos os itens marcados **`gate`** estiverem entregues:
 
-- O Cognitive Lifecycle está implementado nas sete etapas (Compreensão → Raciocínio → Planejamento → Execução → Observação → **Aprendizado** → Resposta) — a Observação foi fechada pela [SPEC-0019](../implementation/specs/SPEC-0019-observation-replan-loop.md); hoje falta só o **Aprendizado** em negrito (gate de 1.2 restante).
+- ✅ O Cognitive Lifecycle está implementado nas sete etapas (Compreensão → Raciocínio → Planejamento → Execução → Observação → Aprendizado → Resposta) — a Observação foi fechada pela [SPEC-0019](../implementation/specs/SPEC-0019-observation-replan-loop.md) e o Aprendizado pela [SPEC-0020](../implementation/specs/SPEC-0020-learning-post-turn-extraction.md); o item 1.2 está completo.
 - ✅ As limitações de segurança marcadas como gate em 1.1 estão fechadas (TOCTOU — [SPEC-0017](../implementation/specs/SPEC-0017-toctou-atomic-enforcement.md) — e múltiplas raízes — [SPEC-0018](../implementation/specs/SPEC-0018-multiple-permission-roots-cli.md)). Limitações novas descobertas depois entram como itens novos com sua própria marcação — este critério cobre a lista atual, não é aberto.
 - Skills existem como conceito implementado, não só documentado (gate de 1.4).
 - A Memory Service cobre mais de uma categoria de conhecimento, não só fatos explícitos (gate de 1.3).

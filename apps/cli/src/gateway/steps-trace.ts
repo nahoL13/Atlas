@@ -20,3 +20,13 @@ export function renderSteps(
   }
   output.write('\n');
 }
+
+/**
+ * Traço compacto dos fatos aprendidos e gravados num turno (ask/chat) —
+ * Etapa 6 (Aprendizado) do Cognitive Lifecycle (SPEC-0020/ADR-0016). A
+ * transparência é obrigatória: nunca gravar sem anunciar. Reusado por `ask`
+ * e `chat` — mesmo formato.
+ */
+export function renderLearned(fact: string, output: OutputGateway): void {
+  output.write(`💡 lembrado: ${fact}\n`);
+}

@@ -53,6 +53,32 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## [SPEC-0020](specs/SPEC-0020-learning-post-turn-extraction.md) — Aprendizado: extração pós-turno proposta pelo Cognitive, gravada pela borda (2026-07-19)
+
+**Descobrimos que...**
+
+a revisão adversarial do `architecture-reviewer` pegou, ainda no Draft, um risco que o próprio [ADR-0016](../06-adr/ADR-0016-learning-proposed-extraction.md) **subdimensionou**: o ADR caracterizava a duplicação como "o mesmo fato aprendido duas vezes **em sessões diferentes**", mas a interação entre duas decisões da própria fatia (o `memoryPrompt` não é recomposto ao vivo **e** os fatos aprendidos não entram na `Conversation` retornada) torna a duplicação **intra-sessão** o caso pior: dentro de uma única sessão de `chat`, o modelo não recebe nenhum sinal de que já aprendeu um fato e pode re-propô-lo **a cada turno** — e o teto de 3 é por turno, não cumulativo. A correção foi só documental (custo aceito explícito na SPEC), mas confirma o valor do reviewer como etapa: um ADR recém-escrito e aprovado ainda pode errar a **magnitude** de um risco que declarou. O reviewer também exigiu ancorar o framing do `learner` no **Artigo 13** (extrair só fatos afirmados/fortemente implicados, nunca inferidos — com critério de aceitação testando o **conteúdo** do prompt, não só "string não-vazia") e sinalizar antecipadamente a mudança de assinatura do `runPlanCycle` — as três correções entraram no Draft antes do veto humano, e o implementador não tropeçou em nenhuma delas.
+
+No fechamento, o `spec-validator` pegou uma omissão real do `spec-implementer`: a **nota de atualização no [ADR-0011](../06-adr/ADR-0011-memory-service-persistence.md)**, que a SPEC atribuía explicitamente ao implementador (é documentação da própria SPEC, não doc viva do doc-sync — fronteira corrigida no template pela lição da SPEC-0019), não foi escrita; o código estava 100%. Foi corrigida no fio principal antes do fecho. Primeira ocorrência — observar recorrência.
+
+O corolário da SPEC-0019 confirmou-se pela segunda vez: **campos de contrato opcionais/aditivos** (`learned?`, `Fact.source?`, parâmetro opcional em `remember`) não dispararam nenhuma cascata de chamadores/fakes — `pnpm typecheck` verde sem tocar um fake. O atrito de tipo que apareceu foi outro, menor: com `exactOptionalPropertyTypes: true`, um campo opcional **não pode receber `undefined` explícito** — o retorno precisou de spread condicional (`...(learned.length ? { learned } : {})`) em vez de atribuição direta da variável.
+
+**A arquitetura ajudou porque...**
+
+o `learner` coube **inteiro** no molde já estabelecido duas vezes (Planner no [ADR-0012](../06-adr/ADR-0012-planner-runtime-execution.md), Observer no [ADR-0015](../06-adr/ADR-0015-observation-replan-loop.md)): função pura em `@atlas/cognitive`, `instruction()`/`parse()`, testável sem gateway, tipo interno que não sobe a `@atlas/contracts` — terceira etapa do ciclo cognitivo implementada com o mesmo padrão, custo de desenho quase zero. O `runPlanCycle` compartilhado (SPEC-0014) de novo fez a fatia valer para `ask` **e** `respond` com uma única mudança. E a fronteira do [ADR-0009](../06-adr/ADR-0009-context-service-value-store.md)/[ADR-0011](../06-adr/ADR-0011-memory-service-persistence.md) (borda medeia, serviço detém autoridade) resolveu de graça o dilema central da Etapa 6: o Cognitive **propõe** como dado (`learned?`), a borda grava pela mesma API pública que `atlas remember` já usa — pureza do `respond` (ADR-0008), autoridade exclusiva da Memory e transparência ao usuário saíram do mesmo desenho, sem porta nova.
+
+**A arquitetura atrapalhou porque...**
+
+o `runPlanCycle`, desenhado para "planejar → executar → compor", **não carregava o conteúdo cru do turno** (só `firstMessages` e `buildComposeMessages`) e tinha retorno antecipado no caminho "sem plano" — a extração pós-resposta exigiu reestruturá-lo (novo parâmetro/callback `buildLearnMessages`, fim do early return, `learned` em `PlanCycleResult`). Atrito pequeno e interno (sem contrato), antecipado pelo reviewer — mas é o segundo sinal (após o `denialKind` da SPEC-0019) de que cada etapa nova do ciclo pede do helper compartilhado um dado que ele ainda não transporta.
+
+**Precisamos mudar...**
+
+1. **Marcar a Etapa 6 (Aprendizado) como entregue** no [Roadmap](../04-engineering/Roadmap.md) — com ela, o item 1.2 (Fechar o Ciclo Cognitivo) fecha **por inteiro** e o Cognitive Lifecycle está implementado nas sete etapas — e atualizar `NEXT_CONTEXT.md`/`CURRENT_SPRINT.md`/CLAUDE.mds. Encaminhamento: `doc-sync` desta SPEC.
+2. **Registrar a ligação apontada pelo reviewer** nas candidatas do `NEXT_CONTEXT.md`: a fatia futura de **recomposição ao vivo do `memoryPrompt`** resolve simultaneamente a limitação documentada (fato aprendido só entra no prompt na próxima invocação) e a duplicação intra-sessão — candidata natural do item 1.3 (memória). Encaminhamento: `doc-sync` desta SPEC.
+3. Nenhuma mudança estrutural pendente além dos residuais já documentados no ADR-0016/SPEC (dedup/consolidação semântica, retenção/curadoria, gatilho heurístico para economizar a chamada, teto configurável, `/lembrar`/`/esquecer` no chat) — candidatos sem dono novo, não reabrem gate.
+
+---
+
 ## [SPEC-0019](specs/SPEC-0019-observation-replan-loop.md) — Observação: laço plano→executa→observa→replaneja (2026-07-19)
 
 **Descobrimos que...**

@@ -7,6 +7,8 @@ export function runMemoryList(atlas: AtlasPlatform, output: OutputGateway): void
     output.write('Nenhum fato memorizado.\n');
     return;
   }
-  const lines = facts.map((fact) => `[${fact.id}] ${fact.text} (${fact.createdAt})`);
+  const lines = facts.map(
+    (fact) => `[${fact.id}] ${fact.text} (${fact.createdAt}) — origem: ${fact.source ?? 'user'}`,
+  );
   output.write(`${lines.join('\n')}\n`);
 }

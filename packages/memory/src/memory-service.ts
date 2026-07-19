@@ -9,11 +9,12 @@ export async function createMemoryService(deps: MemoryServiceDeps): Promise<Memo
   const facts: Fact[] = [...(await deps.storage.load())];
 
   return {
-    async remember(text: string): Promise<Fact> {
+    async remember(text: string, source: 'user' | 'learned' = 'user'): Promise<Fact> {
       const fact: Fact = {
         id: crypto.randomUUID().slice(0, 8),
         text,
         createdAt: new Date().toISOString(),
+        source,
       };
       facts.push(fact);
       await deps.storage.save(facts);

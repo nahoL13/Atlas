@@ -2,10 +2,11 @@ export interface Fact {
   readonly id: string;
   readonly text: string;
   readonly createdAt: string;
+  readonly source?: 'user' | 'learned';
 }
 
 export interface MemoryService {
-  remember(text: string): Promise<Fact>;
+  remember(text: string, source?: 'user' | 'learned'): Promise<Fact>;
   forget(id: string): Promise<boolean>;
   list(): readonly Fact[];
   prompt(): string | undefined;

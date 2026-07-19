@@ -12,6 +12,7 @@ import type {
 } from '@atlas/contracts';
 import { createPlanner } from './planner.js';
 import { observe } from './observer.js';
+import { createLearner } from './learner.js';
 
 /**
  * Teto fixo do laço de replanejamento (ADR-0015): no máximo 1 replanejamento
@@ -73,6 +74,7 @@ interface PlanCycleResult {
   plan: Plan | null;
   execution?: ExecutionResult;
   composedText?: string;
+  learned: readonly string[];
 }
 
 export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
@@ -81,27 +83,48 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
     .filter((part): part is string => part !== undefined && part !== '')
     .join('\n\n');
   const planner = createPlanner();
+  const learner = createLearner();
 
   /**
-   * Orquestração comum a `ask` e `respond` (ADR-0012, revisado pelo
-   * ADR-0015): 1ª chamada `generate`, parse do plano; sem plano, retorna só
-   * o texto (1 chamada, zero regressão). Com plano, `runtime.execute` →
+   * Etapa 6 (Aprendizado, ADR-0016): +1 chamada `generate` dedicada, feita
+   * depois da resposta final do turno estar pronta, com a `instruction()`
+   * do learner mais o conteúdo do turno (`buildLearnMessages`). Nunca
+   * quebra o turno: qualquer erro do gateway ou saída inválida resolve em
+   * lista vazia.
+   */
+  async function extractLearned(messages: Message[]): Promise<readonly string[]> {
+    try {
+      const result = await gateway.generate({ messages });
+      return learner.parse(result.text);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Orquestração comum a `ask` e `respond` (ADR-0012, revisado pelos
+   * ADR-0015/ADR-0016): 1ª chamada `generate`, parse do plano; sem plano,
+   * responde com o texto direto (1 chamada). Com plano, `runtime.execute` →
    * `observe` (Etapa 5, determinístico e puro). Se `observe` indicar
    * `replan` e ainda houver orçamento (teto fixo `REPLAN_BUDGET`), uma nova
    * chamada `generate` de replanejamento recebe um resumo compacto das
    * falhas do passe anterior; senão (`complete`, orçamento esgotado, ou
    * replan sem plano) cai direto na composição final. `steps` acumulam os
-   * passos de todos os passes. Nunca lança, nunca laça sem limite.
+   * passos de todos os passes. Em **ambos** os caminhos (sem plano e com
+   * composição), a resposta final passa por +1 chamada de extração (Etapa
+   * 6) antes do helper retornar. Nunca lança, nunca laça sem limite.
    */
   async function runPlanCycle(
     firstMessages: Message[],
     buildComposeMessages: (resultsSummary: string) => Message[],
+    buildLearnMessages: (finalText: string) => Message[],
   ): Promise<PlanCycleResult> {
     let messages = [...firstMessages];
     const first = await gateway.generate({ messages });
     const plan = planner.parse(first.text);
     if (plan === null) {
-      return { firstText: first.text, plan: null };
+      const learned = await extractLearned(buildLearnMessages(first.text));
+      return { firstText: first.text, plan: null, learned };
     }
 
     const allSteps: ExecutedStep[] = [];
@@ -137,11 +160,13 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
 
     const resultsSummary = formatResults(allSteps);
     const composed = await gateway.generate({ messages: buildComposeMessages(resultsSummary) });
+    const learned = await extractLearned(buildLearnMessages(composed.text));
     return {
       firstText: first.text,
       plan,
       execution: { steps: allSteps },
       composedText: composed.text,
+      learned,
     };
   }
 
@@ -165,12 +190,20 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
               'Responda ao objetivo usando esses resultados.',
           },
         ],
+        (finalText) => [
+          { role: 'system', content: learner.instruction() },
+          {
+            role: 'user',
+            content: `Usuário disse:\n${objective}\n\nResposta dada:\n${finalText}`,
+          },
+        ],
       );
 
+      const learned = cycle.learned.length > 0 ? { learned: cycle.learned } : {};
       if (cycle.plan === null) {
-        return { text: cycle.firstText };
+        return { text: cycle.firstText, ...learned };
       }
-      return { text: cycle.composedText!, steps: cycle.execution!.steps };
+      return { text: cycle.composedText!, steps: cycle.execution!.steps, ...learned };
     },
 
     startConversation(): Conversation {
@@ -192,17 +225,26 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
               { role: 'user', content: input },
             ];
 
-      const cycle = await runPlanCycle(firstMessages, (results): Message[] => [
-        ...withUser,
-        {
-          role: 'user',
-          content: `Resultados das ferramentas executadas:\n${results}\n\nResponda usando esses resultados.`,
-        },
-      ]);
+      const cycle = await runPlanCycle(
+        firstMessages,
+        (results): Message[] => [
+          ...withUser,
+          {
+            role: 'user',
+            content: `Resultados das ferramentas executadas:\n${results}\n\nResponda usando esses resultados.`,
+          },
+        ],
+        (finalText): Message[] => [
+          ...withUser,
+          { role: 'system', content: learner.instruction() },
+          { role: 'user', content: `Resposta dada:\n${finalText}` },
+        ],
+      );
 
+      const learned = cycle.learned.length > 0 ? { learned: cycle.learned } : {};
       if (cycle.plan === null) {
         const messages: Message[] = [...withUser, { role: 'assistant', content: cycle.firstText }];
-        return { reply: cycle.firstText, conversation: { messages } };
+        return { reply: cycle.firstText, conversation: { messages }, ...learned };
       }
 
       const steps = cycle.execution!.steps;
@@ -211,7 +253,7 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
         { role: 'assistant', content: cycle.composedText! },
         { role: 'system', content: summarizeSteps(steps) },
       ];
-      return { reply: cycle.composedText!, conversation: { messages }, steps };
+      return { reply: cycle.composedText!, conversation: { messages }, steps, ...learned };
     },
   };
 }

@@ -6,6 +6,8 @@ Status: Accepted
 
 Data: 2026-07-13
 
+> **Nota de atualização (2026-07-19, [SPEC-0020](../implementation/specs/SPEC-0020-learning-post-turn-extraction.md) / [ADR-0016](ADR-0016-learning-proposed-extraction.md)):** a Memory ganhou um **segundo caminho de gravação** — além do comando explícito do usuário (`atlas remember`), a borda (CLI) grava fatos **propostos pelo Cognitive** ao fim de cada turno (`atlas.memory.remember(texto, 'learned')`), com aviso ao usuário no momento da gravação. A autoridade de gravação **segue exclusiva da Memory** (a borda chama a mesma API pública; o Cognitive apenas devolve candidatos como dado — nenhuma porta de escrita entrou em `CognitiveCoreDeps`). `Fact` ganhou proveniência (`source?: 'user' | 'learned'`) e `remember` um parâmetro opcional de origem (default `'user'`). A alternativa "Aprendizado automático" rejeitada abaixo foi superada nos termos do ADR-0016 — a rejeição valia para a fatia da SPEC-0009, quando o ciclo cognitivo ainda era colapsado. A limitação "sessão aberta não reflete gravações" permanece (o `memoryPrompt` não é recomposto ao vivo).
+
 ---
 
 # Contexto

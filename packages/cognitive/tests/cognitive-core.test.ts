@@ -56,7 +56,7 @@ function sequencedRuntime(
 }
 
 describe('createCognitiveCore.ask', () => {
-  it('sem personaPrompt e sem Tools usa só o enquadramento de tarefa (1 chamada)', async () => {
+  it('sem personaPrompt e sem Tools usa só o enquadramento de tarefa (1ª chamada + extração)', async () => {
     const { gateway, calls } = stubGateway(async () => ({ text: 'resposta do modelo' }));
     const core = createCognitiveCore({ gateway, runtime: emptyRuntime });
 
@@ -64,7 +64,8 @@ describe('createCognitiveCore.ask', () => {
 
     expect(answer.text).toBe('resposta do modelo');
     expect(answer.steps).toBeUndefined();
-    expect(calls).toHaveLength(1);
+    // SPEC-0020: sem plano, +1 chamada dedicada de extração (Etapa 6) = 2 chamadas.
+    expect(calls).toHaveLength(2);
     expect(calls[0]!.messages).toEqual([
       { role: 'system', content: TASK_FRAMING },
       { role: 'user', content: 'resuma este texto' },
@@ -131,7 +132,8 @@ describe('createCognitiveCore.ask', () => {
 
     const answer = await core.ask('que dia é hoje?');
 
-    expect(calls).toHaveLength(2);
+    // plano + composição + extração (SPEC-0020) = 3 chamadas.
+    expect(calls).toHaveLength(3);
     expect(answer.text).toBe('Hoje é 2026-07-14.');
     expect(answer.steps).toEqual([
       { tool: 'clock', args: {}, result: { ok: true, output: '2026-07-14' } },
@@ -192,7 +194,8 @@ describe('createCognitiveCore.ask laço de replanejamento (SPEC-0019/ADR-0015)',
 
     const answer = await core.ask('que dia é hoje?');
 
-    expect(calls).toHaveLength(3);
+    // plano + replan + composição + extração (SPEC-0020) = 4 chamadas.
+    expect(calls).toHaveLength(4);
     expect(answer.text).toBe('Hoje é 2026-07-19.');
     expect(answer.steps).toEqual([
       { tool: 'clock', args: {}, result: { ok: false, error: 'indisponível' } },
@@ -200,7 +203,7 @@ describe('createCognitiveCore.ask laço de replanejamento (SPEC-0019/ADR-0015)',
     ]);
   });
 
-  it('falha persistente em ambos os passes: para no teto (3 chamadas), compõe, nunca lança', async () => {
+  it('falha persistente em ambos os passes: para no teto (4 chamadas), compõe, nunca lança', async () => {
     let call = 0;
     const { gateway, calls } = stubGateway(async () => {
       call += 1;
@@ -214,7 +217,7 @@ describe('createCognitiveCore.ask laço de replanejamento (SPEC-0019/ADR-0015)',
 
     const answer = await core.ask('que dia é hoje?');
 
-    expect(calls).toHaveLength(3);
+    expect(calls).toHaveLength(4);
     expect(answer.text).toBe('Não consegui completar a tarefa.');
     expect(answer.steps).toHaveLength(2);
     expect(answer.steps!.every((step) => step.result.ok === false)).toBe(true);
@@ -242,13 +245,13 @@ describe('createCognitiveCore.ask laço de replanejamento (SPEC-0019/ADR-0015)',
 
     const answer = await core.ask('que dia é hoje?');
 
-    expect(calls).toHaveLength(3);
+    expect(calls).toHaveLength(4);
     expect(executeCalls).toBe(1);
     expect(answer.text).toBe('Não consegui obter a hora.');
     expect(answer.steps).toHaveLength(1);
   });
 
-  it('bloqueio de permissão (denialKind blocked) é terminal: 2 chamadas, sem replan', async () => {
+  it('bloqueio de permissão (denialKind blocked) é terminal: 3 chamadas, sem replan', async () => {
     let call = 0;
     const { gateway, calls } = stubGateway(async () => {
       call += 1;
@@ -270,12 +273,12 @@ describe('createCognitiveCore.ask laço de replanejamento (SPEC-0019/ADR-0015)',
 
     const answer = await core.ask('escreva um arquivo');
 
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(3);
     expect(answer.steps).toHaveLength(1);
     expect(answer.steps![0]!.denialKind).toBe('blocked');
   });
 
-  it('recusa no confirm (denialKind declined) é terminal: 2 chamadas, sem replan', async () => {
+  it('recusa no confirm (denialKind declined) é terminal: 3 chamadas, sem replan', async () => {
     let call = 0;
     const { gateway, calls } = stubGateway(async () => {
       call += 1;
@@ -297,7 +300,7 @@ describe('createCognitiveCore.ask laço de replanejamento (SPEC-0019/ADR-0015)',
 
     const answer = await core.ask('apague o arquivo');
 
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(3);
     expect(answer.steps).toHaveLength(1);
     expect(answer.steps![0]!.denialKind).toBe('declined');
   });
@@ -324,5 +327,98 @@ describe('createCognitiveCore.ask laço de replanejamento (SPEC-0019/ADR-0015)',
     const replanCall = calls[1]!;
     expect(replanCall.messages.some((m) => m.content.includes('sem rede'))).toBe(true);
     expect(replanCall.messages.some((m) => m.content.includes('clock'))).toBe(true);
+  });
+});
+
+describe('createCognitiveCore.ask Aprendizado — extração pós-turno (SPEC-0020/ADR-0016)', () => {
+  it('sem plano: extração é a 2ª chamada, feita após a resposta direta, com instrução + input + resposta', async () => {
+    let call = 0;
+    const { gateway, calls } = stubGateway(async () => {
+      call += 1;
+      return call === 1
+        ? { text: 'Prefiro café sem açúcar.' }
+        : { text: '["prefere café sem açúcar"]' };
+    });
+    const core = createCognitiveCore({ gateway, runtime: emptyRuntime });
+
+    const answer = await core.ask('anote que prefiro café sem açúcar');
+
+    expect(calls).toHaveLength(2);
+    expect(answer.text).toBe('Prefiro café sem açúcar.');
+    expect(answer.learned).toEqual(['prefere café sem açúcar']);
+    const extractionCall = calls[1]!;
+    expect(extractionCall.messages.some((m) => m.content.includes('JSON'))).toBe(true);
+    expect(extractionCall.messages.some((m) => m.content.includes('anote que prefiro'))).toBe(true);
+    expect(
+      extractionCall.messages.some((m) => m.content.includes('Prefiro café sem açúcar.')),
+    ).toBe(true);
+  });
+
+  it('com plano: extração é a 3ª chamada, feita após a composição', async () => {
+    let call = 0;
+    const { gateway, calls } = stubGateway(async () => {
+      call += 1;
+      if (call === 1) return { text: '{"steps":[{"tool":"clock","args":{}}]}' };
+      if (call === 2) return { text: 'Hoje é 2026-07-19.' };
+      return { text: '["hoje é 2026-07-19"]' };
+    });
+    const runtime = runtimeWith([{ name: 'clock', description: 'hora' }], {
+      steps: [{ tool: 'clock', args: {}, result: { ok: true, output: '2026-07-19' } }],
+    });
+    const core = createCognitiveCore({ gateway, runtime });
+
+    const answer = await core.ask('que dia é hoje?');
+
+    expect(calls).toHaveLength(3);
+    expect(answer.learned).toEqual(['hoje é 2026-07-19']);
+  });
+
+  it('extração vazia (JSON array vazio) → learned ausente', async () => {
+    const { gateway } = stubGateway(async () => ({ text: '[]' }));
+    const core = createCognitiveCore({ gateway, runtime: emptyRuntime });
+
+    const answer = await core.ask('oi');
+
+    expect(answer.learned).toBeUndefined();
+  });
+
+  it('robustez: extração que lança não derruba o turno; learned ausente', async () => {
+    let call = 0;
+    const { gateway } = stubGateway(async () => {
+      call += 1;
+      if (call === 1) return { text: 'resposta normal' };
+      throw new Error('modelo indisponível na extração');
+    });
+    const core = createCognitiveCore({ gateway, runtime: emptyRuntime });
+
+    const answer = await core.ask('oi');
+
+    expect(answer.text).toBe('resposta normal');
+    expect(answer.learned).toBeUndefined();
+  });
+
+  it('robustez: extração com saída inválida (não-JSON) → learned ausente, turno intacto', async () => {
+    let call = 0;
+    const { gateway } = stubGateway(async () => {
+      call += 1;
+      return call === 1 ? { text: 'resposta normal' } : { text: 'não há JSON aqui' };
+    });
+    const core = createCognitiveCore({ gateway, runtime: emptyRuntime });
+
+    const answer = await core.ask('oi');
+
+    expect(answer.text).toBe('resposta normal');
+    expect(answer.learned).toBeUndefined();
+  });
+
+  it('Cognitive não grava: CognitiveCoreDeps não recebe porta de escrita (sem mock de Memory)', async () => {
+    const { gateway } = stubGateway(async () => ({ text: '["algum fato"]' }));
+    // Nenhum objeto de Memory é injetado — apenas gateway/runtime/prompts.
+    const core = createCognitiveCore({ gateway, runtime: emptyRuntime });
+
+    const answer = await core.ask('oi');
+
+    // O candidato é devolvido como dado; quem grava é a borda, nunca o Cognitive.
+    expect(answer.learned).toEqual(['algum fato']);
   });
 });

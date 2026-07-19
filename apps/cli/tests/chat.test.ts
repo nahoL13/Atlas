@@ -22,6 +22,7 @@ function scriptedReader(lines: string[]): LineReader {
 
 function stubAtlas(
   respond: (conversation: Conversation, input: string) => Promise<ConversationTurn>,
+  remember?: (text: string, source?: 'user' | 'learned') => Promise<unknown>,
 ) {
   const store = new Map<string, Conversation>();
   return {
@@ -30,6 +31,16 @@ function stubAtlas(
       ask: async () => ({ text: '' }),
       startConversation: () => ({ messages: [] }) as Conversation,
       respond,
+    },
+    memory: {
+      remember:
+        remember ??
+        (async (text: string, source?: 'user' | 'learned') => ({
+          id: 'x',
+          text,
+          createdAt: '',
+          source,
+        })),
     },
     context: {
       openSession: (conv: Conversation) => {
@@ -105,5 +116,48 @@ describe('runChat — traço de steps (SPEC-0014)', () => {
     await runChat(atlas, cap.output, scriptedReader(['que horas são?', '/sair']));
 
     expect(cap.text()).not.toContain('Tools executadas');
+  });
+
+  it('com learned por turno, grava via memory.remember(.., "learned") e imprime o traço (SPEC-0020)', async () => {
+    const cap = capture();
+    const remembered: [string, 'user' | 'learned' | undefined][] = [];
+    const atlas = stubAtlas(
+      async (conversation, input) => ({
+        reply: `eco: ${input}`,
+        conversation: { messages: [...conversation.messages] },
+        learned: ['mora em São Paulo'],
+      }),
+      async (text, source) => {
+        remembered.push([text, source]);
+        return { id: 'x', text, createdAt: '', source };
+      },
+    );
+
+    await runChat(atlas, cap.output, scriptedReader(['moro em São Paulo', '/sair']));
+
+    expect(remembered).toEqual([['mora em São Paulo', 'learned']]);
+    expect(cap.text()).toBe(
+      'Jarvis: olá! Como posso ajudar?\neco: moro em São Paulo\n💡 lembrado: mora em São Paulo\n',
+    );
+  });
+
+  it('sem learned, nada é gravado nem impresso além do fluxo atual', async () => {
+    const cap = capture();
+    let rememberCalls = 0;
+    const atlas = stubAtlas(
+      async (conversation, input) => ({
+        reply: `eco: ${input}`,
+        conversation: { messages: [...conversation.messages] },
+      }),
+      async () => {
+        rememberCalls += 1;
+        return { id: 'x', text: '', createdAt: '' };
+      },
+    );
+
+    await runChat(atlas, cap.output, scriptedReader(['oi', '/sair']));
+
+    expect(rememberCalls).toBe(0);
+    expect(cap.text()).toBe('Jarvis: olá! Como posso ajudar?\neco: oi\n');
   });
 });
