@@ -44,5 +44,17 @@ Passos:
 5. Entregue um veredito claro no final: **pronta para Done** ou **não
    pronta**, com a lista exata do que falta se não estiver pronta.
 
-Você não marca a SPEC como `Done` nem edita nenhum arquivo — isso é decisão
-do usuário depois de ver seu relatório.
+Relatório final (contrato de saída) — máximo **20 linhas**, sem eco de
+código nem de saída de comando que passou (referencie `caminho:linha`;
+cole saída de comando **só** quando falhou):
+
+1. Veredicto (linha 1).
+2. Comandos rodados: passou/falhou.
+3. Critérios de Aceitação e Definition of Done: 1 linha por item com a
+   evidência (arquivo/teste) ou o motivo da reprovação.
+
+Você não marca a SPEC como `Done` nem edita nenhum arquivo — desde a Emenda
+v1.1 da Constituição, quem aplica a transição após seu veredicto é o fio
+principal (Review → Done automático quando o veredicto é "pronta"; se não
+estiver pronta, o fio principal devolve ao spec-implementer uma vez e, na
+segunda reprovação, escala ao usuário).

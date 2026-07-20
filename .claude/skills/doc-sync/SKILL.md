@@ -1,6 +1,6 @@
 ---
 name: doc-sync
-description: Use when a SPEC in Project Atlas is being closed (human approved Review → Done, or right after the lessons-learned entry) — synchronizes the living-state docs (root CLAUDE.md, package CLAUDE.mds, NEXT_CONTEXT.md, CURRENT_SPRINT.md) with what was actually delivered. Trigger phrases include "sincroniza a documentação", "atualiza o estado", "fecha a SPEC-XXXX".
+description: Use when a SPEC in Project Atlas is being closed (validator verdict "pronta" → Review → Done, or right after the lessons-learned entry) — synchronizes the living-state docs (PLATFORM_STATE.md, root CLAUDE.md summary, package CLAUDE.mds, NEXT_CONTEXT.md, CURRENT_SPRINT.md) with what was actually delivered. Trigger phrases include "sincroniza a documentação", "atualiza o estado", "fecha a SPEC-XXXX".
 ---
 
 # doc-sync
@@ -15,8 +15,9 @@ ordem.
 
 ## Quando usar
 
-Ao fechar uma SPEC — depois que o humano aprovou `Review → Done` (ou junto
-desse fechamento), tipicamente logo após a entrada de Lições Aprendidas
+Ao fechar uma SPEC — depois do veredicto "pronta" do `spec-validator` e da
+transição `Review → Done` aplicada pelo fio principal (fluxo da Emenda v1.1
+da Constituição), tipicamente logo após a entrada de Lições Aprendidas
 (skill `lessons-learned`). As duas skills são complementares e ambas rodam
 no fechamento: `lessons-learned` cuida do registro histórico,
 `doc-sync` cuida do estado vivo.
@@ -34,18 +35,22 @@ Reconstrua o que foi **de fato** entregue, não o que a SPEC prometia:
 
 ## Checklist obrigatório (um commit pode cobrir tudo)
 
-1. **`CLAUDE.md` raiz — parágrafo "Estado em `<mês/ano>`"**: acrescente a
-   entrega da SPEC ao resumo corrido, seguindo o padrão das entregas
+1. **`docs/05-context/PLATFORM_STATE.md`** (desde 2026-07-20 é aqui que
+   vive o estado detalhado — não mais no `CLAUDE.md` raiz): acrescente a
+   entrega da SPEC ao texto corrido, seguindo o padrão das entregas
    anteriores (o que existe, qual package, qual API, qual config/flag).
-   Atualize também a seção "Referenciado na documentação, mas ainda não
-   criado": remova itens que passaram a existir com esta SPEC.
+   No **`CLAUDE.md` raiz**, toque o resumo "Estado em `<mês/ano>`" **só se**
+   a SPEC criou package/app/comando novo ou mudou uma linha do resumo —
+   o resumo é um índice de ~15 linhas, não cresce a cada SPEC. Atualize
+   também a seção "Referenciado na documentação, mas ainda não criado":
+   remova itens que passaram a existir com esta SPEC.
 
 2. **`CLAUDE.md` dos packages tocados**: cada package tem o seu; descreva a
    API nova ou alterada do ponto de vista de quem vai consumi-la.
 
 3. **`docs/05-context/NEXT_CONTEXT.md`**: nova entrada no **topo** de
    "Estado Imediato", no padrão das existentes — Status com data de
-   aprovação humana, o que foi entregue (packages, APIs, configs, CLI),
+   fechamento, o que foi entregue (packages, APIs, configs, CLI),
    o que ficou documentado como fora de escopo. Atualize o campo
    "Atualizado em" no cabeçalho.
 
@@ -98,6 +103,7 @@ git push
 ## O que esta skill NÃO cobre
 
 - `LESSONS_LEARNED.md` — é a skill `lessons-learned`.
-- Mudar o `Status` da SPEC — decisão humana, nunca automática.
+- Mudar o `Status` da SPEC — o fio principal aplica a transição após o
+  veredicto do `spec-validator`, antes de rodar esta skill.
 - Criar/alterar ADRs novos ou o `ModuleCatalog.md` — decisão arquitetural,
   segue `docs/00-project/ArchitectureDecisionProcess.md`.

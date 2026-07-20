@@ -42,16 +42,21 @@ Ao final:
 - Rode a suíte de testes relevante (a partir da raiz, via `pnpm exec vitest
   run <path>` — os packages não têm script `test` próprio) e `pnpm lint` /
   `pnpm typecheck`.
-- Confira cada item de "Critérios de Aceitação" e diga explicitamente quais
-  foram atendidos.
-- Reporte no relatório final os **atritos** encontrados durante a implementação
-  (comandos que não existiam, suposições da SPEC que não bateram com a execução,
-  campos/contratos que exigiram tocar mais chamadores que o previsto). Esses
-  atritos não deixam rastro no git e são o principal insumo da entrada de
-  Lições Aprendidas escrita depois no fio principal.
+
+Relatório final (contrato de saída) — máximo **20 linhas**, sem eco de
+código (o código está no disco; referencie `caminho:linha`):
+
+1. Arquivos tocados (lista compacta).
+2. Resultado dos comandos (`test`/`lint`/`typecheck`): passou/falhou, e a
+   saída relevante **só** se falhou.
+3. Critérios de Aceitação: atendidos/não atendidos, 1 linha por item.
+4. **Atritos** encontrados (comandos que não existiam, suposições da SPEC
+   que não bateram, contratos que exigiram tocar mais chamadores que o
+   previsto) — não deixam rastro no git e são o principal insumo do
+   Lessons Learned escrito depois no fio principal.
 - Não marque a SPEC como `Done` você mesmo e não escreva a entrada de Lições
   Aprendidas — isso é validação (`spec-validator`) e fechamento, etapas
-  separadas com revisão humana.
+  separadas do pipeline conduzidas pelo fio principal.
 
 Se em algum momento a implementação pedir algo que está em "Fora do Escopo"
 ou exigir uma decisão arquitetural não coberta pela SPEC, pare e reporte a

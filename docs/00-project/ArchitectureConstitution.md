@@ -2,7 +2,7 @@
 
 > **Project Atlas — Constitutional Principles**
 
-Version: 1.0
+Version: 1.1
 
 ---
 
@@ -162,6 +162,17 @@ Modelos de inteligência artificial utilizados durante o desenvolvimento devem r
 Nenhuma IA deve criar novos componentes, alterar responsabilidades ou modificar a arquitetura sem respaldo na documentação oficial.
 
 Mudanças estruturais exigem atualização da documentação correspondente.
+
+## Emenda v1.1 (2026-07-19) — aprovação delegada de SPECs
+
+Uma SPEC pode transitar de `Draft` para `Ready` **sem veto humano** quando aprovada pelo gate adversarial automatizado (`architecture-reviewer`), e o pipeline pode seguir até implementação, validação e fechamento sem consulta ao usuário. Todas as decisões de design tomadas nesse fluxo devem ficar registradas na própria SPEC em formato de veto (decisão + porquê + alternativa descartada), preservando o Artigo 7 (transparência) e o direito de override do usuário a qualquer momento.
+
+Permanecem exigindo decisão humana explícita — o pipeline **para e escala**:
+
+1. emendar esta Constituição;
+2. criar módulo novo fora do Module Catalog ou mover responsabilidade entre módulos;
+3. criar um novo ADR (decisão arquitetural inédita);
+4. segundo veto consecutivo do `architecture-reviewer` sobre a mesma SPEC.
 
 ---
 

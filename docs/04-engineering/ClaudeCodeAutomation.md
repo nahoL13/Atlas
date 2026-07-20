@@ -2,7 +2,7 @@
 
 > **Project Atlas — Automação de Workflow no Claude Code**
 
-Version: 1.2
+Version: 1.3
 
 Status: Documento vivo (não segue o processo de SPEC/ADR — é tooling de
 workflow do Claude Code, não arquitetura da plataforma Atlas)
@@ -56,29 +56,35 @@ identificado foi economia de contexto/token, não orquestração.
 
 # Visão geral do fluxo
 
+Desde a **Emenda v1.1 da Constituição** (2026-07-19), o pipeline é
+autônomo de ponta a ponta: um único pedido ("faz a SPEC de X") dispara a
+cadeia inteira, e o fio principal atua só como **despachante magro** —
+repassa relatórios entre agentes, aplica as transições de `Status` e nunca
+re-narra o trabalho.
+
 ```text
-"cria uma SPEC pra X"
+"faz a SPEC de X"
         ↓
-  spec-drafter (Opus)  →  Status: Draft
+  spec-drafter (Opus)  →  Status: Draft, SEM perguntas abertas
+        │                   (decide sozinho; decisões em formato de veto na SPEC)
         ↓
-  architecture-reviewer (Opus)  →  parecer adversarial + decisões em formato de veto
-        ↓                             (achados voltam ao spec-drafter até sanar)
-  [veto humano: Draft → Ready]
-        ↓
-"implementa a SPEC-XXXX"
-        ↓
+  architecture-reviewer (Opus)  →  GATE: aprovação autoriza Draft → Ready
+        │                   veto → volta ao drafter 1×; 2º veto → ESCALA AO USUÁRIO
+        ↓  (fio principal muda Status: Draft → Ready)
   spec-implementer (Sonnet)  →  código + testes
         ↓
-"valida a SPEC-XXXX"
-        ↓
-  spec-validator (Sonnet)  →  veredicto: pronta p/ Done ou não
-        ↓
-  [aprovação humana: Review → Done]
-        ↓
+  spec-validator (Sonnet)  →  veredicto
+        │                   não pronta → volta ao implementer 1×; 2ª reprovação → ESCALA
+        ↓  (fio principal muda Status: Review → Done)
   lessons-learned (skill)  →  entrada em LESSONS_LEARNED.md
         ↓
-  doc-sync (skill)  →  CLAUDE.md raiz/packages, NEXT_CONTEXT, CURRENT_SPRINT
+  doc-sync (skill)  →  docs vivas + commit + push
 ```
+
+**Escalações obrigatórias** (o pipeline para e chama o usuário — Emenda
+v1.1): emendar a Constituição; módulo novo/responsabilidade movida; ADR
+novo; segundo veto do reviewer; segunda reprovação do validator; pedido sem
+base no PRD. O usuário mantém override a qualquer momento.
 
 Em cada seta de pedido do usuário ("cria uma SPEC pra X", "implementa a
 SPEC-XXXX", "valida a SPEC-XXXX"), um hook `UserPromptSubmit` injeta um
@@ -95,8 +101,8 @@ modelo escolhido pelo tipo de trabalho, não o mais caro por padrão.
 
 | Agente | Modelo | Fase | O que faz | O que NÃO faz |
 |---|---|---|---|---|
-| [`spec-drafter`](../../.claude/agents/spec-drafter.md) | Opus | Criação/Decisão | Cruza PRD, ADRs e Module Catalog; preenche o `SPEC-TEMPLATE.md`; todo campo rastreia a uma fonte documentada; decisões sem fonte viram recomendação em formato de veto (recomendação + porquê + alternativa descartada) | Não decide escopo sem base documental; nunca sai de `Status: Draft`; não cria módulo novo por conta própria |
-| [`architecture-reviewer`](../../.claude/agents/architecture-reviewer.md) | Opus | Revisão de arquitetura (Draft → Ready) | Ataca o rascunho contra Constituição, Module Catalog, ADRs e PRD; devolve parecer com veredicto, achados rastreados à fonte e as decisões arquiteturais em formato de veto para o gate humano | Não edita nenhum arquivo (correções voltam ao `spec-drafter`); não muda `Status`; não expande escopo; sua aprovação **não substitui** o veto humano |
+| [`spec-drafter`](../../.claude/agents/spec-drafter.md) | Opus | Criação/Decisão | Cruza PRD, ADRs e Module Catalog; preenche o `SPEC-TEMPLATE.md`; **decide sozinho** as questões de design deriváveis da documentação e registra cada uma na SPEC em formato de veto (decisão + porquê + alternativa descartada); SPEC sai sem perguntas abertas | Não decide os casos de escalação da Emenda v1.1 (Constituição, módulo novo, ADR novo, pedido sem base no PRD); nunca sai de `Status: Draft`; não implementa |
+| [`architecture-reviewer`](../../.claude/agents/architecture-reviewer.md) | Opus | Gate Draft → Ready | Ataca o rascunho contra Constituição, Module Catalog, ADRs e PRD; sua aprovação **autoriza** `Draft → Ready` (Emenda v1.1); veto devolve ao `spec-drafter` 1×, segundo veto escala ao usuário | Não edita nenhum arquivo (a transição de `Status` é aplicada pelo fio principal); não expande escopo |
 | [`spec-implementer`](../../.claude/agents/spec-implementer.md) | Sonnet | Implementação | Implementa apenas o que está em "Escopo" de uma SPEC `Ready`/`In Progress`; roda testes/lint/typecheck; reporta os atritos encontrados no relatório final (insumo do Lessons Learned) | Não implementa o que está em "Fora do Escopo"; não marca `Done`; não decide arquitetura; **não sincroniza docs vivas** (`CLAUDE.md` raiz/packages, `NEXT_CONTEXT.md`, `CURRENT_SPRINT.md`, `Roadmap.md` — isso é o passo de fecho `doc-sync`) |
 | [`spec-validator`](../../.claude/agents/spec-validator.md) | Sonnet | Verificação | Roda testes/lint/typecheck; confere cada "Critério de Aceitação" e item da "Definition of Done" item a item | Não edita código; não decide se algo deveria ser diferente; não muda `Status` sozinho |
 
@@ -110,23 +116,22 @@ automatizado antes do gate humano `Review → Done`. Um verificador fraco
 depois de um implementador mais forte inverteria a lógica do controle de
 qualidade.
 
-**Por que um revisor adversarial, e não um "agente arquiteto":** o gate
-humano `Draft → Ready` vinha degenerando em teatro — sem conhecimento
-arquitetural para julgar, o humano sempre aceitava a opção recomendada, ou
-seja, o portão não adicionava informação. A primeira ideia (um agente que
-decide arquitetura sozinho) foi descartada por violar frontalmente a
-Constituição ("a IA é colaboradora, não arquiteta") e por esconder o
-problema em vez de resolvê-lo. A solução adotada muda a **qualidade do que
-chega ao portão**, não quem segura o portão: o `architecture-reviewer`
-ataca o rascunho (violação de Constituição/ADR/Module Catalog, alternativa
-mais simples, custo 2–3 SPECs adiante) e devolve cada decisão em **formato
-de veto** — decisão, porquê, alternativa descartada, consequência se
-estiver errada. O humano deixa de escolher entre opções que não domina e
-passa a **aprovar por veto** com contexto para discordar — o que também é
-transferência de conhecimento a cada SPEC, não só controle. O Opus aqui é
-intencional pelo mesmo motivo do `spec-drafter`: crítica arquitetural exige
-o julgamento mais caro do pipeline, e duas instâncias fortes discordando
-valem mais que uma recomendando e um humano assentindo.
+**Histórico do gate (duas reversões deliberadas):** a v1.2 deste documento
+descartou a ideia de um "agente arquiteto" que decide sozinho, por violar a
+Constituição de então ("a IA é colaboradora, não arquiteta"), e adotou o
+gate humano com insumo adversarial: o humano aprovava por veto lendo as
+decisões do `architecture-reviewer`. Na prática, porém, o pingue-pongue de
+perguntas no fio principal seguiu sendo o maior custo de tokens do projeto
+(fase "Criação/Decisão" dominante no `TOKEN_USAGE_LOG.md` mesmo após os
+subagents), e o gate humano continuava assentindo. Em 2026-07-19 o usuário
+decidiu reverter: a **Emenda v1.1 da Constituição** legitima a autonomia, e
+o gate passou a ser **máquina** — a aprovação do `architecture-reviewer`
+autoriza `Draft → Ready`. O que se preservou da solução anterior: as
+decisões continuam registradas em formato de veto (agora dentro da SPEC),
+o usuário mantém override, e as decisões estruturais de verdade
+(Constituição, módulo novo, ADR novo) continuam escalando para ele. Duas
+instâncias Opus discordando (drafter decide, reviewer ataca) seguem sendo o
+mecanismo de qualidade — o que mudou foi quem segura o portão.
 
 **Contexto zerado é o recurso e o risco:** cada subagent começa frio, e a
 SPEC vira o único canal entre as fases. Por isso a skill `spec-check` e os
@@ -247,15 +252,14 @@ Depois:
 1. **Antes de puxar uma SPEC nova**, consultar
    `docs/05-context/TOKEN_USAGE_LOG.md` para comparar com a SPEC concluída
    mais parecida em tamanho e decidir se cabe na sessão atual.
-2. **Pedir a criação/implementação/validação nomeando a SPEC** — o hook
-   `UserPromptSubmit` já lembra automaticamente de delegar para o subagent
-   certo.
-3. **Aprovar as transições de status por veto** (`Draft → Ready`,
-   `Review → Done`) — o gate continua humano, como a Constituição de
-   Arquitetura exige. O que mudou é o insumo: antes de `Draft → Ready`, o
-   `architecture-reviewer` entrega as decisões em formato de veto (decisão,
-   porquê, alternativa descartada, consequência se errada); o humano veta o
-   que discordar em vez de escolher entre opções sem contexto.
+2. **Pedir a SPEC uma única vez** ("faz a SPEC de X") — a cadeia inteira
+   roda sozinha: drafter decide, reviewer aprova ou veta, implementer
+   implementa, validator valida, lessons-learned + doc-sync fecham com
+   commit. O fio principal só despacha e aplica transições de `Status`.
+3. **Ler as decisões depois, exercer override quando discordar** — cada
+   SPEC carrega suas decisões em formato de veto; o usuário só é chamado
+   nas escalações da Emenda v1.1 (Constituição, módulo novo, ADR novo,
+   segundo veto/reprovação).
 4. **Ao final de cada resposta**, o log de tokens já está atualizado
    sozinho — não precisa rodar nada manualmente, mesmo se a sessão cair no
    meio da SPEC.
