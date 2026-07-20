@@ -182,7 +182,17 @@ def parse_subagents(session_dir: Path, fallback_spec_tag: str | None) -> list[di
         record = parse_session(jsonl_path)
         record["agent_type"] = meta.get("agentType", "unknown")
         record["description"] = meta.get("description")
-        if not record["spec_tag"]:
+        # A descrição do subagent ("Fechar SPEC-0023", "implementa a SPEC-0013")
+        # nomeia a SPEC-alvo de forma confiável — é a atribuição correta. A
+        # heurística de "SPEC mais citada no corpo" erra quando uma SPEC
+        # referencia muito a anterior (ex. um closer que consolida o que a SPEC
+        # de antes deixou aberto cita a antiga mais que a própria), roubando o
+        # custo para a SPEC errada. Só caímos na contagem de menções do corpo
+        # (e depois no fallback da sessão) se a descrição não nomear uma SPEC.
+        desc_spec = SPEC_RE.search(record["description"] or "")
+        if desc_spec:
+            record["spec_tag"] = desc_spec.group(0)
+        elif not record["spec_tag"]:
             record["spec_tag"] = fallback_spec_tag
         record["phase"] = PHASE_BY_AGENT_TYPE.get(record["agent_type"], PHASE_OTHER_AGENTS)
         records.append(record)
@@ -311,6 +321,30 @@ def build_spec_log(sessions: list[dict], subagent_records: list[dict]) -> str:
         totals = phase_totals[spec_id]
         row = [spec_id] + [fmt(totals.get(col, 0)) for col in columns]
         lines.append("| " + " | ".join(row) + " |")
+    lines.append("")
+
+    lines.append("## Eficiência de processo (overhead ÷ implementação)\n")
+    lines.append(
+        "Razão entre o custo de **processo** (todas as fases exceto "
+        "Implementação — fio principal, rascunho, revisão, verificação, "
+        "fechamento e apoio) e o custo da **Implementação** (`spec-implementer`). "
+        "Normaliza o tamanho da SPEC: mede quantos tokens de cerimônia cada "
+        "token de código carregou — **menor é melhor**. Só aparecem SPECs cuja "
+        "implementação rodou como fase distinta (via `spec-implementer`); SPECs "
+        "antigas, feitas 100% no fio principal, não têm denominador e são "
+        "omitidas.\n"
+    )
+    lines.append("| SPEC | Implementação | Overhead (resto) | Overhead ÷ Impl |")
+    lines.append("|---|---:|---:|---:|")
+    for spec_id in sorted(phase_totals.keys()):
+        totals = phase_totals[spec_id]
+        impl = totals.get("Implementação", 0)
+        if impl <= 0:
+            continue
+        overhead = sum(totals.values()) - impl
+        lines.append(
+            f"| {spec_id} | {fmt(impl)} | {fmt(overhead)} | {overhead / impl:.1f}× |"
+        )
     lines.append("")
 
     lines.append("## Como estimar antes de começar uma SPEC nova\n")
