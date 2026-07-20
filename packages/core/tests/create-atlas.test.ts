@@ -147,6 +147,22 @@ describe('createAtlas', () => {
     await atlas.shutdown();
   });
 
+  it('SPEC-0021: fato gravado via memory.remember aparece no system prompt de uma invocação subsequente do cognitive, na mesma instância', async () => {
+    const atlas = await createAtlas(
+      { config: { model: { provider: 'fake' } } },
+      { memoryStorage: fakeStorage() },
+    );
+
+    const before = atlas.cognitive.startConversation().messages[0]!.content;
+    expect(before).not.toContain('o nome do usuário é Ana');
+
+    await atlas.memory.remember('o nome do usuário é Ana');
+
+    const after = atlas.cognitive.startConversation().messages[0]!.content;
+    expect(after).toContain('o nome do usuário é Ana');
+    await atlas.shutdown();
+  });
+
   it('compõe com fsRead e permissions.readRoots injetados sem erro', async () => {
     const fsRead: FsReadPort = {
       readFile: async (path: string) =>

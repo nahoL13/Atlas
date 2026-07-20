@@ -68,3 +68,14 @@ A premissa "`respond` sem planejamento" (linha 45 do texto original, e a nota da
 - **`ConversationTurn` ganha `steps?`**, espelhando `AskResult` — mesma transparência que a SPEC-0010 trouxe para `ask`.
 - **Quando Tools rodam, a `Conversation` retornada ganha uma mensagem `system` compacta** resumindo os passos executados (nunca exibida ao usuário) — o histórico como dado continua sendo o mecanismo de continuidade entre turnos; o resumo é só mais uma mensagem nesse valor, não um estado novo escondido em algum lugar.
 - **O detentor da `Conversation` continua sendo o `@atlas/context`** ([ADR-0009](ADR-0009-context-service-value-store.md)), inalterado por esta SPEC.
+
+---
+
+# Atualização ([SPEC-0021](../implementation/specs/SPEC-0021-live-memory-prompt-recomposition.md))
+
+A [SPEC-0021](../implementation/specs/SPEC-0021-live-memory-prompt-recomposition.md) faz `respond` **reescrever ou inserir a mensagem `system`-cabeça da `Conversation` a cada turno** — tratamento do valor `Conversation`, no mesmo espírito da nota da SPEC-0014 acima:
+
+- A cada turno, `respond` amostra o `memoryPrompt` (agora um provider síncrono, ver nota do [ADR-0011](ADR-0011-memory-service-persistence.md)) uma única vez e substitui o conteúdo da **primeira** mensagem `system` da `Conversation` pelo prompt fresco — tanto nas mensagens enviadas ao modelo quanto na `Conversation` retornada. Se não houver nenhuma mensagem `system`, insere-se uma no topo (índice 0).
+- **`respond` continua função pura**: a substituição/inserção é determinística sobre a entrada (mesma `Conversation` + mesmo provider determinístico → mesma saída); nada é retido entre chamadas. O Core continua sem estado.
+- **Nenhuma outra mensagem `system` é varrida ou rescrita** — os resumos compactos de Tools introduzidos pela SPEC-0014 permanecem intactos; só a mensagem-cabeça (a primeira `system`) é tocada.
+- A motivação é manter a `Conversation` como **fonte única**: sem essa substituição, a conversa retornada carregaria um "prompt de memória morto", divergente do que o modelo efetivamente viu na chamada.

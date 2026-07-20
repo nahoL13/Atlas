@@ -53,6 +53,24 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## [SPEC-0021](specs/SPEC-0021-live-memory-prompt-recomposition.md) — Recomposição ao vivo do `memoryPrompt` no Cognitive Core (2026-07-20)
+
+**Descobrimos que...**
+
+a fatia que a SPEC-0020 deixou como residual documentado (recompor o `memoryPrompt` ao vivo) fechou de uma vez as duas limitações que aquela SPEC aceitou como custo — o fato aprendido/gravado passa a valer já no próximo turno da mesma sessão, **e** o `learner` passa a ver os fatos já preservados e a ser instruído a não os re-propor (supressão da duplicação intra-sessão **por instrução ao modelo, sem garantia determinística**, honestamente descrita como tal, não como eliminação). A troca `memoryPrompt: string` → `memoryPrompt: () => string | undefined` (provider síncrono amostrado 1x por turno) confirmou pela terceira vez o corolário das SPECs 0019/0020: por ser um tipo **interno** a `@atlas/cognitive` (não sobe a `@atlas/contracts`, mesmo critério de `Planner`/`Observer`/`Learner`), a mudança ficou **contida** — nenhuma cascata de fakes fora do próprio package, `apps/cli` e `packages/contracts` com diff **vazio**. O `exactOptionalPropertyTypes` reapareceu como no de sempre, mas desta vez a favor: como o provider passa a ser **sempre definido** em `@atlas/core` (`() => memory.prompt()`), o spread condicional que existia (`...(memoryPrompt !== undefined ? { memoryPrompt } : {})`) foi **removido** por atribuição direta — o mesmo mecanismo que na SPEC-0020 forçou o spread aqui o dispensou. O `spec-implementer` não tropeçou em nada previsto pela SPEC (o Fluxo Esperado já desenhava `compose`, a amostragem única e a substituição da cabeça); o único ajuste de forma foi `withFreshSystemHead` ficar como função top-level pura (não closure), por não depender de `personaPrompt`/`memoryPrompt`.
+
+**A arquitetura ajudou porque...**
+
+o `runPlanCycle` compartilhado (SPEC-0014) de novo fez a fatia valer para `ask` **e** `respond` a partir de um único ponto de amostragem por turno. A fronteira do [ADR-0011](../06-adr/ADR-0011-memory-service-persistence.md) (Memory = autoridade exclusiva; injeção do `memoryPrompt` na geração) absorveu a mudança sem revisitar autoridade: trocou-se apenas a **forma** da injeção (string estática → provedor de string), e o Cognitive continua sem conhecer o conceito de Memory — recebe uma função `() => string | undefined`, não a Memory. A pureza do `respond` ([ADR-0008](../06-adr/ADR-0008-conversation-as-data.md)) sobreviveu à reescrita da mensagem `system`-cabeça porque a operação é determinística sobre a entrada (substituir a cabeça, ou inserir uma no topo quando não houver) — a `Conversation` retornada carrega o prompt fresco nos dois lados (enviado + devolvido), sem "prompt morto". Nenhum ADR novo foi necessário: a decisão estrutural já estava no ADR-0011, e a fatia entrou como **nota de atualização** em três ADRs (0008/0011/0016) — registro proporcional ao tamanho real da mudança.
+
+**A arquitetura atrapalhou porque...**
+
+nada a registrar. A mudança coube inteira no desenho existente; os únicos atritos (contenção do tipo interno, `exactOptionalPropertyTypes`) já eram conhecidos e desta vez jogaram a favor.
+
+**Precisamos mudar...**
+
+nada estrutural. A supressão da duplicação intra-sessão continua **por instrução ao modelo, sem garantia determinística** (o próprio ADR-0016 reconhece que modelos locais fracos podem não obedecer). A garantia real — **deduplicação determinística** (comparar/normalizar/consolidar fatos no storage) — segue como fatia futura já documentada no Fora de Escopo desta SPEC e no ADR-0016 (encaminhamento: nova SPEC futura, quando priorizada; mitigada até lá pela proveniência `Fact.source: 'learned'` e pelo `atlas forget`). Nenhum encaminhamento novo aberto por esta fatia.
+
 ## [SPEC-0020](specs/SPEC-0020-learning-post-turn-extraction.md) — Aprendizado: extração pós-turno proposta pelo Cognitive, gravada pela borda (2026-07-19)
 
 **Descobrimos que...**

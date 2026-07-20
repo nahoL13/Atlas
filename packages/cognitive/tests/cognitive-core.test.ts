@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type {
+  Conversation,
   ExecutionResult,
   GenerateRequest,
   GenerateResult,
@@ -7,6 +8,21 @@ import type {
   Runtime,
 } from '@atlas/contracts';
 import { createCognitiveCore, TASK_FRAMING } from '../src/index.js';
+
+/** Provider fake de memória (SPEC-0021): conta invocações num contador
+ * mutável e devolve o último valor da lista uma vez esgotada (roteirizando
+ * mudança entre chamadas). */
+function memoryProviderFake(...values: string[]): {
+  provider: () => string | undefined;
+  counter: { calls: number };
+} {
+  const counter = { calls: 0 };
+  const provider = () => {
+    counter.calls += 1;
+    return values[Math.min(counter.calls - 1, values.length - 1)];
+  };
+  return { provider, counter };
+}
 
 function stubGateway(impl: (request: GenerateRequest) => Promise<GenerateResult>): {
   gateway: ModelGateway;
@@ -94,7 +110,7 @@ describe('createCognitiveCore.ask', () => {
       gateway,
       runtime: emptyRuntime,
       personaPrompt: 'Você é Jarvis.',
-      memoryPrompt: 'Fatos: o nome do usuário é Lohan.',
+      memoryPrompt: () => 'Fatos: o nome do usuário é Lohan.',
     });
 
     await core.ask('oi');
@@ -107,7 +123,11 @@ describe('createCognitiveCore.ask', () => {
 
   it('com memoryPrompt e sem personaPrompt compõe memória + tarefa', async () => {
     const { gateway, calls } = stubGateway(async () => ({ text: 'x' }));
-    const core = createCognitiveCore({ gateway, runtime: emptyRuntime, memoryPrompt: 'Fatos: X.' });
+    const core = createCognitiveCore({
+      gateway,
+      runtime: emptyRuntime,
+      memoryPrompt: () => 'Fatos: X.',
+    });
 
     await core.ask('oi');
 
@@ -420,5 +440,214 @@ describe('createCognitiveCore.ask Aprendizado — extração pós-turno (SPEC-00
 
     // O candidato é devolvido como dado; quem grava é a borda, nunca o Cognitive.
     expect(answer.learned).toEqual(['algum fato']);
+  });
+});
+
+describe('createCognitiveCore — recomposição ao vivo do memoryPrompt por turno (SPEC-0021)', () => {
+  it('amostragem única por turno em ask: provider chamado 1x mesmo com plano + replan + composição + extração', async () => {
+    let call = 0;
+    const { gateway } = stubGateway(async () => {
+      call += 1;
+      if (call === 1) return { text: '{"steps":[{"tool":"clock","args":{}}]}' };
+      if (call === 2) return { text: '{"steps":[{"tool":"clock","args":{}}]}' };
+      if (call === 3) return { text: 'Hoje é 2026-07-20.' };
+      return { text: '[]' };
+    });
+    const runtime = sequencedRuntime(
+      [{ name: 'clock', description: 'hora' }],
+      [
+        { steps: [{ tool: 'clock', args: {}, result: { ok: false, error: 'indisponível' } }] },
+        { steps: [{ tool: 'clock', args: {}, result: { ok: true, output: '2026-07-20' } }] },
+      ],
+    );
+    const { provider, counter } = memoryProviderFake('Fatos: X.');
+    const core = createCognitiveCore({ gateway, runtime, memoryPrompt: provider });
+
+    await core.ask('que dia é hoje?');
+
+    expect(counter.calls).toBe(1);
+  });
+
+  it('amostragem única por turno em respond: provider chamado 1x mesmo com plano + composição + extração', async () => {
+    let call = 0;
+    const { gateway } = stubGateway(async () => {
+      call += 1;
+      if (call === 1) return { text: '{"steps":[{"tool":"clock","args":{}}]}' };
+      if (call === 2) return { text: 'Hoje é 2026-07-20.' };
+      return { text: '[]' };
+    });
+    const runtime = runtimeWith([{ name: 'clock', description: 'hora' }], {
+      steps: [{ tool: 'clock', args: {}, result: { ok: true, output: '2026-07-20' } }],
+    });
+    const { provider, counter } = memoryProviderFake('Fatos: X.');
+    const core = createCognitiveCore({ gateway, runtime, memoryPrompt: provider });
+    const conversation = core.startConversation();
+    counter.calls = 0; // isola a amostragem de startConversation da amostragem de respond
+
+    await core.respond(conversation, 'que dia é hoje?');
+
+    expect(counter.calls).toBe(1);
+  });
+
+  it('recomposição por turno em ask: valor novo aparece no planejamento do ask seguinte', async () => {
+    const { gateway, calls: genCalls } = stubGateway(async () => ({ text: 'resposta' }));
+    let value = 'Fatos: primeiro.';
+    const core = createCognitiveCore({ gateway, runtime: emptyRuntime, memoryPrompt: () => value });
+
+    await core.ask('oi');
+    expect(genCalls[0]!.messages[0]!.content).toContain('Fatos: primeiro.');
+
+    value = 'Fatos: segundo.';
+    await core.ask('oi de novo');
+
+    // sem plano: 2 chamadas por turno (planejamento + extração) — a 3ª
+    // chamada geral é o planejamento do 2º turno.
+    expect(genCalls[2]!.messages[0]!.content).toContain('Fatos: segundo.');
+    expect(genCalls[2]!.messages[0]!.content).not.toContain('Fatos: primeiro.');
+  });
+
+  it('recomposição por turno em respond: reflete tanto no enviado ao modelo quanto na Conversation retornada', async () => {
+    const { gateway, calls: genCalls } = stubGateway(async () => ({ text: 'resposta' }));
+    let value = 'Fatos: primeiro.';
+    const core = createCognitiveCore({ gateway, runtime: emptyRuntime, memoryPrompt: () => value });
+    const conversation = core.startConversation();
+    expect(conversation.messages[0]!.content).toContain('Fatos: primeiro.');
+
+    const turn1 = await core.respond(conversation, 'oi');
+    expect(genCalls[0]!.messages[0]!.content).toContain('Fatos: primeiro.');
+    expect(turn1.conversation.messages[0]!.content).toContain('Fatos: primeiro.');
+
+    value = 'Fatos: segundo.';
+    const turn2 = await core.respond(turn1.conversation, 'oi de novo');
+
+    // sem plano: 2 chamadas por respond (planejamento + extração) — a
+    // chamada de planejamento do 2º respond é a 3ª chamada geral (índice 2).
+    expect(genCalls[2]!.messages[0]!.content).toContain('Fatos: segundo.');
+    expect(genCalls[2]!.messages[0]!.content).not.toContain('Fatos: primeiro.');
+    expect(turn2.conversation.messages[0]!.content).toContain('Fatos: segundo.');
+    expect(turn2.conversation.messages[0]!.content).not.toContain('Fatos: primeiro.');
+  });
+
+  it('fallback sem cabeça system: respond insere uma mensagem system no topo (índice 0)', async () => {
+    const { gateway, calls: genCalls } = stubGateway(async () => ({ text: 'resposta' }));
+    const core = createCognitiveCore({
+      gateway,
+      runtime: emptyRuntime,
+      memoryPrompt: () => 'Fatos: X.',
+    });
+    const conversationSemSystem: Conversation = {
+      messages: [{ role: 'user', content: 'oi antes' }],
+    };
+
+    const turn = await core.respond(conversationSemSystem, 'oi agora');
+
+    expect(genCalls[0]!.messages[0]!.role).toBe('system');
+    expect(genCalls[0]!.messages[0]!.content).toContain('Fatos: X.');
+    expect(genCalls[0]!.messages[1]).toEqual({ role: 'user', content: 'oi antes' });
+    expect(turn.conversation.messages[0]!.role).toBe('system');
+    expect(turn.conversation.messages[0]!.content).toContain('Fatos: X.');
+    expect(turn.conversation.messages[1]).toEqual({ role: 'user', content: 'oi antes' });
+  });
+
+  it('startConversation usa o valor do provider no instante da criação', () => {
+    const { gateway } = stubGateway(async () => ({ text: 'x' }));
+    const value = 'Fatos: A.';
+    const core = createCognitiveCore({ gateway, runtime: emptyRuntime, memoryPrompt: () => value });
+
+    const conversation = core.startConversation();
+
+    expect(conversation.messages[0]!.content).toContain('Fatos: A.');
+  });
+
+  it('respond continua puro: mesmas entradas → mesma saída (sem estado mutável no Core)', async () => {
+    const { gateway } = stubGateway(async () => ({ text: '[]' }));
+    const core = createCognitiveCore({
+      gateway,
+      runtime: emptyRuntime,
+      memoryPrompt: () => 'Fatos: X.',
+    });
+    const conversation = core.startConversation();
+
+    const turn1 = await core.respond(conversation, 'oi');
+    const turn2 = await core.respond(conversation, 'oi');
+
+    expect(turn1).toEqual(turn2);
+  });
+
+  it('personaPrompt continua estático: o provider de memória não afeta a fatia de identidade', async () => {
+    const { gateway, calls: genCalls } = stubGateway(async () => ({ text: 'x' }));
+    let value = 'Fatos: A.';
+    const core = createCognitiveCore({
+      gateway,
+      runtime: emptyRuntime,
+      personaPrompt: 'Você é Jarvis.',
+      memoryPrompt: () => value,
+    });
+
+    await core.ask('oi');
+    value = 'Fatos: B.';
+    await core.ask('oi de novo');
+
+    expect(genCalls[0]!.messages[0]!.content).toContain('Você é Jarvis.');
+    expect(genCalls[2]!.messages[0]!.content).toContain('Você é Jarvis.');
+  });
+
+  it('extração (ask) vê os fatos conhecidos e é instruída a não re-propor, sem afrouxar o Artigo 13', async () => {
+    let call = 0;
+    const { gateway, calls: genCalls } = stubGateway(async () => {
+      call += 1;
+      return call === 1 ? { text: 'resposta' } : { text: '[]' };
+    });
+    const core = createCognitiveCore({
+      gateway,
+      runtime: emptyRuntime,
+      memoryPrompt: () => 'Fatos: o nome do usuário é Lohan.',
+    });
+
+    await core.ask('oi');
+
+    const extractionCall = genCalls[1]!;
+    expect(extractionCall.messages[0]!.content).toContain('Fatos: o nome do usuário é Lohan.');
+    expect(extractionCall.messages[0]!.content).toMatch(/NÃO reproponha/i);
+    expect(extractionCall.messages[0]!.content).toContain(
+      'NUNCA infira, deduza ou invente fatos que o usuário não disse',
+    );
+  });
+
+  it('extração (respond) vê os fatos conhecidos e é instruída a não re-propor', async () => {
+    let call = 0;
+    const { gateway, calls: genCalls } = stubGateway(async () => {
+      call += 1;
+      return call === 1 ? { text: 'resposta' } : { text: '[]' };
+    });
+    const core = createCognitiveCore({
+      gateway,
+      runtime: emptyRuntime,
+      memoryPrompt: () => 'Fatos: prefere café sem açúcar.',
+    });
+    const conversation = core.startConversation();
+
+    await core.respond(conversation, 'oi');
+
+    const extractionCall = genCalls[1]!;
+    expect(
+      extractionCall.messages.some((m) => m.content.includes('Fatos: prefere café sem açúcar.')),
+    ).toBe(true);
+    expect(extractionCall.messages.some((m) => /NÃO reproponha/i.test(m.content))).toBe(true);
+  });
+
+  it('sem memoryPrompt injetado: extração não menciona fatos conhecidos (comportamento pré-SPEC-0021 preservado)', async () => {
+    let call = 0;
+    const { gateway, calls: genCalls } = stubGateway(async () => {
+      call += 1;
+      return call === 1 ? { text: 'resposta' } : { text: '[]' };
+    });
+    const core = createCognitiveCore({ gateway, runtime: emptyRuntime });
+
+    await core.ask('oi');
+
+    const extractionCall = genCalls[1]!;
+    expect(extractionCall.messages[0]!.content).not.toContain('Fatos já conhecidos');
+    expect(extractionCall.messages[0]!.content).not.toMatch(/NÃO reproponha/i);
   });
 });

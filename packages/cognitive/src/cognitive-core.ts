@@ -30,7 +30,16 @@ export interface CognitiveCoreDeps {
   gateway: ModelGateway;
   runtime: Runtime;
   personaPrompt?: string;
-  memoryPrompt?: string;
+  /**
+   * Provider síncrono de memória (SPEC-0021): substitui a antiga string
+   * congelada na criação. Amostrado **exatamente uma vez por turno** (no
+   * início de cada `ask`/`respond`/`startConversation`) — todas as
+   * `generate` do mesmo turno compartilham o mesmo valor amostrado. O
+   * Cognitive continua sem conhecer o conceito de Memory: recebe apenas uma
+   * função que devolve `string | undefined`, tipo **interno** a este
+   * package (não sobe a `@atlas/contracts`).
+   */
+  memoryPrompt?: () => string | undefined;
 }
 
 /** Formata os resultados de execução para a chamada de composição (ask/respond). */
@@ -69,6 +78,24 @@ function summarizeFailures(steps: readonly ExecutedStep[]): string {
     .join('\n');
 }
 
+/**
+ * Substitui o conteúdo da primeira mensagem `system` de `messages` por
+ * `systemPrompt`; se não houver nenhuma, insere uma no topo (índice 0).
+ * Nunca varre/rescreve outras mensagens `system` (ex.: os resumos compactos
+ * de Tools da SPEC-0014 ficam intactos). Usado por `respond` (SPEC-0021)
+ * para manter a `Conversation` como fonte única do prompt de memória
+ * fresco, tanto nas mensagens enviadas ao modelo quanto na retornada.
+ */
+function withFreshSystemHead(messages: readonly Message[], systemPrompt: string): Message[] {
+  const index = messages.findIndex((message) => message.role === 'system');
+  if (index === -1) {
+    return [{ role: 'system', content: systemPrompt }, ...messages];
+  }
+  return messages.map((message, i) =>
+    i === index ? { role: 'system', content: systemPrompt } : message,
+  );
+}
+
 interface PlanCycleResult {
   firstText: string;
   plan: Plan | null;
@@ -79,11 +106,20 @@ interface PlanCycleResult {
 
 export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
   const { gateway, runtime, personaPrompt, memoryPrompt } = deps;
-  const systemPrompt = [personaPrompt, memoryPrompt, TASK_FRAMING]
-    .filter((part): part is string => part !== undefined && part !== '')
-    .join('\n\n');
   const planner = createPlanner();
   const learner = createLearner();
+
+  /**
+   * Compõe o `systemPrompt` a partir de um valor de memória já amostrado
+   * (SPEC-0021): `personaPrompt` (estático, composto uma vez na criação —
+   * a Persona não muda em runtime) + `memoryValue` (amostrado 1x por turno)
+   * + `TASK_FRAMING` (estático), na mesma ordem/filter/join de sempre.
+   */
+  function compose(memoryValue: string | undefined): string {
+    return [personaPrompt, memoryValue, TASK_FRAMING]
+      .filter((part): part is string => part !== undefined && part !== '')
+      .join('\n\n');
+  }
 
   /**
    * Etapa 6 (Aprendizado, ADR-0016): +1 chamada `generate` dedicada, feita
@@ -172,6 +208,11 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
 
   return {
     async ask(objective: string): Promise<AskResult> {
+      // Amostragem única por turno (SPEC-0021): o provider é chamado
+      // exatamente 1x aqui; planejamento, replanejamento, composição e
+      // extração compartilham o mesmo `systemPrompt`/`memoryValue`.
+      const memoryValue = memoryPrompt?.();
+      const systemPrompt = compose(memoryValue);
       const instruction = planner.instruction(runtime.tools());
       const planningSystem = [systemPrompt, instruction].filter((part) => part !== '').join('\n\n');
 
@@ -191,7 +232,7 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
           },
         ],
         (finalText) => [
-          { role: 'system', content: learner.instruction() },
+          { role: 'system', content: learner.instruction(memoryValue) },
           {
             role: 'user',
             content: `Usuário disse:\n${objective}\n\nResposta dada:\n${finalText}`,
@@ -207,12 +248,23 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
     },
 
     startConversation(): Conversation {
+      // O prompt do momento (SPEC-0021): o provider é amostrado na criação
+      // da conversa, como já fazia com o valor estático.
+      const systemPrompt = compose(memoryPrompt?.());
       return { messages: [{ role: 'system', content: systemPrompt }] };
     },
 
     async respond(conversation: Conversation, input: string): Promise<ConversationTurn> {
+      // Amostragem única por turno (SPEC-0021): a primeira mensagem `system`
+      // da conversa é substituída pelo prompt fresco (ou inserida no topo
+      // quando não houver nenhuma) — tanto nas mensagens enviadas ao modelo
+      // quanto na `Conversation` retornada (fonte única, sem prompt morto).
+      const memoryValue = memoryPrompt?.();
+      const systemPrompt = compose(memoryValue);
+      const freshMessages = withFreshSystemHead(conversation.messages, systemPrompt);
+
       const instruction = planner.instruction(runtime.tools());
-      const withUser: Message[] = [...conversation.messages, { role: 'user', content: input }];
+      const withUser: Message[] = [...freshMessages, { role: 'user', content: input }];
       // Instrução do Planner entra como system message logo antes do turno do
       // usuário (não depois): a última mensagem segue sendo o input do
       // usuário, preservando a ordem que `ask` já usa.
@@ -220,7 +272,7 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
         instruction === ''
           ? withUser
           : [
-              ...conversation.messages,
+              ...freshMessages,
               { role: 'system', content: instruction },
               { role: 'user', content: input },
             ];
@@ -236,7 +288,7 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
         ],
         (finalText): Message[] => [
           ...withUser,
-          { role: 'system', content: learner.instruction() },
+          { role: 'system', content: learner.instruction(memoryValue) },
           { role: 'user', content: `Resposta dada:\n${finalText}` },
         ],
       );

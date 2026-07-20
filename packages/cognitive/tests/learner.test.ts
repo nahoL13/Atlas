@@ -11,6 +11,31 @@ describe('learner.instruction', () => {
     expect(text).toMatch(/invente|inventar/i);
     expect(text).toContain('JSON');
   });
+
+  it('sem fatos conhecidos: não menciona fatos já preservados nem instrução de não re-propor', () => {
+    const text = learner.instruction();
+    expect(text).not.toContain('Fatos já conhecidos');
+    expect(text).not.toMatch(/NÃO reproponha/i);
+  });
+
+  it('com fatos conhecidos (SPEC-0021): lista os fatos e instrui a não re-propor', () => {
+    const text = learner.instruction('Fatos: o nome do usuário é Lohan.');
+    expect(text).toContain('Fatos: o nome do usuário é Lohan.');
+    expect(text).toMatch(/NÃO reproponha/i);
+  });
+
+  it('com fatos conhecidos: preserva o Artigo 13 (nunca infere/inventa)', () => {
+    const text = learner.instruction('Fatos: X.');
+    expect(text).toContain('afirmou');
+    expect(text).toMatch(/infira|inferir/i);
+    expect(text).toMatch(/invente|inventar/i);
+  });
+
+  it('fatos conhecidos vazio (string "") equivale a nenhum fato conhecido', () => {
+    const text = learner.instruction('');
+    expect(text).not.toContain('Fatos já conhecidos');
+    expect(text).not.toMatch(/NÃO reproponha/i);
+  });
 });
 
 describe('learner.parse', () => {

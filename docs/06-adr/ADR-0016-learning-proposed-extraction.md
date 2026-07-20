@@ -76,3 +76,13 @@ Custos e riscos:
 **Extração única no fim da sessão (`chat`).** Menos chamadas. Rejeitada: não cobre `ask`, perde o aprendizado se a sessão cair, e o aviso chega tarde demais para o usuário corrigir.
 
 **Sem proveniência (`Fact` intacto).** Fatia menor. Rejeitada: depois de gravados, inferência do modelo e afirmação do usuário seriam indistinguíveis para sempre; o campo opcional custa quase nada e é a única forma de auditoria.
+
+---
+
+# Atualização ([SPEC-0021](../implementation/specs/SPEC-0021-live-memory-prompt-recomposition.md))
+
+A [SPEC-0021](../implementation/specs/SPEC-0021-live-memory-prompt-recomposition.md) endereça as duas limitações conscientes registradas acima:
+
+- **"Fato aprendido não entra no prompt da sessão corrente" (Consequências) fica resolvida.** `memoryPrompt` deixa de ser composto uma vez na criação e passa a ser um provider síncrono (`() => string | undefined`) amostrado pelo Cognitive uma vez por turno; um fato gravado (por `atlas remember` ou pelo próprio Aprendizado) entra no `systemPrompt` já no turno seguinte da mesma sessão de `chat` (nota de atualização correspondente no [ADR-0011](ADR-0011-memory-service-persistence.md)).
+- **"Sem dedup" (duplicação intra-sessão) é mitigada — não eliminada.** A chamada `generate` de extração pós-turno passa a incluir os fatos já conhecidos (o mesmo `memoryValue` amostrado do turno) com instrução explícita de não re-propor o que já está presente. É supressão **por instrução ao modelo**, sem garantia determinística: modelos locais fracos podem não obedecer sempre. Deduplicação/consolidação determinística (comparar/normalizar/mesclar strings no storage) **continua fora de escopo**, como fatia futura das próximas fatias de memória (1.3).
+- **Intactos:** o mecanismo de proposta/gravação/proveniência descrito nesta ADR não muda — o Cognitive continua propondo candidatos como dado, a Memory continua a única autoridade de gravação, e o teto de 3 candidatos por turno permanece o mesmo.

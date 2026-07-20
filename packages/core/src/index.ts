@@ -45,7 +45,6 @@ export async function createAtlas(
   const persona = personaService.get(config.persona);
   const storage = deps.memoryStorage ?? createFileMemoryStorage(config.memory.path);
   const memory = await createMemoryService({ storage });
-  const memoryPrompt = memory.prompt();
   const gateway = createModelGateway(config.model, { fetch: deps.fetch ?? globalThis.fetch });
   const confirm = deps.confirm ?? nodeReadlineConfirmPort();
   const permissions = createPermissionService({
@@ -69,7 +68,11 @@ export async function createAtlas(
     gateway,
     runtime,
     personaPrompt: personaService.systemPrompt(persona),
-    ...(memoryPrompt !== undefined ? { memoryPrompt } : {}),
+    // Provider síncrono (SPEC-0021): amostrado 1x por turno pelo Cognitive,
+    // sempre delegando à Memory (autoridade exclusiva do estado persistente
+    // — Artigo 11). Recompõe o systemPrompt a cada ask/respond, fechando o
+    // laço de aprendizado dentro da própria sessão.
+    memoryPrompt: () => memory.prompt(),
   });
   const context = createContextService();
   const lifecycle = createLifecycle();
