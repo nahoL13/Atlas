@@ -134,9 +134,11 @@ async function withVerifiedHandle<T>(
 export interface NodeFsPortDeps {
   /**
    * Veredicto de contenção aplicado sobre o realpath ancorado no fd. Default
-   * permissivo (`() => true`) preserva o comportamento anterior à SPEC-0017
-   * quando nenhum verificador é injetado — a autoridade real vem sempre do
-   * `@atlas/core`, que fia o método novo do Permission Service aqui.
+   * **fail-closed** (`() => false`, SPEC-0024): na ausência de uma autoridade
+   * de contenção injetada, a porta recusa o uso em vez de permitir por
+   * omissão. A autoridade real vem sempre do `@atlas/core`, que fia
+   * `permissions.isContained` como `verify` aqui — em produção este default
+   * nunca é consultado, pois `verify` está sempre presente.
    */
   verify?: Verify;
   /** Primitivas de baixo nível; default real sobre `node:fs/promises`. */
@@ -144,7 +146,7 @@ export interface NodeFsPortDeps {
 }
 
 export function nodeFsReadPort(deps: NodeFsPortDeps = {}): FsReadPort {
-  const verify = deps.verify ?? (() => true);
+  const verify = deps.verify ?? (() => false);
   const primitives = deps.primitives ?? nodeFsPrimitivesPort();
   return {
     readFile: (path) =>
@@ -154,7 +156,7 @@ export function nodeFsReadPort(deps: NodeFsPortDeps = {}): FsReadPort {
 }
 
 export function nodeFsWritePort(deps: NodeFsPortDeps = {}): FsWritePort {
-  const verify = deps.verify ?? (() => true);
+  const verify = deps.verify ?? (() => false);
   const primitives = deps.primitives ?? nodeFsPrimitivesPort();
   return {
     writeFile: (path, content) =>

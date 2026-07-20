@@ -53,6 +53,24 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## [SPEC-0024](specs/SPEC-0024-fs-port-fail-closed-verify.md) — Endurecer o `verify` das portas de FS para fail-closed por default (2026-07-20)
+
+**Descobrimos que...**
+
+um residual de segurança-por-default nomeado explicitamente numa lição anterior (a desta própria `LESSONS_LEARNED.md`, entrada da SPEC-0017, l. ~198/210) pode ser fechado sem reabrir o desenho que o originou: a inversão do default de `verify` (`() => true` → `() => false`) em `nodeFsReadPort`/`nodeFsWritePort` entregou o ganho de segurança inteiro (porta crua sem autoridade injetada passa a recusar) com um diff de duas linhas de valor + JSDoc, porque o comportamento de produção nunca dependia do default — `createAtlas` sempre fiava `verify` real desde a SPEC-0017. O `architecture-reviewer` confirmou o Perfil `micro` no gate, e o ramo micro (Emenda v1.2) coube exatamente como desenhado: sem `spec-validator` separado, o `spec-closer` validou (lint/typecheck/test/format:check + Critérios de Aceitação) e fechou no mesmo cold-start.
+
+**A arquitetura ajudou porque...**
+
+a separação de autoridade do ADR-0013/0014 (porta aplica um predicado injetado; a autoridade real de contenção mora só em `@atlas/permissions`, fiada por `@atlas/core`) tornou a mudança de postura do *default* uma decisão isolada e local — não exigiu tocar `@atlas/core`, `@atlas/contracts` nem `@atlas/permissions`, e não teve efeito observável em produção, só em consumidores crus/futuros da porta. É o mesmo raciocínio que já havia adiado a decisão "obrigatório vs. fail-closed" na SPEC-0017: manter `verify` opcional (em vez de forçar assinatura obrigatória nos seis Tool factories) preservou a Regra 5 (Tools não conhecem `@atlas/permissions`) e manteve o raio de mudança mínimo mesmo ao endurecer a postura.
+
+**A arquitetura atrapalhou porque...**
+
+nada a registrar — nenhum atrito real na sessão; a implementação seguiu TDD (RED: reescrever o caso "permissivo" esperando recusa → GREEN: inverter o default) exatamente como a Estratégia de Implementação previa, e a suíte de regressão com `verify` injetado permaneceu verde sem alteração de expectativa.
+
+**Precisamos mudar...**
+
+nada a registrar — os residuais conscientes do ADR-0014 (delete/mkdir/list_dir sem fecho atômico, troca de ancestral, Windows) seguem documentados como abertos e esta SPEC não teve a pretensão de fechá-los; nenhum encaminhamento novo surgiu.
+
 ## [SPEC-0023](specs/SPEC-0023-legacy-fact-consolidation-dedupe.md) — Consolidação determinística do acervo legado de fatos (`atlas memory dedupe`) (2026-07-20)
 
 **Descobrimos que...**

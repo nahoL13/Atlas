@@ -36,6 +36,7 @@ Este documento existe para responder, antes de começar a implementar uma SPEC, 
 | SPEC-0021 | Recompor o `memoryPrompt` a cada turno em vez de congelá-lo na criação do Cognitive Core. `CognitiveCoreDeps.memoryPrompt` deixa de ser `string?` e passa a ser um **provider síncrono** injetado — `memoryPrompt?: () => string | undefined` — avaliado **uma vez por turno** no início de cada `ask` e de cada `respond` (amostragem única: todas as `generate` do mesmo turno — planejamento, replanejamento, composição, extração — veem o mesmo prompt). Em `respond`, a primeira mensagem `system` da `Conversation` é **substituída** pelo `systemPrompt` fresco, tanto nas mensagens enviadas ao modelo quanto na `Conversation` retornada (fonte única, sem prompt morto). A chamada de extração do learner (SPEC-0020) passa a **incluir os fatos já conhecidos** (o mesmo valor amostrado do turno) com instrução de **não re-propor** o que já está presente — suprimindo (por instrução ao modelo, sem garantia determinística) a duplicação intra-sessão apontada no fecho da SPEC-0020. `@atlas/core` fia `memoryPrompt: () => memory.prompt()`. **Zero mudança em `@atlas/contracts`** (o `CognitiveCoreDeps` é interno a `@atlas/cognitive`), **zero mudança em `apps/cli`**. Planner, Observer, Runtime, Permission Service, Tools, Model Gateway, Persona, Context intactos | Done | 5 | 2026-07-20 | 52.263.074 | 12.149.240 |
 | SPEC-0022 | Tornar a Memória **incapaz de persistir dois fatos textualmente equivalentes**, de forma **determinística**, na autoridade exclusiva do estado persistente (Artigo 11). `MemoryService.remember` passa a normalizar o texto (`trim` → `toLowerCase` → colapso de espaços internos) e, em caso de duplicata de um fato já existente, **não cria fato novo, não chama `storage.save`**, devolvendo o `Fact` já existente — no-op idempotente, sem promover `source`. Vale para todo chamador (`'user'` e `'learned'`). A assinatura de `remember` muda (não-aditiva) para sinalizar **criado × existente**. Só protege escritas novas — o acervo legado permanece intacto (sem consolidação no load). Fecha a garantia real que a SPEC-0021 deixou aberta (lá a supressão de duplicatas era por instrução ao modelo, sem garantia determinística). | Done | 4 | 2026-07-20 | 26.255.769 | 6.682.987 |
 | SPEC-0023 | Dar à Memória uma operação **explícita e determinística** para **consolidar o acervo já persistido**: o comando `atlas memory dedupe` (novo subcomando de `memory`) reúne os fatos legados que colidem sob a mesma normalização (`trim` → `toLowerCase` → colapso de `\s+`, o mesmo critério da SPEC-0022) e, sob confirmação explícita (`--apply`), remove as duplicatas mantendo **um único sobrevivente por grupo** (o mais antigo por `createdAt`, com `id`/`text`/`source` preservados). Por default é **dry-run** (só relata o que seria consolidado, sem tocar o storage). A consolidação é a **autoridade da Memory** (Artigo 11): um método aditivo `MemoryService.dedupe(options?)` — a CLI só invoca e renderiza, não reimplementa normalização nem toca o storage. Fecha o residual explícito que a SPEC-0022 deixou aberto (lá a garantia determinística cobria só **escritas novas**; o acervo legado permanecia intacto). Não muda `remember`/`forget`/`list`/`prompt`, não normaliza texto armazenado, não mescla campos e não promove `source`. | Done | 3 | 2026-07-20 | 44.937.868 | 9.217.513 |
+| SPEC-0024 | Inverter o default do predicado de contenção `verify` das portas de FS (`nodeFsReadPort`/`nodeFsWritePort` em `@atlas/tools`) de permissivo (`() => true`) para **fail-closed** (`() => false`), de modo que uma porta construída sem injetar `verify` **recuse** (em vez de permitir) `read_file`/`write_file`/`append_file` no instante do uso — fechando o residual de segurança-por-default deixado consciente pela SPEC-0017/ADR-0014, sem mudar assinatura pública, sem tocar `@atlas/contracts`, `@atlas/core` ou o Runtime | Review | 1 | 2026-07-20 | 11.030.037 | 2.961.944 |
 
 ## Detalhamento por fase
 
@@ -65,6 +66,7 @@ Fase = qual agente fez o trabalho. **Criação/Decisão** é o que roda no **fio
 | SPEC-0021 | 7.533.130 | 1.479.607 | 1.445.130 | 1.221.015 | 470.358 | 0 | 0 |
 | SPEC-0022 | 2.576.468 | 643.430 | 648.237 | 971.524 | 763.306 | 1.080.022 | 0 |
 | SPEC-0023 | 4.562.208 | 769.726 | 509.544 | 953.157 | 641.550 | 1.781.328 | 0 |
+| SPEC-0024 | 589.883 | 887.341 | 456.425 | 260.446 | 0 | 767.849 | 0 |
 
 ## Eficiência de processo (overhead ÷ implementação)
 
@@ -83,6 +85,7 @@ Razão entre o custo de **processo** (todas as fases exceto Implementação — 
 | SPEC-0021 | 1.221.015 | 10.928.225 | 9.0× |
 | SPEC-0022 | 971.524 | 5.711.463 | 5.9× |
 | SPEC-0023 | 953.157 | 8.264.356 | 8.7× |
+| SPEC-0024 | 260.446 | 2.701.498 | 10.4× |
 
 ## Como estimar antes de começar uma SPEC nova
 

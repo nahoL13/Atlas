@@ -2,7 +2,7 @@
 
 > **Project Atlas — Estado do Trabalho Atual**
 
-Atualizado em: 2026-07-20 (SPEC-0023)
+Atualizado em: 2026-07-20 (SPEC-0024)
 
 ---
 
@@ -35,5 +35,6 @@ Objetivo: plataforma mínima operável + primeira interface executável (CLI) + 
 | [SPEC-0021](../implementation/specs/SPEC-0021-live-memory-prompt-recomposition.md) | Recomposição ao vivo do `memoryPrompt` no Cognitive Core (`memoryPrompt` vira provider síncrono amostrado 1x/turno; `respond` reescreve/insere a cabeça `system`; learner vê os fatos conhecidos) | Done |
 | [SPEC-0022](../implementation/specs/SPEC-0022-deterministic-fact-deduplication.md) | Deduplicação determinística dos fatos aprendidos no Memory Service (`normalize` puro interno; `remember` no-op idempotente em duplicata; retorno `{ fact, created }`; parcial em 1.3 — legado não consolidado) | Done |
 | [SPEC-0023](../implementation/specs/SPEC-0023-legacy-fact-consolidation-dedupe.md) | Consolidação determinística do acervo legado de fatos (`atlas memory dedupe`; `MemoryService.dedupe(options?)` aditivo, dry-run por default; fecha o candidato de 1.3/l. 93 do Roadmap) | Done |
+| [SPEC-0024](../implementation/specs/SPEC-0024-fs-port-fail-closed-verify.md) | Endurecer o `verify` das portas de FS para fail-closed por default (`packages/tools/src/fs-port.ts`; ramo micro da Emenda v1.2; fecha o residual da lição da SPEC-0017) | Done |
 
 Detalhes de retomada: `docs/05-context/NEXT_CONTEXT.md`.

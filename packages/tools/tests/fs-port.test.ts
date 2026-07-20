@@ -117,14 +117,16 @@ describe('nodeFsReadPort — fecho atômico de TOCTOU (readFile)', () => {
     expect(calls).toEqual([['/root/real-a.txt', 'read']]);
   });
 
-  it('sem verify injetado (default), comporta-se de forma permissiva (compatibilidade)', async () => {
-    const { primitives } = fakePrimitives({
+  it('sem verify injetado (default fail-closed, SPEC-0024): recusa, não lê, fecha o fd', async () => {
+    const { primitives, closed, operated } = fakePrimitives({
       fdIdentity: { dev: 1, ino: 1 },
       realIdentity: { dev: 1, ino: 1 },
       content: 'x',
     });
     const port = nodeFsReadPort({ primitives });
-    await expect(port.readFile('/root/a.txt')).resolves.toBe('x');
+    await expect(port.readFile('/root/a.txt')).rejects.toThrow(/fora do diretório permitido/);
+    expect(operated).toEqual([]);
+    expect(closed).toEqual([true]);
   });
 
   it('readdir não muda: não passa pelo fecho atômico', async () => {
@@ -221,6 +223,30 @@ describe('nodeFsWritePort — fecho atômico de TOCTOU (writeFile/appendFile)', 
     const port = nodeFsWritePort({ verify: alwaysTrue(), primitives });
     await expect(port.appendFile('/root/log.txt', 'x')).rejects.toThrow(/TOCTOU/);
     expect(operated).toEqual([]);
+  });
+
+  it('sem verify injetado (default fail-closed, SPEC-0024): writeFile recusa, não escreve, fecha o fd', async () => {
+    const { primitives, closed, operated } = fakePrimitives({
+      fdIdentity: { dev: 1, ino: 1 },
+      realIdentity: { dev: 1, ino: 1 },
+    });
+    const port = nodeFsWritePort({ primitives });
+    await expect(port.writeFile('/root/a.txt', 'x')).rejects.toThrow(/fora do diretório permitido/);
+    expect(operated).toEqual([]);
+    expect(closed).toEqual([true]);
+  });
+
+  it('sem verify injetado (default fail-closed, SPEC-0024): appendFile recusa, não escreve, fecha o fd', async () => {
+    const { primitives, closed, operated } = fakePrimitives({
+      fdIdentity: { dev: 1, ino: 1 },
+      realIdentity: { dev: 1, ino: 1 },
+    });
+    const port = nodeFsWritePort({ primitives });
+    await expect(port.appendFile('/root/log.txt', 'x')).rejects.toThrow(
+      /fora do diretório permitido/,
+    );
+    expect(operated).toEqual([]);
+    expect(closed).toEqual([true]);
   });
 
   it('deleteFile e mkdir não mudam: não passam pelo fecho atômico', async () => {
