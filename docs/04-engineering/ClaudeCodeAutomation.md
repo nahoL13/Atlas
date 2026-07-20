@@ -86,6 +86,46 @@ v1.1): emendar a Constituição; módulo novo/responsabilidade movida; ADR
 novo; segundo veto do reviewer; segunda reprovação do validator; pedido sem
 base no PRD. O usuário mantém override a qualquer momento.
 
+## Ramo micro (fast-path para SPECs pequenas — Emenda v1.2, 2026-07-20)
+
+O pipeline acima é o do **Perfil `completo`**. Uma SPEC classificada como
+**`micro`** segue um ramo mais enxuto — **sem** relaxar salvaguarda de
+qualidade. É micro a SPEC contida a **um** package (+ opcionalmente a CLI que o
+expõe), aditiva, derivada de ADRs/PRD já existentes (nenhuma decisão nova), que
+não toca `@atlas/contracts`, não cria módulo/Tool/Skill/Persona, não move
+responsabilidade, não pede ADR novo nem emenda, e cabe numa sessão — exatamente
+a fronteira das escalações da Emenda v1.1. Os arquétipos são as SPECs 22 e 23.
+
+```text
+ spec-drafter          →  classifica Perfil: micro (porquê em formato de veto)
+        ↓
+ architecture-reviewer →  GATE em modo LEVE: confirma elegibilidade + invariantes
+        │                 (rebaixa para `completo` se qualquer condição falhar)
+        ↓  (fio principal: Draft → Ready)
+ spec-implementer      →  código + testes (INALTERADO — separado)
+        ↓  (fio principal: In Progress → Review)
+ spec-closer (micro)   →  VALIDA (testes/lint/typecheck + Critérios de Aceitação)
+                          e, se passar, fecha (lições + doc-sync + Status: Done +
+                          commit) — tudo num cold-start só. Reprovou → volta ao
+                          implementer 1×; 2ª reprovação → escala.
+```
+
+**Por que isto economiza** (medido no `TOKEN_USAGE_LOG.md`): o custo de uma
+micro-SPEC é ~85% cerimônia (overhead ÷ implementação ~5,9× na 22/23), e o maior
+balde é o hand-off pelo fio principal. O ramo micro corta um cold-start inteiro
+(validação + fechamento fundidos no `spec-closer`) e a busca adversarial
+exaustiva do gate, mirando ~25–30% por micro-SPEC.
+
+**O que NÃO se abre mão** (as duas salvaguardas): (1) o **gate do
+`architecture-reviewer`** continua autorizando `Draft → Ready` — o modo leve
+troca só o ataque adversarial exaustivo pela verificação de elegibilidade, nunca
+pula o gate; (2) a **independência entre autor e verificador** — quem valida
+(`spec-closer`) nunca é quem escreveu o código (`spec-implementer`), e o closer
+segue proibido de tocar `packages/*/src`/`apps/*/src`. A classificação `micro` é
+**proposta** pelo drafter e **confirmada** pelo reviewer; na dúvida, cai no
+`completo` (default seguro). O `spec-validator` separado é usado **só** no
+`completo`.
+
 Em cada seta de pedido do usuário ("cria uma SPEC pra X", "implementa a
 SPEC-XXXX", "valida a SPEC-XXXX"), um hook `UserPromptSubmit` injeta um
 lembrete automático apontando para o subagent certo — para que a delegação
@@ -106,6 +146,13 @@ modelo escolhido pelo tipo de trabalho, não o mais caro por padrão.
 | [`spec-implementer`](../../.claude/agents/spec-implementer.md) | Sonnet | Implementação | Implementa apenas o que está em "Escopo" de uma SPEC `Ready`/`In Progress`; roda testes/lint/typecheck; reporta os atritos encontrados no relatório final (insumo do Lessons Learned) | Não implementa o que está em "Fora do Escopo"; não marca `Done`; não decide arquitetura; **não sincroniza docs vivas** (`CLAUDE.md` raiz/packages, `NEXT_CONTEXT.md`, `CURRENT_SPRINT.md`, `Roadmap.md` — isso é o passo de fecho `doc-sync`) |
 | [`spec-validator`](../../.claude/agents/spec-validator.md) | Sonnet | Verificação | Roda testes/lint/typecheck; confere cada "Critério de Aceitação" e item da "Definition of Done" item a item | Não edita código; não decide se algo deveria ser diferente; não muda `Status` sozinho |
 | [`spec-closer`](../../.claude/agents/spec-closer.md) | Sonnet | Fechamento | Registra as Lições Aprendidas (`LESSONS_LEARNED.md`) e sincroniza as docs vivas (`PLATFORM_STATE.md`, `CLAUDE.md` raiz/packages, `NEXT_CONTEXT.md`, `CURRENT_SPRINT.md`, notas de ADR) seguindo as skills `lessons-learned`/`doc-sync` como formato canônico; lê `git diff`/`git log` **uma vez** e faz o commit + push único de fechamento | Não muda `Status` (o fio principal já aplicou `Review → Done`); não escreve código; não cria ADR/Module Catalog novo (registra o encaminhamento e escala) |
+
+A tabela acima descreve as fases no **Perfil `completo`**. No **Perfil `micro`**
+(ver "Ramo micro" acima): o `architecture-reviewer` roda em modo leve; o
+`spec-validator` **não é chamado** (sua verificação é fundida no `spec-closer`);
+e o `spec-closer` **valida antes de fechar** e é quem aplica `Review → Done`.
+As colunas "O que NÃO faz" valem para o perfil completo — as exceções do micro
+estão nas definições dos próprios agentes.
 
 O Opus no `spec-drafter` é intencional: síntese de escopo a partir de
 documentação exige mais julgamento que os outros dois. O `spec-validator`

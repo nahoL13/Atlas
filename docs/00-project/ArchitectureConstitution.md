@@ -174,6 +174,14 @@ Permanecem exigindo decisão humana explícita — o pipeline **para e escala**:
 3. criar um novo ADR (decisão arquitetural inédita);
 4. segundo veto consecutivo do `architecture-reviewer` sobre a mesma SPEC.
 
+## Emenda v1.2 (2026-07-20) — fast-path para micro-SPECs
+
+Uma SPEC classificada como **micro** pode seguir um ramo mais enxuto do pipeline, **sem** relaxar nenhuma das salvaguardas de qualidade. Uma SPEC é micro quando satisfaz **todas** as condições: fica contida a um único package (`packages/X/src`) mais, opcionalmente, a superfície de CLI que o expõe (`apps/cli/src`); é aditiva e deriva inteiramente de ADRs/PRD já existentes (**nenhuma decisão arquitetural nova**); não toca `@atlas/contracts`; não cria módulo/Tool/Skill/Persona nem move responsabilidade; não exige ADR novo nem emenda a esta Constituição; e cabe numa sessão. Estas são exatamente as condições de escalação que o `spec-drafter` já avalia.
+
+A classificação é **proposta pelo `spec-drafter`** (campo `Perfil` na SPEC, com o porquê em formato de veto) e **confirmada pelo `architecture-reviewer`** no gate. Uma classificação duvidosa ou rejeitada faz a SPEC cair no **pipeline completo** — o default seguro é sempre o caminho longo.
+
+No ramo micro: (a) o `architecture-reviewer` roda em **modo leve** — verifica a elegibilidade e os invariantes em vez do ataque adversarial exaustivo, mas continua sendo o gate que autoriza `Draft → Ready`; (b) a **validação e o fechamento** rodam num cold-start único do `spec-closer` (ele roda testes/lint/typecheck, confere os Critérios de Aceitação e, se aprovado, registra lições + sincroniza docs vivas + `Status: Done` + commit), dispensando o cold-start separado do `spec-validator`. Preservam-se: o **gate adversarial** (Artigo 15 / Emenda v1.1) e a **independência entre quem escreve o código (`spec-implementer`) e quem o verifica (`spec-closer`)** — o verificador nunca é o autor, e segue proibido de tocar `packages/*/src`/`apps/*/src`. As escalações da Emenda v1.1 permanecem inalteradas, e o usuário mantém override e revisa o diff do commit de fechamento.
+
 ---
 
 # Processo de Evolução

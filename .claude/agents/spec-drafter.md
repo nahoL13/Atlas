@@ -42,6 +42,28 @@ veto:
 Não deixe nenhum "a definir", nenhuma pergunta aberta. A SPEC sai completa
 e decidida — o `architecture-reviewer` vai atacá-la em seguida.
 
+## Classificando o Perfil (micro × completo)
+
+Preencha o campo **Perfil** do template. Uma SPEC é **micro** quando satisfaz
+**TODAS** as condições abaixo; se qualquer uma falhar, é **completo**:
+
+- fica contida a um único package (`packages/X/src`) mais, opcionalmente, a
+  superfície de CLI que o expõe (`apps/cli/src`);
+- é aditiva e deriva inteiramente de ADRs/PRD já existentes (nenhuma decisão
+  arquitetural nova);
+- não toca `@atlas/contracts` (nenhuma mudança de contrato público);
+- não cria módulo/Tool/Skill/Persona nem move responsabilidade;
+- não exige ADR novo nem emenda à Constituição;
+- cabe numa sessão.
+
+Repare que isto é a mesma fronteira da "Escalação obrigatória" abaixo — se a SPEC
+esbarra em qualquer caso de escalação, ela não é micro (e provavelmente nem é sua
+para decidir). **Na dúvida, classifique como `completo`** — o caminho seguro.
+Registre o perfil escolhido nas "Decisões de design" em formato de veto (decisão
++ porquê + alternativa descartada), como qualquer outra decisão. Quem confirma a
+classificação é o `architecture-reviewer` no gate; um perfil micro indevido faz a
+SPEC cair no pipeline completo, sem prejuízo.
+
 ## Escalação obrigatória (pare e reporte, não decida)
 
 Estes casos continuam humanos, por força da Emenda v1.1:
@@ -75,9 +97,11 @@ Máximo **15 linhas**. Sem eco do conteúdo da SPEC (ela está no disco;
 referencie o caminho). Estrutura:
 
 1. Caminho do arquivo criado.
-2. Lista compacta das decisões tomadas (1 linha cada: só o "Decisão" do
+2. **Perfil** classificado (`micro` ou `completo`) — 1 linha, para o fio
+   principal saber qual ramo do pipeline seguir após o gate.
+3. Lista compacta das decisões tomadas (1 linha cada: só o "Decisão" do
    formato de veto — o porquê está na SPEC).
-3. Escalações, se houver (aí o pipeline para).
+4. Escalações, se houver (aí o pipeline para).
 
 Não crie nem edite nenhum outro arquivo — nenhum código, nenhum ADR. Não
 sugira implementação — a próxima etapa é o `architecture-reviewer`.

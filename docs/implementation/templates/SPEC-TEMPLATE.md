@@ -39,6 +39,19 @@ Nome curto e objetivo da implementação.
 
 ---
 
+**Perfil**
+
+- micro
+- completo
+
+Define qual ramo do pipeline a SPEC segue (ver Emenda v1.2 da Constituição e `docs/04-engineering/ClaudeCodeAutomation.md`).
+
+Uma SPEC é **micro** quando satisfaz TODAS: contida a um package (`packages/X/src`) + opcionalmente a CLI que o expõe (`apps/cli/src`); aditiva, derivada de ADRs/PRD já existentes (nenhuma decisão arquitetural nova); não toca `@atlas/contracts`; não cria módulo/Tool/Skill/Persona nem move responsabilidade; não exige ADR novo nem emenda à Constituição; cabe numa sessão. Caso contrário, é **completo**.
+
+O `spec-drafter` propõe o perfil (registrando o porquê nas "Decisões de design"); o `architecture-reviewer` confirma no gate. Na dúvida, use `completo` — o caminho seguro.
+
+---
+
 **Item do Roadmap**
 
 Fase e item de `docs/04-engineering/Roadmap.md` que esta SPEC consome.

@@ -47,6 +47,26 @@ revisar SPEC já `Ready`/`Done` está fora do seu escopo.
    - Algum campo decide silenciosamente algo que deveria estar sinalizado
      como decisão em aberto?
 
+## Confirmar o Perfil (micro × completo) — Emenda v1.2
+
+A SPEC traz um campo **Perfil** proposto pelo `spec-drafter`. Você é quem
+**confirma** — a classificação nunca vale por auto-afirmação. Se o perfil for
+`micro`, verifique que a SPEC de fato satisfaz TODAS as condições: contida a um
+package (+ opcionalmente a CLI que o expõe), aditiva, sem tocar
+`@atlas/contracts`, sem módulo/Tool/Skill/Persona novo, sem responsabilidade
+movida, sem ADR novo nem emenda, derivada de decisões já existentes.
+
+- Se confirmar `micro`: no veredicto, marque o perfil como confirmado. Aí você
+  pode rodar em **modo leve** — os passos 1–5 (Constituição, Module Catalog,
+  ADRs, PRD, escopo) continuam obrigatórios porque são a verificação da própria
+  elegibilidade; o que você dispensa é só a busca adversarial exaustiva por
+  casos de borda de escopo do passo 6, que só se justifica em SPEC estrutural.
+  **Você continua sendo o gate que autoriza `Draft → Ready`.**
+- Se a SPEC estiver marcada `micro` mas violar **qualquer** condição:
+  **rebaixe para `completo`** no veredicto (não é veto — é reclassificação) e
+  revise no modo adversarial completo. O default seguro é sempre o caminho longo.
+- Se estiver marcada `completo`: revise normalmente (adversarial completo).
+
 ## O que você devolve (formato obrigatório)
 
 Um parecer em três blocos — sem editar nenhum arquivo. Compacto: sem eco do
@@ -54,7 +74,10 @@ texto da SPEC (referencie seção/linha), achados em 1–3 linhas cada.
 
 1. **Veredicto**: `APROVADA — AUTORIZADA PARA READY`, `VETADA` (com a lista
    objetiva do que o spec-drafter deve corrigir) ou `VETADA — ESCALAR AO
-   USUÁRIO` (caso da Emenda v1.1 ou segundo veto sobre a mesma SPEC).
+   USUÁRIO` (caso da Emenda v1.1 ou segundo veto sobre a mesma SPEC). Ao
+   aprovar, declare o **Perfil confirmado** (`micro` ou `completo`) — é o que
+   diz ao fio principal se o fechamento segue o ramo micro (validação fundida no
+   `spec-closer`) ou o pipeline completo (`spec-validator` separado).
 2. **Achados**: cada problema com referência à fonte que ele viola
    (artigo da Constituição, ADR, seção do Module Catalog, item do PRD).
    Sem achados, diga explicitamente o que você tentou atacar e não quebrou —

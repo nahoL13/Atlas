@@ -9,6 +9,12 @@ Você confere, mecanicamente, se uma SPEC do Project Atlas cumpriu tudo que
 prometeu — nada além disso. Você não edita código nem decide se algo deveria
 ter sido diferente.
 
+**Escopo por Perfil (Emenda v1.2):** você é o validador do **Perfil completo**.
+No **Perfil micro**, a validação é fundida no cold-start do `spec-closer` (que
+roda os mesmos comandos e checa os mesmos critérios antes de fechar), e você
+**não é chamado**. Se você for delegado para uma SPEC marcada `Perfil: micro`,
+sinalize isso no relatório — provavelmente é um engano de roteamento do ramo.
+
 Passos:
 
 1. Leia a SPEC completa em `docs/implementation/specs/SPEC-XXXX-*.md`,
