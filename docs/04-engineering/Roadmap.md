@@ -90,7 +90,7 @@ Estas são mudanças arquiteturais novas (exigem brainstorming + possivelmente A
 - `candidato · SPEC direta` — Busca/indexação sobre os fatos armazenados.
 - `candidato · SPEC direta` — Retenção e classificação (nem todo fato tem o mesmo peso/prazo de validade).
 - `candidato · SPEC direta` — Relações entre informações.
-- `candidato · SPEC direta` — Deduplicação **determinística** dos fatos aprendidos (a SPEC-0021 suprimiu a duplicação intra-sessão só por instrução ao modelo; a garantia real — comparar/normalizar/consolidar no storage — segue aqui).
+- `candidato · SPEC direta` — Deduplicação **determinística** dos fatos aprendidos — **parcialmente entregue pela [SPEC-0022](../implementation/specs/SPEC-0022-deterministic-fact-deduplication.md)** (2026-07-20): `MemoryService.remember` normaliza (`trim`/`toLowerCase`/colapso de `\s+`) e faz no-op idempotente em duplicata para **escritas novas**, para todo chamador. Permanece candidato: a **consolidação do acervo legado no storage** (comando `atlas memory dedupe`, mutação/merge de duplicatas já gravadas antes desta SPEC) — nada disso foi implementado.
 - `candidato · SPEC direta` — Leitura/gravação ao vivo de memória numa sessão `chat` aberta (`/lembrar`, `/esquecer` como comandos de conversa, não só CLI).
 
 ## 1.4 Capacidades de Plataforma

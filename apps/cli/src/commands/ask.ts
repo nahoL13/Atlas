@@ -14,7 +14,9 @@ export async function runAsk(
   // candidatos como dado; a borda grava (autoridade exclusiva da Memory) e
   // anuncia — nunca gravação silenciosa.
   for (const fact of result.learned ?? []) {
-    await atlas.memory.remember(fact, 'learned');
-    renderLearned(fact, output);
+    const { created } = await atlas.memory.remember(fact, 'learned');
+    if (created) {
+      renderLearned(fact, output);
+    }
   }
 }

@@ -2,7 +2,7 @@
 
 > **Project Atlas — Estado do Trabalho Atual**
 
-Atualizado em: 2026-07-20 (SPEC-0021)
+Atualizado em: 2026-07-20 (SPEC-0022)
 
 ---
 
@@ -33,5 +33,6 @@ Objetivo: plataforma mínima operável + primeira interface executável (CLI) + 
 | [SPEC-0019](../implementation/specs/SPEC-0019-observation-replan-loop.md) | Observação: laço plano→executa→observa→replaneja (`runPlanCycle` limitado a 1 replan, `observe` puro, `ExecutedStep.denialKind`) | Done |
 | [SPEC-0020](../implementation/specs/SPEC-0020-learning-post-turn-extraction.md) | Aprendizado: extração pós-turno proposta pelo Cognitive, gravada pela borda (`learner` puro, `learned?`, `Fact.source?` — ciclo cognitivo completo nas 7 etapas) | Done |
 | [SPEC-0021](../implementation/specs/SPEC-0021-live-memory-prompt-recomposition.md) | Recomposição ao vivo do `memoryPrompt` no Cognitive Core (`memoryPrompt` vira provider síncrono amostrado 1x/turno; `respond` reescreve/insere a cabeça `system`; learner vê os fatos conhecidos) | Done |
+| [SPEC-0022](../implementation/specs/SPEC-0022-deterministic-fact-deduplication.md) | Deduplicação determinística dos fatos aprendidos no Memory Service (`normalize` puro interno; `remember` no-op idempotente em duplicata; retorno `{ fact, created }`; parcial em 1.3 — legado não consolidado) | Done |
 
 Detalhes de retomada: `docs/05-context/NEXT_CONTEXT.md`.

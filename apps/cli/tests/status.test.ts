@@ -48,7 +48,7 @@ function fakeAtlas(permissions: AtlasConfig['permissions']): AtlasPlatform {
       closeSession: () => {},
     },
     memory: {
-      remember: async () => ({ id: 'x', text: '', createdAt: '' }),
+      remember: async () => ({ fact: { id: 'x', text: '', createdAt: '' }, created: true }),
       forget: async () => false,
       list: () => [],
       prompt: () => undefined,

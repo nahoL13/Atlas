@@ -36,10 +36,8 @@ function stubAtlas(
       remember:
         remember ??
         (async (text: string, source?: 'user' | 'learned') => ({
-          id: 'x',
-          text,
-          createdAt: '',
-          source,
+          fact: { id: 'x', text, createdAt: '', source },
+          created: true,
         })),
     },
     context: {
@@ -129,7 +127,7 @@ describe('runChat — traço de steps (SPEC-0014)', () => {
       }),
       async (text, source) => {
         remembered.push([text, source]);
-        return { id: 'x', text, createdAt: '', source };
+        return { fact: { id: 'x', text, createdAt: '', source }, created: true };
       },
     );
 
@@ -151,7 +149,7 @@ describe('runChat — traço de steps (SPEC-0014)', () => {
       }),
       async () => {
         rememberCalls += 1;
-        return { id: 'x', text: '', createdAt: '' };
+        return { fact: { id: 'x', text: '', createdAt: '' }, created: true };
       },
     );
 
@@ -159,5 +157,21 @@ describe('runChat — traço de steps (SPEC-0014)', () => {
 
     expect(rememberCalls).toBe(0);
     expect(cap.text()).toBe('Jarvis: olá! Como posso ajudar?\neco: oi\n');
+  });
+
+  it('learned que já é conhecido (created: false) não imprime o traço (SPEC-0022)', async () => {
+    const cap = capture();
+    const atlas = stubAtlas(
+      async (conversation, input) => ({
+        reply: `eco: ${input}`,
+        conversation: { messages: [...conversation.messages] },
+        learned: ['mora em São Paulo'],
+      }),
+      async (text, source) => ({ fact: { id: 'x', text, createdAt: '', source }, created: false }),
+    );
+
+    await runChat(atlas, cap.output, scriptedReader(['moro em São Paulo', '/sair']));
+
+    expect(cap.text()).toBe('Jarvis: olá! Como posso ajudar?\neco: moro em São Paulo\n');
   });
 });

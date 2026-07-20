@@ -55,7 +55,10 @@ describe('runAsk', () => {
       memory: {
         remember: async (text: string, source?: 'user' | 'learned') => {
           remembered.push([text, source]);
-          return { id: 'x', text, createdAt: '2026-07-19T00:00:00.000Z', source };
+          return {
+            fact: { id: 'x', text, createdAt: '2026-07-19T00:00:00.000Z', source },
+            created: true,
+          };
         },
       },
     } as unknown as AtlasPlatform;
@@ -79,7 +82,7 @@ describe('runAsk', () => {
       memory: {
         remember: async () => {
           rememberCalls += 1;
-          return { id: 'x', text: '', createdAt: '' };
+          return { fact: { id: 'x', text: '', createdAt: '' }, created: true };
         },
       },
     } as unknown as AtlasPlatform;
@@ -88,5 +91,27 @@ describe('runAsk', () => {
 
     expect(rememberCalls).toBe(0);
     expect(cap.text()).toBe('olá!\n');
+  });
+
+  it('learned que já é conhecido (created: false) não imprime o traço (SPEC-0022)', async () => {
+    const cap = capture();
+    const atlas = {
+      cognitive: {
+        ask: async () => ({
+          text: 'Ok.',
+          learned: ['mora em São Paulo'],
+        }),
+      },
+      memory: {
+        remember: async (text: string, source?: 'user' | 'learned') => ({
+          fact: { id: 'x', text, createdAt: '2026-07-19T00:00:00.000Z', source },
+          created: false,
+        }),
+      },
+    } as unknown as AtlasPlatform;
+
+    await runAsk(atlas, 'moro em São Paulo', cap.output);
+
+    expect(cap.text()).toBe('Ok.\n');
   });
 });

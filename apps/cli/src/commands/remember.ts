@@ -6,6 +6,10 @@ export async function runRemember(
   text: string,
   output: OutputGateway,
 ): Promise<void> {
-  const fact = await atlas.memory.remember(text);
-  output.write(`Lembrado [${fact.id}]: ${fact.text}\n`);
+  const { fact, created } = await atlas.memory.remember(text);
+  if (created) {
+    output.write(`Lembrado [${fact.id}]: ${fact.text}\n`);
+  } else {
+    output.write(`Já conhecido [${fact.id}]: ${fact.text}\n`);
+  }
 }

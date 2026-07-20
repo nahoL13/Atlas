@@ -53,6 +53,24 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## [SPEC-0022](specs/SPEC-0022-deterministic-fact-deduplication.md) — Deduplicação determinística dos fatos aprendidos no Memory Service (2026-07-20)
+
+**Descobrimos que...**
+
+a mudança de assinatura de `MemoryService.remember` (`Promise<Fact>` → `Promise<{ fact, created }>`) confirma, numa variante nova, o corolário já conhecido sobre grep de contrato: o `architecture-reviewer` (achado F1) e o próprio implementador constataram que **nem todo fake quebrado aparece no mesmo canal de verificação**. Os fakes de `MemoryService` em `apps/cli/tests/*` que usam cast (`as unknown as AtlasPlatform`/`stubAtlas`) **anulam** a checagem de tipo do retorno — só `pnpm test` os expõe (a asserção de `created`/`renderLearned` falha em runtime), não `pnpm typecheck`; só `remember.ts` (consumidor direto, sem cast) quebrava o typecheck de fato. Na prática isso reapareceu como lacuna real: o fake de `MemoryService` em `apps/cli/tests/status.test.ts` **não estava no grep original** (`MemoryService`/`.remember(`) citado pela própria SPEC como suficiente — foi só o typecheck direto (sem cast) que o expôs durante a implementação. Depois, o `spec-validator` ainda pegou uma 2ª lacuna: o ramo `created: false`/"Já conhecido" de `atlas remember` (E2E) não tinha nenhum teste cobrindo-o — só o `created: true` original.
+
+**A arquitetura ajudou porque...**
+
+o desenho de `normalize`/no-op ficou inteiramente contido em `@atlas/memory` (helper puro interno, sem IO, sem subir a `@atlas/contracts` — mesmo critério já usado para `Planner`/`Observer`/`Learner`/`compose` nas SPECs anteriores). A mudança de contrato, embora não-aditiva, tocou só os 3 call sites já mapeados pela própria SPEC e nenhum outro módulo (`@atlas/cognitive`, `@atlas/runtime`, `@atlas/permissions`, `@atlas/tools`, `@atlas/model-gateway`, `@atlas/persona`, `@atlas/context` seguiram com diff vazio) — a autoridade exclusiva da Memory sobre o estado persistente (Artigo 11) absorveu a mudança sem revisitar fronteira nenhuma; só ganhou nota de atualização no ADR-0011.
+
+**A arquitetura atrapalhou porque...**
+
+nada estrutural; o atrito foi de **processo de verificação**, não de arquitetura: mudança de assinatura de retorno em membro de interface de contrato, testada por fakes com cast que **mascaram erro de tipo**, é uma combinação que já se provou capaz de esconder um fake não migrado do próprio `typecheck` (2ª ocorrência do padrão F1/status.test.ts — recorrência, não redescoberta) — e, separadamente, cobertura E2E de um ramo `else`/negativo que a Estratégia de Testes da SPEC não obrigou explicitamente até o `spec-validator` reprovar.
+
+**Precisamos mudar...**
+
+quando uma SPEC futura mudar a assinatura de retorno de um membro de interface de `@atlas/contracts` consumido por fakes com cast (`as unknown as`/`stubAtlas`), o Checklist para IA deve instruir explicitamente a rodar `pnpm test` (não só `pnpm typecheck`) como o verificador real de migração de fakes, e a listar cada arquivo de teste que usa esse padrão de cast como candidato a checar manualmente — o grep textual por tipo/método sozinho não é suficiente quando há cast no meio (encaminhamento: atualizar `docs/implementation/templates/SPEC-TEMPLATE.md`, seção "Estratégia de Implementação"/"Checklist para IA", com essa instrução, na próxima SPEC que tocar um contrato consumido por fakes com cast — sem SPEC dedicada só para isso).
+
 ## [SPEC-0021](specs/SPEC-0021-live-memory-prompt-recomposition.md) — Recomposição ao vivo do `memoryPrompt` no Cognitive Core (2026-07-20)
 
 **Descobrimos que...**

@@ -33,8 +33,10 @@ export async function runChat(
         atlas.context.updateConversation(session, turn.conversation);
         // Etapa 6 (Aprendizado, SPEC-0020/ADR-0016): grava e anuncia, por turno.
         for (const fact of turn.learned ?? []) {
-          await atlas.memory.remember(fact, 'learned');
-          renderLearned(fact, output);
+          const { created } = await atlas.memory.remember(fact, 'learned');
+          if (created) {
+            renderLearned(fact, output);
+          }
         }
       } catch (cause) {
         if (cause instanceof AtlasError && cause.code === 'ATLAS_MODEL_GATEWAY') {

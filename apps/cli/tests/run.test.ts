@@ -203,6 +203,39 @@ describe('run (integração apps → core)', () => {
     expect(h2.out()).toContain('meu nome é Lohan');
   });
 
+  it('remember de um fato duplicado (SPEC-0022) informa "Já conhecido" e não grava de novo', async () => {
+    const path = await tmpMemoryPath();
+    const h1 = harness();
+    const code1 = await run(
+      ['remember', 'meu nome é Lohan', '--provider', 'fake', '--memory-path', path],
+      {},
+      h1.gateways,
+      '0.1.0',
+    );
+    expect(code1).toBe(0);
+    expect(h1.out()).toMatch(/^Lembrado \[[^\]]+\]: meu nome é Lohan\n$/);
+
+    const h2 = harness();
+    const code2 = await run(
+      ['remember', '  MEU NOME É LOHAN  ', '--provider', 'fake', '--memory-path', path],
+      {},
+      h2.gateways,
+      '0.1.0',
+    );
+    expect(code2).toBe(0);
+    expect(h2.out()).toContain('Já conhecido');
+
+    const h3 = harness();
+    const code3 = await run(
+      ['memory', 'list', '--provider', 'fake', '--memory-path', path],
+      {},
+      h3.gateways,
+      '0.1.0',
+    );
+    expect(code3).toBe(0);
+    expect(h3.out().match(/meu nome é Lohan/g)).toHaveLength(1);
+  });
+
   it('forget remove um fato previamente lembrado', async () => {
     const path = await tmpMemoryPath();
     const h1 = harness();
