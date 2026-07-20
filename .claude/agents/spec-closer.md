@@ -123,3 +123,9 @@ referencie `caminho`):
 2. Docs vivas sincronizadas: lista compacta dos arquivos tocados.
 3. Commit + push: hash e se o push passou/falhou.
 4. Escalações pendentes (ex.: ADR novo que "Precisamos mudar" pediu), se houver.
+5. **Se esta parece ser uma das primeiras SPECs fechadas por você** (a coluna
+   "Fechamento" do `TOKEN_USAGE_LOG.md` ainda estava zerada/ausente antes
+   desta), sinalize numa linha: o fio principal deve preencher a "Medição
+   PENDENTE" do *Registro de impacto* em
+   `docs/04-engineering/ClaudeCodeAutomation.md` na próxima regeneração do log
+   (quando a coluna "Fechamento" desta SPEC já estiver visível).

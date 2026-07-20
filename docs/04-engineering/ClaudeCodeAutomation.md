@@ -264,6 +264,56 @@ ou não cabe numa sessão", não é contabilidade exata.
 
 ---
 
+# Registro de impacto (baseline → medição)
+
+Toda mudança nesta automação que promete economia de token registra aqui um
+**baseline congelado + hipótese + medição**, para não otimizarmos no escuro.
+A tabela do `TOKEN_USAGE_LOG.md` é regenerada e muda sozinha; os números
+abaixo são um **snapshot manual** da referência "antes", que não se altera.
+
+## Baseline congelado — pipeline completo, pré-`spec-closer` (2026-07-20)
+
+Últimas SPECs com o pipeline autônomo (drafter/reviewer/implementer/validator
+via Task), em **tokens efetivos**. A fase de **Fechamento** ainda não existia:
+o custo de lições + doc-sync estava **dentro de "Criação/Decisão (fio
+principal)"** e não é isolável — é exatamente por isso que não dava para medir.
+
+| SPEC | Criação/Decisão (fio principal) | Rascunho | Revisão | Implementação | Verificação |
+|---|---:|---:|---:|---:|---:|
+| SPEC-0019 | 4.688.414 | 1.333.249 | 0 | 3.374.441 | 545.657 |
+| SPEC-0020 | 4.030.323 | 1.479.607 | 816.702 | 2.651.780 | 911.089 |
+| SPEC-0021 | 7.013.597 | 0 | 1.445.130 | 1.221.015 | 470.358 |
+
+## Entradas
+
+### `spec-closer` — extrair o fechamento do fio principal (2026-07-20)
+
+- **Baseline:** lições + doc-sync rodavam no fio principal, no ponto de
+  contexto mais caro da SPEC. Custo embutido em "Criação/Decisão" (acima:
+  4–7M efetivos nas 0019–0021), não separável.
+- **Hipótese:** um cold-start dedicado (`spec-closer`) faz esses edits
+  multi-arquivo num contexto pequeno, eliminando o reprocessamento de
+  `cache_read` de pico. Espera-se: "Criação/Decisão" **cai** numa SPEC de
+  porte comparável, e o novo custo aparece isolado em "Fechamento" — menor
+  que a queda em "Criação/Decisão" (senão a mudança não pagou).
+- **Medição:** _PENDENTE — a primeira SPEC fechada pelo `spec-closer`
+  preenche a coluna "Fechamento" no `TOKEN_USAGE_LOG.md`. Registrar aqui:
+  SPEC nº, Fechamento (X), Criação/Decisão dela (Y), e a SPEC de porte
+  parecido no baseline usada como comparação. Veredicto: pagou / não pagou /
+  reverter._
+
+### Instrumentação de fases no log de token (2026-07-20)
+
+- **Mudança:** `spec-drafter`→Rascunho, `architecture-reviewer`→Revisão,
+  `spec-closer`→Fechamento no `PHASE_BY_AGENT_TYPE` do script.
+- **Impacto já medido:** o custo do `architecture-reviewer`, antes oculto em
+  "Apoio (outros agentes)", ficou visível retroativamente — **Revisão:
+  816.702 (SPEC-0020), 1.445.130 (SPEC-0021)**. É o dado que faltava para
+  decidir, mais adiante e com base real, se o reviewer justifica Opus ou se
+  Sonnet basta.
+
+---
+
 # Como isso muda o dia a dia
 
 Antes desta automação: eu fazia rascunho, implementação e validação de uma
