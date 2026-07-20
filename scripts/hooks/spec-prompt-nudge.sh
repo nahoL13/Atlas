@@ -34,7 +34,7 @@ if has 'spec'; then
     exit 0
   fi
   if has 'conclui|fecha|finaliza|encerra'; then
-    emit "Lembrete automático (hook UserPromptSubmit): ao fechar uma SPEC já validada (veredicto 'pronta' do spec-validator e transição Review → Done aplicada pelo fio principal), delegue ao subagent spec-closer via Agent tool (subagent_type: spec-closer) — ele registra as lições aprendidas (LESSONS_LEARNED.md), sincroniza as docs vivas (CLAUDE.md raiz/packages, PLATFORM_STATE.md, NEXT_CONTEXT.md, CURRENT_SPRINT.md) e faz o commit + push único, num cold-start só. Inclua no prompt de delegação as decisões desta conversa que não estejam no texto da SPEC. Não faça esse fechamento no fio principal — é onde o contexto de pico custa mais caro."
+    emit "Lembrete automático (hook UserPromptSubmit): ao fechar uma SPEC já validada (veredicto 'pronta' do spec-validator e transição Review → Done aplicada pelo fio principal), delegue ao subagent spec-closer via Agent tool (subagent_type: spec-closer) — ele registra as lições aprendidas (LESSONS_LEARNED.md), sincroniza as docs vivas (CLAUDE.md raiz/packages, PLATFORM_STATE.md, NEXT_CONTEXT.md, CURRENT_SPRINT.md) e faz o commit + push único, num cold-start só. No prompt de delegação, cole o relatório final do spec-validator (ele já resume o que foi entregue/verificado — o closer usa como base e re-lê o mínimo) e as decisões desta conversa que não estejam no texto da SPEC. Não faça esse fechamento no fio principal — é onde o contexto de pico custa mais caro."
     exit 0
   fi
 fi

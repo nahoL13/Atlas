@@ -29,15 +29,26 @@ acumulado no fim da SPEC.
 ## Reconstrua o que foi entregue (uma vez, reaproveitado nos dois passos)
 
 Antes de tocar qualquer documento, levante o que **de fato** mudou — não o
-que a SPEC prometia:
+que a SPEC prometia.
+
+**Aproveite o relatório do `spec-validator`, quando ele vier no prompt de
+delegação.** Ele já resume o que foi entregue e confirmou (critérios de
+aceitação atendidos, arquivos tocados, testes que passaram) — trate isso como
+base já verificada e **não reconfira**. Sua leitura própria fica só no que o
+relatório não cobre e você precisa para *escrever* as docs. Se o relatório
+não vier, levante tudo do zero pelas fontes abaixo. Ou seja, com relatório em
+mãos você re-lê o **mínimo**; sem ele, re-lê o necessário.
 
 - `git log` e `git diff` da implementação: quais packages/apps foram tocados,
-  quais APIs novas ou alteradas existem, quais testes entraram.
+  quais APIs novas ou alteradas existem, quais testes entraram (a fonte para
+  o *texto* das docs vivas — o diff descreve a API do ponto de vista de quem
+  vai consumi-la).
 - Releia a SPEC: seção "Escopo → Documentação" (docs prometidos, nenhum
   opcional) e "Critérios de Aceitação".
-- Atritos e desvios reportados pelo `spec-implementer`, se vierem no prompt
-  de delegação (comandos que não existiam, suposições que não bateram,
-  contratos que exigiram tocar mais chamadores que o previsto).
+- Atritos e desvios reportados pelo `spec-implementer`/`spec-validator`, se
+  vierem no prompt de delegação (comandos que não existiam, suposições que não
+  bateram, contratos que exigiram tocar mais chamadores que o previsto) — são
+  o principal insumo do "atrapalhou porque..." das Lições Aprendidas.
 
 ## Passo 1 — Lições Aprendidas
 
