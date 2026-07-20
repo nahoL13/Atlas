@@ -2,7 +2,7 @@
 
 > **Project Atlas — Estado do Trabalho Atual**
 
-Atualizado em: 2026-07-20 (SPEC-0022)
+Atualizado em: 2026-07-20 (SPEC-0023)
 
 ---
 
@@ -34,5 +34,6 @@ Objetivo: plataforma mínima operável + primeira interface executável (CLI) + 
 | [SPEC-0020](../implementation/specs/SPEC-0020-learning-post-turn-extraction.md) | Aprendizado: extração pós-turno proposta pelo Cognitive, gravada pela borda (`learner` puro, `learned?`, `Fact.source?` — ciclo cognitivo completo nas 7 etapas) | Done |
 | [SPEC-0021](../implementation/specs/SPEC-0021-live-memory-prompt-recomposition.md) | Recomposição ao vivo do `memoryPrompt` no Cognitive Core (`memoryPrompt` vira provider síncrono amostrado 1x/turno; `respond` reescreve/insere a cabeça `system`; learner vê os fatos conhecidos) | Done |
 | [SPEC-0022](../implementation/specs/SPEC-0022-deterministic-fact-deduplication.md) | Deduplicação determinística dos fatos aprendidos no Memory Service (`normalize` puro interno; `remember` no-op idempotente em duplicata; retorno `{ fact, created }`; parcial em 1.3 — legado não consolidado) | Done |
+| [SPEC-0023](../implementation/specs/SPEC-0023-legacy-fact-consolidation-dedupe.md) | Consolidação determinística do acervo legado de fatos (`atlas memory dedupe`; `MemoryService.dedupe(options?)` aditivo, dry-run por default; fecha o candidato de 1.3/l. 93 do Roadmap) | Done |
 
 Detalhes de retomada: `docs/05-context/NEXT_CONTEXT.md`.

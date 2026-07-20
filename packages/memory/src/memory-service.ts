@@ -1,4 +1,4 @@
-import type { Fact, MemoryService } from '@atlas/contracts';
+import type { DedupeGroup, DedupeReport, Fact, MemoryService } from '@atlas/contracts';
 import type { MemoryStorage } from './storage/memory-storage.js';
 
 export interface MemoryServiceDeps {
@@ -56,6 +56,60 @@ export async function createMemoryService(deps: MemoryServiceDeps): Promise<Memo
       }
       const lines = facts.map((fact) => `- ${fact.text}`);
       return `O usuário pediu para você lembrar os seguintes fatos e preferências:\n${lines.join('\n')}`;
+    },
+
+    async dedupe(options?: { readonly apply?: boolean }): Promise<DedupeReport> {
+      const apply = options?.apply ?? false;
+
+      // Agrupa por chave de normalização preservando a ordem de carga (índice
+      // em `facts`), para o desempate D3 (menor índice) ser trivial.
+      const groupsByKey = new Map<string, Fact[]>();
+      for (const fact of facts) {
+        const key = normalize(fact.text);
+        const group = groupsByKey.get(key);
+        if (group !== undefined) {
+          group.push(fact);
+        } else {
+          groupsByKey.set(key, [fact]);
+        }
+      }
+
+      const dedupeGroups: DedupeGroup[] = [];
+      const duplicateIds = new Set<string>();
+      for (const group of groupsByKey.values()) {
+        if (group.length < 2) {
+          continue;
+        }
+        // `createdAt` é sempre gerado via `new Date().toISOString()` (formato
+        // ISO 8601 UTC de largura fixa), então a comparação lexicográfica de
+        // string equivale à ordem cronológica. Empate → menor índice em
+        // `facts` (ordem de carga), já garantido pela ordem de `push` acima.
+        let survivor = group[0]!;
+        for (const fact of group.slice(1)) {
+          if (fact.createdAt < survivor.createdAt) {
+            survivor = fact;
+          }
+        }
+        const duplicates = group.filter((fact) => fact.id !== survivor.id);
+        dedupeGroups.push({ survivor, duplicates });
+        for (const duplicate of duplicates) {
+          duplicateIds.add(duplicate.id);
+        }
+      }
+
+      if (dedupeGroups.length === 0) {
+        return { applied: false, groups: [] };
+      }
+
+      if (!apply) {
+        return { applied: false, groups: dedupeGroups };
+      }
+
+      const survivorsAndUntouched = facts.filter((fact) => !duplicateIds.has(fact.id));
+      facts.length = 0;
+      facts.push(...survivorsAndUntouched);
+      await deps.storage.save(facts);
+      return { applied: true, groups: dedupeGroups };
     },
   };
 }

@@ -13,6 +13,8 @@ export interface ParsedInput {
   objective?: string;
   factText?: string;
   factId?: string;
+  memorySubcommand?: 'list' | 'dedupe';
+  apply?: boolean;
 }
 
 export interface InputGateway {
@@ -37,6 +39,7 @@ interface CliValues {
   model?: string | undefined;
   'base-url'?: string | undefined;
   'api-key'?: string | undefined;
+  apply?: boolean | undefined;
 }
 
 function filterNonEmpty(segments: readonly string[]): string[] {
@@ -169,6 +172,7 @@ function parseArgvOrThrow(argv: string[]) {
         model: { type: 'string' },
         'base-url': { type: 'string' },
         'api-key': { type: 'string' },
+        apply: { type: 'boolean' },
       },
     });
   } catch (cause) {
@@ -234,12 +238,17 @@ export function createCliInputGateway(): InputGateway {
 
       if (command === 'memory') {
         const sub = positionals[1];
-        if (sub !== undefined && sub !== 'list') {
+        if (sub !== undefined && sub !== 'list' && sub !== 'dedupe') {
           throw new CliUsageError(
-            `subcomando de memory desconhecido: ${sub} (use: atlas memory list)`,
+            `subcomando de memory desconhecido: ${sub} (use: atlas memory list|dedupe)`,
           );
         }
-        return { command: 'memory', configOverride: resolveConfigOverride(values, env) };
+        return {
+          command: 'memory',
+          configOverride: resolveConfigOverride(values, env),
+          memorySubcommand: sub === 'dedupe' ? 'dedupe' : 'list',
+          apply: values.apply === true,
+        };
       }
 
       if (command === 'chat') {

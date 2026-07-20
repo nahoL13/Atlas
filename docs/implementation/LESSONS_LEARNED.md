@@ -53,6 +53,28 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## [SPEC-0023](specs/SPEC-0023-legacy-fact-consolidation-dedupe.md) — Consolidação determinística do acervo legado de fatos (`atlas memory dedupe`) (2026-07-20)
+
+**Descobrimos que...**
+
+o achado F1 do gate corrigiu, para esta SPEC, qual artigo realmente exige subir `dedupe` ao contrato `MemoryService`: **não** é a regra do "2º consumidor"/"promoção de tipo local" do ADR-0007 — `MemoryService` **já era** contrato público consumido por CLI e core antes desta SPEC, então adicionar um método a ele não é promoção de nada. O fundamento correto é o Artigo 11 (autoridade exclusiva da Memory sobre o estado persistente) + Artigo 5 (Tools/CLI não reimplementam lógica de outro módulo): sem o método no contrato, a CLI teria de acessar `normalize`/`storage` internos de `@atlas/memory` para consolidar, o que vazaria autoridade de escrita para a borda. É uma distinção que provavelmente se repete: "isto precisa subir ao contrato?" tem dois motivos possíveis e diferentes — 2º consumidor (ADR-0007) e autoridade exclusiva de módulo (Artigo 11/5) — e só um deles se aplica quando o contrato já é público.
+
+Confirmamos também, numa 3ª+ ocorrência, o padrão recorrente já registrado nas lições da SPEC-0017/SPEC-0022: adicionar um membro a uma **interface de contrato** (aqui, `MemoryService.dedupe`) quebra o `typecheck` só dos fakes tipados diretamente contra essa interface — nesta SPEC, apenas o fake de `apps/cli/tests/status.test.ts`. Os fakes com `as unknown as AtlasPlatform`/`stubAtlas` em `apps/cli/tests/ask.test.ts`/`chat.test.ts` seguiram escapando do `typecheck` por completo (o cast anula a checagem estrutural) — só `pnpm test` os exporia se de fato chamassem `dedupe`, o que não chamam. O padrão já é conhecido o bastante para ser tratado como regra, não como achado novo a cada SPEC.
+
+Por fim, o formato real do storage em disco (`{ facts: [...] }`, um objeto com a chave `facts`, não um array bruto) não estava descrito em nenhum lugar da própria SPEC — teve de ser inferido lendo `packages/memory/src/memory-service.ts`/o adapter de storage para poder escrever o teste E2E da CLI em `tmpdir` corretamente.
+
+**A arquitetura ajudou porque...**
+
+a consolidação reusou por inteiro o `normalize(text)` puro interno já existente desde a SPEC-0022 (mesmo helper, zero duplicação), e o `dedupe` novo viveu inteiramente dentro de `@atlas/memory`, com a CLI só invocando e renderizando — nenhum outro módulo (`@atlas/cognitive`, `@atlas/runtime`, `@atlas/permissions`, `@atlas/tools`, `@atlas/model-gateway`, `@atlas/persona`, `@atlas/context`) precisou de qualquer mudança de produção. O invariante `createdAt` sempre gerado via `toISOString()` (confirmado no código, achado F3 do `architecture-reviewer`) fez a comparação lexicográfica de string equivaler exatamente à ordem cronológica, sem exigir parsing de data.
+
+**A arquitetura atrapalhou porque...**
+
+nada estrutural; o único atrito real foi de documentação da própria SPEC, não de arquitetura — o formato de storage em disco (`{ facts: [...] }`) precisou ser inferido do código-fonte para o teste E2E, porque nenhuma SPEC anterior (SPEC-0009, SPEC-0020, SPEC-0022) documentou o formato do arquivo JSON persistido, só a API do `MemoryService`.
+
+**Precisamos mudar...**
+
+nada que exija ADR, documentação nova ou SPEC dedicada agora: o achado F1 (distinção 2º-consumidor × autoridade-exclusiva como dois motivos diferentes de subir algo ao contrato) e a 3ª+ ocorrência do padrão de fakes com cast escapando do `typecheck` já estão registrados aqui e nas lições anteriores — ficam como conhecimento acumulado, sem novo encaminhamento de documentação estrutural. Se a distinção do gate (2º consumidor vs. autoridade exclusiva) voltar a gerar confusão numa 3ª SPEC, aí sim vale um encaminhamento para o `DevelopmentGuide.md` ou o ADR-0007.
+
 ## [SPEC-0022](specs/SPEC-0022-deterministic-fact-deduplication.md) — Deduplicação determinística dos fatos aprendidos no Memory Service (2026-07-20)
 
 **Descobrimos que...**

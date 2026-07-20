@@ -52,6 +52,7 @@ function fakeAtlas(permissions: AtlasConfig['permissions']): AtlasPlatform {
       forget: async () => false,
       list: () => [],
       prompt: () => undefined,
+      dedupe: async () => ({ applied: false, groups: [] }),
     },
     shutdown: async () => {},
   };

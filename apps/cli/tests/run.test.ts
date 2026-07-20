@@ -309,6 +309,93 @@ describe('run (integração apps → core)', () => {
     expect(h.out()).toContain('[fake] oi de novo');
   });
 
+  it('memory dedupe (dry-run) reporta duplicatas sem alterar memory list', async () => {
+    const path = await tmpMemoryPath();
+    const h1 = harness();
+    await run(
+      ['remember', 'meu nome é Lohan', '--provider', 'fake', '--memory-path', path],
+      {},
+      h1.gateways,
+      '0.1.0',
+    );
+
+    const h2 = harness();
+    const code = await run(
+      ['memory', 'dedupe', '--provider', 'fake', '--memory-path', path],
+      {},
+      h2.gateways,
+      '0.1.0',
+    );
+    expect(code).toBe(0);
+    expect(h2.out()).toContain('Nenhuma duplicata encontrada.');
+
+    const h3 = harness();
+    await run(
+      ['memory', 'list', '--provider', 'fake', '--memory-path', path],
+      {},
+      h3.gateways,
+      '0.1.0',
+    );
+    expect(h3.out()).toContain('meu nome é Lohan');
+  });
+
+  it('memory dedupe --apply consolida o acervo legado; list passa a ter uma única ocorrência', async () => {
+    const path = await tmpMemoryPath();
+    // Simula acervo legado escrevendo direto no arquivo (sem passar por remember,
+    // que já bloqueia novas duplicatas desde a SPEC-0022).
+    const legacy = [
+      { id: 'a1', text: 'meu nome é Lohan', createdAt: '2026-01-01T00:00:00.000Z' },
+      { id: 'a2', text: 'Meu Nome É Lohan', createdAt: '2026-01-02T00:00:00.000Z' },
+    ];
+    await writeFile(path, JSON.stringify({ facts: legacy }), 'utf8');
+
+    const hDry = harness();
+    const codeDry = await run(
+      ['memory', 'dedupe', '--provider', 'fake', '--memory-path', path],
+      {},
+      hDry.gateways,
+      '0.1.0',
+    );
+    expect(codeDry).toBe(0);
+    expect(hDry.out()).toContain('seria removido');
+
+    const hListAfterDry = harness();
+    await run(
+      ['memory', 'list', '--provider', 'fake', '--memory-path', path],
+      {},
+      hListAfterDry.gateways,
+      '0.1.0',
+    );
+    expect(hListAfterDry.out().match(/meu nome é Lohan/gi)).toHaveLength(2);
+
+    const hApply = harness();
+    const codeApply = await run(
+      ['memory', 'dedupe', '--apply', '--provider', 'fake', '--memory-path', path],
+      {},
+      hApply.gateways,
+      '0.1.0',
+    );
+    expect(codeApply).toBe(0);
+    expect(hApply.out()).toContain('consolidado');
+
+    const hListAfterApply = harness();
+    await run(
+      ['memory', 'list', '--provider', 'fake', '--memory-path', path],
+      {},
+      hListAfterApply.gateways,
+      '0.1.0',
+    );
+    expect(hListAfterApply.out().match(/meu nome é Lohan/gi)).toHaveLength(1);
+  });
+
+  it('memory <subcomando desconhecido> erra listando list/dedupe', async () => {
+    const h = harness();
+    const code = await run(['memory', 'bogus'], {}, h.gateways, '0.1.0');
+    expect(code).toBe(2);
+    expect(h.err()).toContain('list');
+    expect(h.err()).toContain('dedupe');
+  });
+
   it('memory list vazio informa que não há fatos', async () => {
     const path = await tmpMemoryPath();
     const h = harness();

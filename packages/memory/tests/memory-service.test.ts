@@ -162,4 +162,119 @@ describe('createMemoryService', () => {
       expect(storage.saved).toHaveLength(0);
     });
   });
+
+  describe('dedupe — consolidação determinística do acervo legado (SPEC-0023)', () => {
+    it('agrupa fatos equivalentes por normalização; fato distinto fora do grupo', async () => {
+      const storage = fakeStorage([
+        { id: 'a1', text: 'Meu Nome é Lohan', createdAt: '2026-01-01T00:00:00.000Z' },
+        { id: 'a2', text: 'prefiro TS', createdAt: '2026-01-02T00:00:00.000Z' },
+        { id: 'a3', text: '  meu   nome é lohan ', createdAt: '2026-01-03T00:00:00.000Z' },
+      ]);
+      const svc = await createMemoryService({ storage });
+      const report = await svc.dedupe();
+      expect(report.groups).toHaveLength(1);
+      const [group] = report.groups;
+      const ids = [group!.survivor.id, ...group!.duplicates.map((d) => d.id)].sort();
+      expect(ids).toEqual(['a1', 'a3']);
+    });
+
+    it('sobrevivente é o mais antigo por createdAt; id preservado', async () => {
+      const storage = fakeStorage([
+        { id: 'old', text: 'x', createdAt: '2026-01-01T00:00:00.000Z' },
+        { id: 'new', text: 'X', createdAt: '2026-05-01T00:00:00.000Z' },
+      ]);
+      const svc = await createMemoryService({ storage });
+      const report = await svc.dedupe();
+      expect(report.groups[0]!.survivor.id).toBe('old');
+      expect(report.groups[0]!.duplicates.map((d) => d.id)).toEqual(['new']);
+    });
+
+    it('empate de createdAt desempata pela ordem de carga (menor índice)', async () => {
+      const storage = fakeStorage([
+        { id: 'first', text: 'x', createdAt: '2026-01-01T00:00:00.000Z' },
+        { id: 'second', text: 'X', createdAt: '2026-01-01T00:00:00.000Z' },
+      ]);
+      const svc = await createMemoryService({ storage });
+      const report = await svc.dedupe();
+      expect(report.groups[0]!.survivor.id).toBe('first');
+    });
+
+    it('dry-run (sem apply) não chama save nem muta list()', async () => {
+      const storage = fakeStorage([
+        { id: 'a1', text: 'x', createdAt: '2026-01-01T00:00:00.000Z' },
+        { id: 'a2', text: 'X', createdAt: '2026-01-02T00:00:00.000Z' },
+      ]);
+      const svc = await createMemoryService({ storage });
+      const report = await svc.dedupe();
+      expect(report.applied).toBe(false);
+      expect(report.groups).toHaveLength(1);
+      expect(storage.saved).toHaveLength(0);
+      expect(svc.list()).toHaveLength(2);
+    });
+
+    it('dedupe({apply:false}) explícito também não persiste', async () => {
+      const storage = fakeStorage([
+        { id: 'a1', text: 'x', createdAt: '2026-01-01T00:00:00.000Z' },
+        { id: 'a2', text: 'X', createdAt: '2026-01-02T00:00:00.000Z' },
+      ]);
+      const svc = await createMemoryService({ storage });
+      const report = await svc.dedupe({ apply: false });
+      expect(report.applied).toBe(false);
+      expect(storage.saved).toHaveLength(0);
+    });
+
+    it('--apply persiste 1x e remove as duplicatas, preservando ordem de carga', async () => {
+      const storage = fakeStorage([
+        { id: 'a1', text: 'x', createdAt: '2026-01-01T00:00:00.000Z' },
+        { id: 'b1', text: 'distinto', createdAt: '2026-01-02T00:00:00.000Z' },
+        { id: 'a2', text: 'X', createdAt: '2026-01-03T00:00:00.000Z' },
+      ]);
+      const svc = await createMemoryService({ storage });
+      const report = await svc.dedupe({ apply: true });
+      expect(report.applied).toBe(true);
+      expect(storage.saved).toHaveLength(1);
+      expect(svc.list().map((f) => f.id)).toEqual(['a1', 'b1']);
+    });
+
+    it('no-op sem duplicatas: groups vazio, save não chamado mesmo com apply:true', async () => {
+      const storage = fakeStorage([
+        { id: 'a1', text: 'x', createdAt: '2026-01-01T00:00:00.000Z' },
+        { id: 'a2', text: 'y', createdAt: '2026-01-02T00:00:00.000Z' },
+      ]);
+      const svc = await createMemoryService({ storage });
+      const report = await svc.dedupe({ apply: true });
+      expect(report.groups).toHaveLength(0);
+      expect(report.applied).toBe(false);
+      expect(storage.saved).toHaveLength(0);
+      expect(svc.list()).toHaveLength(2);
+    });
+
+    it('source e text do sobrevivente preservados; colisão user/learned não promove', async () => {
+      const storage = fakeStorage([
+        { id: 'u1', text: 'x', createdAt: '2026-01-01T00:00:00.000Z', source: 'user' },
+        { id: 'l1', text: 'X', createdAt: '2026-01-02T00:00:00.000Z', source: 'learned' },
+      ]);
+      const svc = await createMemoryService({ storage });
+      const report = await svc.dedupe({ apply: true });
+      const survivor = svc.list()[0]!;
+      expect(survivor.id).toBe('u1');
+      expect(survivor.source).toBe('user');
+      expect(survivor.text).toBe('x');
+      expect(report.groups[0]!.survivor.source).toBe('user');
+    });
+
+    it('idempotência: rodar apply duas vezes, a segunda é no-op', async () => {
+      const storage = fakeStorage([
+        { id: 'a1', text: 'x', createdAt: '2026-01-01T00:00:00.000Z' },
+        { id: 'a2', text: 'X', createdAt: '2026-01-02T00:00:00.000Z' },
+      ]);
+      const svc = await createMemoryService({ storage });
+      await svc.dedupe({ apply: true });
+      expect(storage.saved).toHaveLength(1);
+      const second = await svc.dedupe({ apply: true });
+      expect(second.groups).toHaveLength(0);
+      expect(second.applied).toBe(false);
+      expect(storage.saved).toHaveLength(1);
+    });
+  });
 });

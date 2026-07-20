@@ -24,7 +24,8 @@
       "Bash(obsidian backlinks *)",
       "Skill(update-config)",
       "Bash(git commit *)",
-      "Bash(rtk gain *)"
+      "Bash(rtk gain *)",
+      "Bash(python3 scripts/claude-usage-report.py --top 40)"
     ]
   }
 }

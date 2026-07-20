@@ -5,7 +5,7 @@ import { runAsk } from './commands/ask.js';
 import { runChat } from './commands/chat.js';
 import { runRemember } from './commands/remember.js';
 import { runForget } from './commands/forget.js';
-import { runMemoryList } from './commands/memory.js';
+import { runMemoryList, runMemoryDedupe } from './commands/memory.js';
 import { CliUsageError } from './gateway/input-gateway.js';
 import { createReadlineLineReader } from './gateway/line-reader.js';
 import { createLineReaderConfirmPort } from './gateway/confirm-port.js';
@@ -32,6 +32,7 @@ Commands:
   remember "<fato>"    Grava um fato/preferência persistente
   forget <id>          Remove um fato memorizado
   memory list          Lista os fatos memorizados
+  memory dedupe [--apply]  Consolida duplicatas do acervo (dry-run por default)
 
 Options:
   -h, --help           Mostra esta ajuda
@@ -109,7 +110,11 @@ export async function run(
         } else if (parsed.command === 'forget') {
           await runForget(atlas, parsed.factId ?? '', output);
         } else if (parsed.command === 'memory') {
-          runMemoryList(atlas, output);
+          if (parsed.memorySubcommand === 'dedupe') {
+            await runMemoryDedupe(atlas, parsed.apply ?? false, output);
+          } else {
+            runMemoryList(atlas, output);
+          }
         } else {
           runStatus(atlas, output);
         }
