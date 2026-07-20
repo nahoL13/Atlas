@@ -16,7 +16,7 @@ has() {
 }
 
 if has '(cria|criar|rascunha|rascunhar).*spec|nova spec'; then
-  emit "Lembrete automático (hook UserPromptSubmit): esta SPEC dispara o pipeline autônomo (Emenda v1.1 da Constituição). Delegue ao subagent spec-drafter via Agent tool (subagent_type: spec-drafter) — ele decide sozinho e entrega Status Draft sem perguntas abertas; em seguida delegue ao architecture-reviewer (gate: aprovação autoriza Draft → Ready, aplicada pelo fio principal; 2º veto escala ao usuário) e siga a cadeia: spec-implementer → spec-validator → lessons-learned + doc-sync + commit, sem consultar o usuário fora das escalações. Inclua no prompt de delegação as decisões relevantes já tomadas nesta conversa. Repasse relatórios sem re-narrar."
+  emit "Lembrete automático (hook UserPromptSubmit): esta SPEC dispara o pipeline autônomo (Emenda v1.1 da Constituição). Delegue ao subagent spec-drafter via Agent tool (subagent_type: spec-drafter) — ele decide sozinho e entrega Status Draft sem perguntas abertas; em seguida delegue ao architecture-reviewer (gate: aprovação autoriza Draft → Ready, aplicada pelo fio principal; 2º veto escala ao usuário) e siga a cadeia: spec-implementer → spec-validator → (fio principal aplica Review → Done) → spec-closer (lições aprendidas + docs vivas + commit/push, num cold-start só), sem consultar o usuário fora das escalações. Inclua no prompt de delegação as decisões relevantes já tomadas nesta conversa. Repasse relatórios sem re-narrar."
   exit 0
 fi
 
@@ -34,13 +34,13 @@ if has 'spec'; then
     exit 0
   fi
   if has 'conclui|fecha|finaliza|encerra'; then
-    emit "Lembrete automático (hook UserPromptSubmit): ao concluir uma SPEC, use a skill lessons-learned (registro em docs/implementation/LESSONS_LEARNED.md) e depois a skill doc-sync (sincronizar CLAUDE.md raiz e dos packages, NEXT_CONTEXT.md e CURRENT_SPRINT.md) antes de marcar Done — ambas fazem parte da Definition of Done."
+    emit "Lembrete automático (hook UserPromptSubmit): ao fechar uma SPEC já validada (veredicto 'pronta' do spec-validator e transição Review → Done aplicada pelo fio principal), delegue ao subagent spec-closer via Agent tool (subagent_type: spec-closer) — ele registra as lições aprendidas (LESSONS_LEARNED.md), sincroniza as docs vivas (CLAUDE.md raiz/packages, PLATFORM_STATE.md, NEXT_CONTEXT.md, CURRENT_SPRINT.md) e faz o commit + push único, num cold-start só. Inclua no prompt de delegação as decisões desta conversa que não estejam no texto da SPEC. Não faça esse fechamento no fio principal — é onde o contexto de pico custa mais caro."
     exit 0
   fi
 fi
 
 if has 'aprendidas|lessons'; then
-  emit "Lembrete automático (hook UserPromptSubmit): use a skill lessons-learned para registrar lições aprendidas no formato exigido por docs/implementation/LESSONS_LEARNED.md."
+  emit "Lembrete automático (hook UserPromptSubmit): as lições aprendidas fazem parte do fechamento da SPEC — delegue ao subagent spec-closer via Agent tool (subagent_type: spec-closer), que registra em docs/implementation/LESSONS_LEARNED.md e ainda sincroniza as docs vivas e faz o commit, num cold-start só. A skill lessons-learned segue sendo a fonte do formato que ele lê."
   exit 0
 fi
 

@@ -13,9 +13,10 @@ workflow do Claude Code, não arquitetura da plataforma Atlas)
 
 Este documento descreve a automação construída dentro do Claude Code para
 apoiar o processo oficial de desenvolvimento do Atlas (definido em
-[Development Guide](DevelopmentGuide.md)): quatro subagents (um por fase do
-ciclo de uma SPEC, mais um revisor adversarial de arquitetura), três skills,
-quatro hooks e um script de análise de custo de token.
+[Development Guide](DevelopmentGuide.md)): cinco subagents (um por fase do
+ciclo de uma SPEC, mais um revisor adversarial de arquitetura e um agente de
+fechamento), três skills, quatro hooks e um script de análise de custo de
+token.
 
 Nada aqui altera o processo em si — o fluxo Ideia → PRD → SPEC →
 Implementação → Testes → Documentação → Review → Merge continua sendo o
@@ -76,9 +77,8 @@ re-narra o trabalho.
   spec-validator (Sonnet)  →  veredicto
         │                   não pronta → volta ao implementer 1×; 2ª reprovação → ESCALA
         ↓  (fio principal muda Status: Review → Done)
-  lessons-learned (skill)  →  entrada em LESSONS_LEARNED.md
-        ↓
-  doc-sync (skill)  →  docs vivas + commit + push
+  spec-closer (Sonnet)  →  lições aprendidas + docs vivas + commit + push
+                           (cold-start único; lê git diff uma vez e reaproveita)
 ```
 
 **Escalações obrigatórias** (o pipeline para e chama o usuário — Emenda
@@ -94,7 +94,7 @@ conversa longa.
 
 ---
 
-# Os quatro subagents
+# Os cinco subagents
 
 Definidos em `.claude/agents/`. Cada um cobre exatamente uma fase e usa o
 modelo escolhido pelo tipo de trabalho, não o mais caro por padrão.
@@ -105,6 +105,7 @@ modelo escolhido pelo tipo de trabalho, não o mais caro por padrão.
 | [`architecture-reviewer`](../../.claude/agents/architecture-reviewer.md) | Opus | Gate Draft → Ready | Ataca o rascunho contra Constituição, Module Catalog, ADRs e PRD; sua aprovação **autoriza** `Draft → Ready` (Emenda v1.1); veto devolve ao `spec-drafter` 1×, segundo veto escala ao usuário | Não edita nenhum arquivo (a transição de `Status` é aplicada pelo fio principal); não expande escopo |
 | [`spec-implementer`](../../.claude/agents/spec-implementer.md) | Sonnet | Implementação | Implementa apenas o que está em "Escopo" de uma SPEC `Ready`/`In Progress`; roda testes/lint/typecheck; reporta os atritos encontrados no relatório final (insumo do Lessons Learned) | Não implementa o que está em "Fora do Escopo"; não marca `Done`; não decide arquitetura; **não sincroniza docs vivas** (`CLAUDE.md` raiz/packages, `NEXT_CONTEXT.md`, `CURRENT_SPRINT.md`, `Roadmap.md` — isso é o passo de fecho `doc-sync`) |
 | [`spec-validator`](../../.claude/agents/spec-validator.md) | Sonnet | Verificação | Roda testes/lint/typecheck; confere cada "Critério de Aceitação" e item da "Definition of Done" item a item | Não edita código; não decide se algo deveria ser diferente; não muda `Status` sozinho |
+| [`spec-closer`](../../.claude/agents/spec-closer.md) | Sonnet | Fechamento | Registra as Lições Aprendidas (`LESSONS_LEARNED.md`) e sincroniza as docs vivas (`PLATFORM_STATE.md`, `CLAUDE.md` raiz/packages, `NEXT_CONTEXT.md`, `CURRENT_SPRINT.md`, notas de ADR) seguindo as skills `lessons-learned`/`doc-sync` como formato canônico; lê `git diff`/`git log` **uma vez** e faz o commit + push único de fechamento | Não muda `Status` (o fio principal já aplicou `Review → Done`); não escreve código; não cria ADR/Module Catalog novo (registra o encaminhamento e escala) |
 
 O Opus no `spec-drafter` é intencional: síntese de escopo a partir de
 documentação exige mais julgamento que os outros dois. O `spec-validator`
@@ -115,6 +116,22 @@ compreensão de código × documento — e o validator é o último portão
 automatizado antes do gate humano `Review → Done`. Um verificador fraco
 depois de um implementador mais forte inverteria a lógica do controle de
 qualidade.
+
+O `spec-closer` (Sonnet) foi a última fase a sair do fio principal
+(2026-07-20). O fechamento — lições aprendidas + sincronização das docs
+vivas — rodava no fio principal via as skills `lessons-learned`/`doc-sync`,
+no **pior ponto de custo**: o fim da SPEC, quando o contexto acumulado
+(rascunho + parecer do reviewer + relatórios do implementer/validator) já é
+o maior da sessão, e cada `Edit` multi-arquivo reprocessava tudo em
+`cache_read` caro. Isolar num subagent frio ataca exatamente essa causa
+raiz — a mesma lógica que justificou implementer/validator. É Sonnet, não
+Haiku, porque escreve prosa (o parágrafo "Estado" do `CLAUDE.md`, o
+narrativo do `PLATFORM_STATE.md`), não só marca checklist. Juntar as duas
+tarefas num agente só (em vez de dois cold-starts) faz o `git diff`/`git log`
+ser lido **uma vez** e reaproveitado nos dois passos. O trade-off: o agente
+frio precisa re-ler os docs vivos + a SPEC + o diff, mas esses são leituras
+pequenas e baratas perto do contexto de pico que o fio principal reprocessava
+a cada edit.
 
 **Histórico do gate (duas reversões deliberadas):** a v1.2 deste documento
 descartou a ideia de um "agente arquiteto" que decide sozinho, por violar a
@@ -144,8 +161,12 @@ com o contexto descartado do subagent.
 
 # As três skills
 
-Definidas em `.claude/skills/`. Diferente dos subagents (que fazem o
-trabalho), skills são instruções que eu sigo no fio principal. Importante:
+Definidas em `.claude/skills/`. Skills são instruções em texto que servem de
+**fonte canônica do formato** — a de `spec-check` é seguida no fio principal;
+as de `lessons-learned` e `doc-sync` deixaram de rodar no fio principal
+(2026-07-20) e passaram a ser **lidas pelo `spec-closer`** como o checklist
+que ele executa. Manter o formato numa skill (e não inline no agente) evita
+divergência entre os dois: quem edita o formato edita um lugar só. Importante:
 o disparo de uma skill é **probabilístico** — o modelo decide invocá-la a
 partir da descrição, não é garantido pelo harness. O backstop determinístico
 é o hook `PreToolUse` (abaixo), que roda sempre.
@@ -158,12 +179,14 @@ partir da descrição, não é garantido pelo harness. O backstop determinístic
   direto ali, passando no prompt de delegação as decisões da conversa que
   não estão no texto da SPEC.
 - **[`lessons-learned`](../../.claude/skills/lessons-learned/SKILL.md)** —
-  ao concluir uma SPEC. Reconstrói o que aconteceu de fato (via
-  `git log`/`git diff` e o relatório de atritos do `spec-implementer`) e
+  formato da entrada de Lições Aprendidas, **executado pelo `spec-closer`** no
+  fechamento (não mais no fio principal). Reconstrói o que aconteceu de fato
+  (via `git log`/`git diff` e o relatório de atritos do `spec-implementer`) e
   preenche o formato exigido por `docs/implementation/LESSONS_LEARNED.md`.
-- **[`doc-sync`](../../.claude/skills/doc-sync/SKILL.md)** — também no
-  fechamento de uma SPEC, complementar à `lessons-learned`: enquanto aquela
-  cuida do registro histórico, esta sincroniza o **estado vivo** — checklist
+- **[`doc-sync`](../../.claude/skills/doc-sync/SKILL.md)** — também
+  **executado pelo `spec-closer`** no fechamento, complementar à
+  `lessons-learned`: enquanto aquela cuida do registro histórico, esta
+  sincroniza o **estado vivo** — checklist
   estrutural cobrindo o `CLAUDE.md` raiz (parágrafo "Estado" + seção
   "ainda não criado"), os `CLAUDE.md` dos packages tocados,
   `NEXT_CONTEXT.md`, `CURRENT_SPRINT.md` e notas em ADRs previstas pela
@@ -254,8 +277,9 @@ Depois:
    mais parecida em tamanho e decidir se cabe na sessão atual.
 2. **Pedir a SPEC uma única vez** ("faz a SPEC de X") — a cadeia inteira
    roda sozinha: drafter decide, reviewer aprova ou veta, implementer
-   implementa, validator valida, lessons-learned + doc-sync fecham com
-   commit. O fio principal só despacha e aplica transições de `Status`.
+   implementa, validator valida, e o `spec-closer` fecha (lições + docs
+   vivas + commit/push). O fio principal só despacha e aplica transições de
+   `Status`.
 3. **Ler as decisões depois, exercer override quando discordar** — cada
    SPEC carrega suas decisões em formato de veto; o usuário só é chamado
    nas escalações da Emenda v1.1 (Constituição, módulo novo, ADR novo,
@@ -275,10 +299,11 @@ Depois:
     architecture-reviewer.md   (Opus — Revisão de arquitetura, Draft → Ready)
     spec-implementer.md        (Sonnet — Implementação)
     spec-validator.md          (Sonnet — Verificação)
+    spec-closer.md             (Sonnet — Fechamento: lições + docs vivas + commit)
   skills/
-    spec-check/SKILL.md
-    lessons-learned/SKILL.md
-    doc-sync/SKILL.md
+    spec-check/SKILL.md        (seguida no fio principal)
+    lessons-learned/SKILL.md   (formato lido pelo spec-closer)
+    doc-sync/SKILL.md          (formato lido pelo spec-closer)
   settings.json            (os 4 hooks)
 
 scripts/
@@ -294,9 +319,16 @@ docs/05-context/
 
 # Status desta automação
 
-Construída e testada isoladamente (pipe-test de cada hook, execução real
-do script contra os transcripts deste projeto). **Ainda não testada em uso
-real** — nenhuma SPEC passou pelo fluxo completo `spec-drafter` →
-`spec-implementer` → `spec-validator` ainda. A primeira SPEC a passar por
-esse fluxo vai validar (ou revelar ajustes necessários em) tudo descrito
-aqui.
+**Em uso real.** O pipeline já fechou SPECs de ponta a ponta — SPEC-0019,
+0020 e 0021 passaram pelo fluxo com os subagents `spec-implementer`/
+`spec-validator` efetivamente usados via Task (ver a coluna por fase em
+`docs/05-context/TOKEN_USAGE_LOG.md`, que só se popula quando os agentes são
+de fato acionados). A Emenda v1.1 da Constituição (gate `Draft → Ready`
+autônomo) está operando.
+
+O `spec-closer` (fase de Fechamento) foi extraído do fio principal em
+2026-07-20, depois de os dados de token mostrarem que o fechamento
+(`lessons-learned` + `doc-sync`) rodava no ponto de contexto mais caro da
+sessão. É a mudança mais recente e ainda não passou por uma SPEC de cabo a
+rabo — a próxima SPEC a fechar valida (ou ajusta) o cold-start compartilhado
+descrito acima.
