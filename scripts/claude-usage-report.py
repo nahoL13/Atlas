@@ -138,13 +138,29 @@ def parse_session(path: Path) -> dict:
 
 # Fase do ciclo de uma SPEC atribuída a cada agente. Agentes não listados aqui
 # caem em "Apoio (outros agentes)" — não descartados, só não são nenhuma das
-# três fases nomeadas pelo usuário (criação/decisão, implementação, verificação).
+# fases nomeadas do pipeline.
 PHASE_BY_AGENT_TYPE = {
+    "spec-drafter": "Rascunho",
+    "architecture-reviewer": "Revisão",
     "spec-implementer": "Implementação",
     "spec-validator": "Verificação",
+    "spec-closer": "Fechamento",
 }
 PHASE_MAIN_THREAD = "Criação/Decisão"
 PHASE_OTHER_AGENTS = "Apoio (outros agentes)"
+
+# Ordem canônica das colunas no detalhamento por fase (segue o pipeline).
+# Uma coluna só aparece na tabela se tiver algum valor — exceto a do fio
+# principal, sempre presente. Fases fora desta lista (defensivo) entram no fim.
+PHASE_COLUMN_ORDER = [
+    PHASE_MAIN_THREAD,
+    "Rascunho",
+    "Revisão",
+    "Implementação",
+    "Verificação",
+    "Fechamento",
+    PHASE_OTHER_AGENTS,
+]
 
 
 def parse_subagents(session_dir: Path, fallback_spec_tag: str | None) -> list[dict]:
@@ -265,38 +281,35 @@ def build_spec_log(sessions: list[dict], subagent_records: list[dict]) -> str:
             done_totals.append(bucket["effective"])
     lines.append("")
 
-    phases_present = sorted(
-        {phase for totals in phase_totals.values() for phase in totals}
-        - {PHASE_MAIN_THREAD}
-    )
+    phases_present = {phase for totals in phase_totals.values() for phase in totals}
+    # Colunas na ordem do pipeline; a do fio principal é sempre exibida, as
+    # demais só quando têm dado. Fases não previstas entram, defensivamente, no fim.
+    columns = [
+        p
+        for p in PHASE_COLUMN_ORDER
+        if p == PHASE_MAIN_THREAD or p in phases_present
+    ]
+    columns += sorted(phases_present - set(PHASE_COLUMN_ORDER))
     lines.append("## Detalhamento por fase\n")
     lines.append(
-        "Fase = qual agente fez o trabalho: **Criação/Decisão** é tudo que "
-        "roda no fio principal (hoje isso cobre decidir o que vai ser feito, "
-        "já que ainda não existe um agente dedicado a rascunhar SPEC); "
-        "**Implementação** e **Verificação** só aparecem quando os subagents "
-        "`spec-implementer`/`spec-validator` (`.claude/agents/`) são "
-        "efetivamente usados via Task; **Apoio (outros agentes)** cobre "
-        "qualquer outro subagent (ex. `Explore`, `code-reviewer`) invocado "
-        "durante o trabalho na SPEC. SPECs antigas, implementadas antes de "
-        "esses agentes existirem, aparecem 100% em Criação/Decisão — não é "
-        "erro, é a fase real que ocorreu. Valores em **tokens efetivos**.\n"
+        "Fase = qual agente fez o trabalho. **Criação/Decisão** é o que roda no "
+        "**fio principal** — hoje despacho/orquestração e o que não foi delegado "
+        "(o rascunho migrou para o subagent `spec-drafter`). As fases nomeadas "
+        "só aparecem quando o subagent correspondente é usado via Task: "
+        "**Rascunho** (`spec-drafter`), **Revisão** (`architecture-reviewer`), "
+        "**Implementação** (`spec-implementer`), **Verificação** "
+        "(`spec-validator`) e **Fechamento** (`spec-closer`: lições + docs vivas "
+        "+ commit). **Apoio (outros agentes)** cobre qualquer outro subagent "
+        "(ex. `Explore`, `code-reviewer`). SPECs antigas, anteriores a esses "
+        "agentes, aparecem 100% em Criação/Decisão — não é erro, é a fase real "
+        "que ocorreu. Valores em **tokens efetivos**.\n"
     )
-    header = ["SPEC", PHASE_MAIN_THREAD, "Implementação", "Verificação"] + (
-        [PHASE_OTHER_AGENTS] if PHASE_OTHER_AGENTS in phases_present else []
-    )
+    header = ["SPEC"] + columns
     lines.append("| " + " | ".join(header) + " |")
     lines.append("|" + "|".join(["---"] + ["---:"] * (len(header) - 1)) + "|")
     for spec_id in sorted(phase_totals.keys()):
         totals = phase_totals[spec_id]
-        row = [
-            spec_id,
-            fmt(totals.get(PHASE_MAIN_THREAD, 0)),
-            fmt(totals.get("Implementação", 0)),
-            fmt(totals.get("Verificação", 0)),
-        ]
-        if PHASE_OTHER_AGENTS in phases_present:
-            row.append(fmt(totals.get(PHASE_OTHER_AGENTS, 0)))
+        row = [spec_id] + [fmt(totals.get(col, 0)) for col in columns]
         lines.append("| " + " | ".join(row) + " |")
     lines.append("")
 
