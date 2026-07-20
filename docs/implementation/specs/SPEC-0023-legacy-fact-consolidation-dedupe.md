@@ -22,10 +22,10 @@ Dar à Memória uma operação **explícita e determinística** para **consolida
 
 **Status**
 
-- [x] Draft
-- [x] Ready
-- [x] In Progress
-- [x] Review
+- [ ] Draft
+- [ ] Ready
+- [ ] In Progress
+- [ ] Review
 - [x] Done
 
 ---
