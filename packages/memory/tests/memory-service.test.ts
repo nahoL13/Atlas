@@ -277,4 +277,95 @@ describe('createMemoryService', () => {
       expect(storage.saved).toHaveLength(1);
     });
   });
+
+  describe('search — recuperação determinística por relevância (SPEC-0027)', () => {
+    it('devolve apenas fatos com ao menos um token em comum, ordenados por overlap decrescente', async () => {
+      const storage = fakeStorage([
+        { id: 'a1', text: 'só março', createdAt: '2026-01-01T00:00:00.000Z' },
+        { id: 'a2', text: 'prefiro TypeScript', createdAt: '2026-01-02T00:00:00.000Z' },
+        {
+          id: 'a3',
+          text: 'aniversário em março de verdade',
+          createdAt: '2026-01-03T00:00:00.000Z',
+        },
+      ]);
+      const svc = await createMemoryService({ storage });
+      const results = svc.search('aniversário em março de verdade');
+      expect(results.map((f) => f.id)).toEqual(['a3', 'a1']);
+    });
+
+    it('fatos sem token em comum são excluídos', async () => {
+      const storage = fakeStorage([
+        { id: 'a1', text: 'prefiro TypeScript', createdAt: '2026-01-01T00:00:00.000Z' },
+      ]);
+      const svc = await createMemoryService({ storage });
+      expect(svc.search('aniversário')).toEqual([]);
+    });
+
+    it('empate de score é desempatado pela ordem de carga (índice ascendente)', async () => {
+      const storage = fakeStorage([
+        { id: 'a1', text: 'gosta de café', createdAt: '2026-01-01T00:00:00.000Z' },
+        { id: 'a2', text: 'gosta de chá', createdAt: '2026-01-02T00:00:00.000Z' },
+      ]);
+      const svc = await createMemoryService({ storage });
+      expect(svc.search('gosta').map((f) => f.id)).toEqual(['a1', 'a2']);
+    });
+
+    it('options.limit limita o resultado aos N primeiros já ordenados', async () => {
+      const storage = fakeStorage([
+        { id: 'a1', text: 'gosta de café', createdAt: '2026-01-01T00:00:00.000Z' },
+        { id: 'a2', text: 'gosta de chá', createdAt: '2026-01-02T00:00:00.000Z' },
+        { id: 'a3', text: 'gosta de suco', createdAt: '2026-01-03T00:00:00.000Z' },
+      ]);
+      const svc = await createMemoryService({ storage });
+      expect(svc.search('gosta', { limit: 2 }).map((f) => f.id)).toEqual(['a1', 'a2']);
+    });
+
+    it('sem limit, devolve todos os fatos com overlap > 0', async () => {
+      const storage = fakeStorage([
+        { id: 'a1', text: 'gosta de café', createdAt: '2026-01-01T00:00:00.000Z' },
+        { id: 'a2', text: 'gosta de chá', createdAt: '2026-01-02T00:00:00.000Z' },
+      ]);
+      const svc = await createMemoryService({ storage });
+      expect(svc.search('gosta')).toHaveLength(2);
+    });
+
+    it('consulta vazia ou só espaços devolve []', async () => {
+      const storage = fakeStorage([
+        { id: 'a1', text: 'gosta de café', createdAt: '2026-01-01T00:00:00.000Z' },
+      ]);
+      const svc = await createMemoryService({ storage });
+      expect(svc.search('')).toEqual([]);
+      expect(svc.search('   ')).toEqual([]);
+    });
+
+    it('não realiza IO: storage fake com save/load que lançam após a criação', async () => {
+      const storage = fakeStorage([
+        { id: 'a1', text: 'gosta de café', createdAt: '2026-01-01T00:00:00.000Z' },
+      ]);
+      const svc = await createMemoryService({ storage });
+      const guardedStorage = {
+        load: () => {
+          throw new Error('load não deveria ser chamado por search');
+        },
+        save: () => {
+          throw new Error('save não deveria ser chamado por search');
+        },
+      };
+      Object.assign(storage, guardedStorage);
+      expect(() => svc.search('café')).not.toThrow();
+    });
+
+    it('não muta facts: list() inalterado antes/depois; chamadas repetidas de search são iguais', async () => {
+      const storage = fakeStorage([
+        { id: 'a1', text: 'gosta de café', createdAt: '2026-01-01T00:00:00.000Z' },
+      ]);
+      const svc = await createMemoryService({ storage });
+      const listBefore = svc.list();
+      const first = svc.search('café');
+      const second = svc.search('café');
+      expect(svc.list()).toEqual(listBefore);
+      expect(first).toEqual(second);
+    });
+  });
 });

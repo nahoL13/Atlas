@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AtlasPlatform, DedupeReport, Fact } from '@atlas/contracts';
-import { runMemoryList, runMemoryDedupe } from '../src/commands/memory.js';
+import { runMemoryList, runMemoryDedupe, runMemorySearch } from '../src/commands/memory.js';
 import type { OutputGateway } from '../src/gateway/output-gateway.js';
 
 function capture(): { output: OutputGateway; text: () => string } {
@@ -15,6 +15,19 @@ function atlasWithFacts(facts: readonly Fact[]): AtlasPlatform {
   return {
     memory: { list: () => facts, dedupe: async () => ({ applied: false, groups: [] }) },
   } as unknown as AtlasPlatform;
+}
+
+function atlasWithSearchResults(facts: readonly Fact[]): { atlas: AtlasPlatform; calls: string[] } {
+  const calls: string[] = [];
+  const atlas = {
+    memory: {
+      search: (query: string) => {
+        calls.push(query);
+        return facts;
+      },
+    },
+  } as unknown as AtlasPlatform;
+  return { atlas, calls };
 }
 
 function atlasWithDedupeReport(report: DedupeReport): {
@@ -79,6 +92,26 @@ describe('runMemoryList — origem (SPEC-0020)', () => {
       cap.output,
     );
     expect(cap.text()).toContain('origem: user');
+  });
+});
+
+describe('runMemorySearch (SPEC-0027)', () => {
+  it('sem fatos relevantes, informa que nada foi encontrado', () => {
+    const cap = capture();
+    const { atlas, calls } = atlasWithSearchResults([]);
+    runMemorySearch(atlas, 'aniversário', cap.output);
+    expect(calls).toEqual(['aniversário']);
+    expect(cap.text()).toBe('Nenhum fato relevante encontrado.\n');
+  });
+
+  it('renderiza os fatos recuperados (id + texto)', () => {
+    const cap = capture();
+    const { atlas } = atlasWithSearchResults([
+      { id: 'a1', text: 'aniversário em março', createdAt: '2026-01-01T00:00:00.000Z' },
+    ]);
+    runMemorySearch(atlas, 'aniversário', cap.output);
+    expect(cap.text()).toContain('[a1]');
+    expect(cap.text()).toContain('aniversário em março');
   });
 });
 

@@ -53,6 +53,7 @@ function fakeAtlas(permissions: AtlasConfig['permissions']): AtlasPlatform {
       list: () => [],
       prompt: () => undefined,
       dedupe: async () => ({ applied: false, groups: [] }),
+      search: () => [],
     },
     skills: {
       register: () => {},

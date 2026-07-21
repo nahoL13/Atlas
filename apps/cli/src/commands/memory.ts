@@ -13,6 +13,16 @@ export function runMemoryList(atlas: AtlasPlatform, output: OutputGateway): void
   output.write(`${lines.join('\n')}\n`);
 }
 
+export function runMemorySearch(atlas: AtlasPlatform, query: string, output: OutputGateway): void {
+  const facts = atlas.memory.search(query);
+  if (facts.length === 0) {
+    output.write('Nenhum fato relevante encontrado.\n');
+    return;
+  }
+  const lines = facts.map((fact) => `[${fact.id}] ${fact.text}`);
+  output.write(`${lines.join('\n')}\n`);
+}
+
 export async function runMemoryDedupe(
   atlas: AtlasPlatform,
   apply: boolean,

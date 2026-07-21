@@ -38,7 +38,7 @@ Este documento existe para responder, antes de começar a implementar uma SPEC, 
 | SPEC-0023 | Dar à Memória uma operação **explícita e determinística** para **consolidar o acervo já persistido**: o comando `atlas memory dedupe` (novo subcomando de `memory`) reúne os fatos legados que colidem sob a mesma normalização (`trim` → `toLowerCase` → colapso de `\s+`, o mesmo critério da SPEC-0022) e, sob confirmação explícita (`--apply`), remove as duplicatas mantendo **um único sobrevivente por grupo** (o mais antigo por `createdAt`, com `id`/`text`/`source` preservados). Por default é **dry-run** (só relata o que seria consolidado, sem tocar o storage). A consolidação é a **autoridade da Memory** (Artigo 11): um método aditivo `MemoryService.dedupe(options?)` — a CLI só invoca e renderiza, não reimplementa normalização nem toca o storage. Fecha o residual explícito que a SPEC-0022 deixou aberto (lá a garantia determinística cobria só **escritas novas**; o acervo legado permanecia intacto). Não muda `remember`/`forget`/`list`/`prompt`, não normaliza texto armazenado, não mescla campos e não promove `source`. | Done | 3 | 2026-07-20 | 44.937.868 | 9.217.513 |
 | SPEC-0024 | Inverter o default do predicado de contenção `verify` das portas de FS (`nodeFsReadPort`/`nodeFsWritePort` em `@atlas/tools`) de permissivo (`() => true`) para **fail-closed** (`() => false`), de modo que uma porta construída sem injetar `verify` **recuse** (em vez de permitir) `read_file`/`write_file`/`append_file` no instante do uso — fechando o residual de segurança-por-default deixado consciente pela SPEC-0017/ADR-0014, sem mudar assinatura pública, sem tocar `@atlas/contracts`, `@atlas/core` ou o Runtime | Done | 2 | 2026-07-20 | 12.465.779 | 3.334.991 |
 | SPEC-0025 | Skills — Skill Registry (catálogo passivo em memória) + Skill Builder (processo de 8 passos), sem consumo no laço cognitivo | Done | 2 | 2026-07-21 | 35.303.718 | 7.464.093 |
-| SPEC-0026 | Consumo de Skills no laço cognitivo — seleção automática pelo Planner | Review | 1 | 2026-07-21 | 22.090.619 | 4.869.934 |
+| SPEC-0026 | Consumo de Skills no laço cognitivo — seleção automática pelo Planner | Done | 2 | 2026-07-21 | 30.345.639 | 6.488.735 |
 
 ## Detalhamento por fase
 
@@ -70,7 +70,7 @@ Fase = qual agente fez o trabalho. **Criação/Decisão** é o que roda no **fio
 | SPEC-0023 | 4.562.208 | 769.726 | 509.544 | 953.157 | 641.550 | 1.781.328 | 0 |
 | SPEC-0024 | 868.100 | 887.341 | 456.425 | 260.446 | 0 | 862.679 | 0 |
 | SPEC-0025 | 1.871.761 | 1.539.256 | 494.058 | 1.925.131 | 514.147 | 1.119.740 | 0 |
-| SPEC-0026 | 1.913.086 | 720.490 | 406.234 | 1.341.392 | 488.732 | 0 | 0 |
+| SPEC-0026 | 2.239.788 | 720.490 | 406.234 | 1.341.392 | 488.732 | 1.292.099 | 0 |
 
 ## Eficiência de processo (overhead ÷ implementação)
 
@@ -91,11 +91,11 @@ Razão entre o custo de **processo** (todas as fases exceto Implementação — 
 | SPEC-0023 | 953.157 | 8.264.356 | 8.7× |
 | SPEC-0024 | 260.446 | 3.074.545 | 11.8× |
 | SPEC-0025 | 1.925.131 | 5.538.962 | 2.9× |
-| SPEC-0026 | 1.341.392 | 3.528.542 | 2.6× |
+| SPEC-0026 | 1.341.392 | 5.147.343 | 3.8× |
 
 ## Como estimar antes de começar uma SPEC nova
 
-- SPECs concluídas (`Done`) até agora: 24. Custo médio: **9.856.926 tokens efetivos**. Faixa observada: 3.308.128 – 35.026.030 tokens efetivos.
+- SPECs concluídas (`Done`) até agora: 25. Custo médio: **9.722.198 tokens efetivos**. Faixa observada: 3.308.128 – 35.026.030 tokens efetivos.
 
 - Compare a SPEC que você está prestes a começar com as mais parecidas em tamanho na tabela acima (número de itens em "Escopo"/"Critérios de Aceitação", quantidade de "Arquivos Esperados"). Uma SPEC do porte de uma linha já concluída tende a custar perto do que ela custou.
 - Se o consumo já acumulado na sessão atual (rode o relatório detalhado, `.claude/usage-report.md`) mais a estimativa da próxima SPEC passar perto do seu limite de janela, prefira parar num ponto de commit limpo e retomar na próxima sessão em vez de começar e arriscar cortar a implementação pela metade.

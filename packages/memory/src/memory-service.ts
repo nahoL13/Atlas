@@ -111,5 +111,39 @@ export async function createMemoryService(deps: MemoryServiceDeps): Promise<Memo
       await deps.storage.save(facts);
       return { applied: true, groups: dedupeGroups };
     },
+
+    search(query: string, options?: { readonly limit?: number }): readonly Fact[] {
+      const queryTokens = new Set(
+        normalize(query)
+          .split(' ')
+          .filter((token) => token.length > 0),
+      );
+      if (queryTokens.size === 0) {
+        return [];
+      }
+
+      const scored: { fact: Fact; score: number; index: number }[] = [];
+      facts.forEach((fact, index) => {
+        const factTokens = new Set(
+          normalize(fact.text)
+            .split(' ')
+            .filter((token) => token.length > 0),
+        );
+        let score = 0;
+        for (const token of queryTokens) {
+          if (factTokens.has(token)) {
+            score += 1;
+          }
+        }
+        if (score > 0) {
+          scored.push({ fact, score, index });
+        }
+      });
+
+      scored.sort((a, b) => b.score - a.score || a.index - b.index);
+
+      const results = scored.map((entry) => entry.fact);
+      return options?.limit !== undefined ? results.slice(0, options.limit) : results;
+    },
   };
 }

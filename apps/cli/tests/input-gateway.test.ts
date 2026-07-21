@@ -285,4 +285,24 @@ describe('CliInputGateway.normalize', () => {
   it('skills com subcomando desconhecido lança CliUsageError', () => {
     expect(() => gw.normalize(['skills', 'bogus'], {})).toThrow(CliUsageError);
   });
+
+  it('memory search "<consulta>" devolve o subcomando search e a consulta', () => {
+    const parsed = gw.normalize(['memory', 'search', 'aniversário'], {});
+    expect(parsed.command).toBe('memory');
+    expect(parsed.memorySubcommand).toBe('search');
+    expect(parsed.searchQuery).toBe('aniversário');
+  });
+
+  it('memory search sem consulta lança CliUsageError', () => {
+    expect(() => gw.normalize(['memory', 'search'], {})).toThrow(CliUsageError);
+  });
+
+  it('memory com subcomando desconhecido lança CliUsageError listando list|dedupe|search', () => {
+    expect(() => gw.normalize(['memory', 'bogus'], {})).toThrow(CliUsageError);
+    try {
+      gw.normalize(['memory', 'bogus'], {});
+    } catch (cause) {
+      expect((cause as Error).message).toContain('list|dedupe|search');
+    }
+  });
 });

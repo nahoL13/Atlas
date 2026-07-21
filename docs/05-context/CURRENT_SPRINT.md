@@ -2,7 +2,7 @@
 
 > **Project Atlas — Estado do Trabalho Atual**
 
-Atualizado em: 2026-07-21 (SPEC-0026)
+Atualizado em: 2026-07-21 (SPEC-0027)
 
 ---
 
@@ -38,5 +38,6 @@ Objetivo: plataforma mínima operável + primeira interface executável (CLI) + 
 | [SPEC-0024](../implementation/specs/SPEC-0024-fs-port-fail-closed-verify.md) | Endurecer o `verify` das portas de FS para fail-closed por default (`packages/tools/src/fs-port.ts`; ramo micro da Emenda v1.2; fecha o residual da lição da SPEC-0017) | Done |
 | [SPEC-0025](../implementation/specs/SPEC-0025-skills-registry-builder.md) | Skills: Skill Registry passivo + Skill Builder (`packages/skills`; ADR-0017; `atlas skills list`/`build`; sem consumo no laço cognitivo; fecha o gate 1.4) | Done |
 | [SPEC-0026](../implementation/specs/SPEC-0026-planner-skill-consumption.md) | Consumo de Skills no laço cognitivo — seleção automática pelo Planner (`Plan.skillId?`; `planner.instruction(tools, skills?)`; `CognitiveCoreDeps.skillCatalog?`; ADR-0018; gate 1.4 fecha por inteiro) | Done |
+| [SPEC-0027](../implementation/specs/SPEC-0027-memory-fact-retrieval.md) | Busca/recuperação determinística de fatos no Memory Service (`MemoryService.search(query, options?)`; `atlas memory search "<consulta>"`; nota no ADR-0011; candidato de 1.3, não fecha o gate) | Done |
 
 Detalhes de retomada: `docs/05-context/NEXT_CONTEXT.md`.

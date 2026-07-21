@@ -5,7 +5,7 @@ import { runAsk } from './commands/ask.js';
 import { runChat } from './commands/chat.js';
 import { runRemember } from './commands/remember.js';
 import { runForget } from './commands/forget.js';
-import { runMemoryList, runMemoryDedupe } from './commands/memory.js';
+import { runMemoryList, runMemoryDedupe, runMemorySearch } from './commands/memory.js';
 import { runSkillsList, runSkillsBuild } from './commands/skills.js';
 import { CliUsageError } from './gateway/input-gateway.js';
 import { createReadlineLineReader } from './gateway/line-reader.js';
@@ -34,6 +34,7 @@ Commands:
   forget <id>          Remove um fato memorizado
   memory list          Lista os fatos memorizados
   memory dedupe [--apply]  Consolida duplicatas do acervo (dry-run por default)
+  memory search "<consulta>"  Busca fatos relevantes à consulta
   skills list          Lista o catálogo de Skills (id, nome, scope, ativo/inativo, versão)
   skills build "<capacidade>"  Constrói uma Skill temporária para a capacidade descrita
 
@@ -115,6 +116,8 @@ export async function run(
         } else if (parsed.command === 'memory') {
           if (parsed.memorySubcommand === 'dedupe') {
             await runMemoryDedupe(atlas, parsed.apply ?? false, output);
+          } else if (parsed.memorySubcommand === 'search') {
+            runMemorySearch(atlas, parsed.searchQuery ?? '', output);
           } else {
             runMemoryList(atlas, output);
           }

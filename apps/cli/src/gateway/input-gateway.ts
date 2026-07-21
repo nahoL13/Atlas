@@ -14,8 +14,9 @@ export interface ParsedInput {
   objective?: string;
   factText?: string;
   factId?: string;
-  memorySubcommand?: 'list' | 'dedupe';
+  memorySubcommand?: 'list' | 'dedupe' | 'search';
   apply?: boolean;
+  searchQuery?: string;
   skillsSubcommand?: 'list' | 'build';
   capability?: string;
 }
@@ -241,10 +242,24 @@ export function createCliInputGateway(): InputGateway {
 
       if (command === 'memory') {
         const sub = positionals[1];
-        if (sub !== undefined && sub !== 'list' && sub !== 'dedupe') {
+        if (sub !== undefined && sub !== 'list' && sub !== 'dedupe' && sub !== 'search') {
           throw new CliUsageError(
-            `subcomando de memory desconhecido: ${sub} (use: atlas memory list|dedupe)`,
+            `subcomando de memory desconhecido: ${sub} (use: atlas memory list|dedupe|search)`,
           );
+        }
+        if (sub === 'search') {
+          const query = positionals[2];
+          if (query === undefined || query.trim() === '') {
+            throw new CliUsageError(
+              'o comando "memory search" exige uma consulta: atlas memory search "<consulta>"',
+            );
+          }
+          return {
+            command: 'memory',
+            configOverride: resolveConfigOverride(values, env),
+            memorySubcommand: 'search',
+            searchQuery: query,
+          };
         }
         return {
           command: 'memory',

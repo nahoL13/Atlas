@@ -53,6 +53,24 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## [SPEC-0027](specs/SPEC-0027-memory-fact-retrieval.md) — Busca/recuperação determinística de fatos no Memory Service (2026-07-21)
+
+**Descobrimos que...**
+
+adicionar `search` a `MemoryService` confirmou pela **6ª+ vez** (após SPECs 0017/0019/0022/0023/0025/0026) o padrão recorrente já documentado: um membro novo **obrigatório** numa interface de contrato já pública quebra o `typecheck` só dos fakes **tipados diretamente** contra o tipo (aqui, de novo, só `apps/cli/tests/status.test.ts`) — os fakes com `as unknown as AtlasPlatform`/`stubAtlas` seguem escapando do `typecheck` e só quebrariam em `pnpm test` se de fato chamassem `search`. A implementação em si não teve nenhuma decisão de design em aberto: o algoritmo (overlap de tokens sobre `normalize`, desempate por índice, `limit` opcional) já veio inteiramente fechado nas Decisões de design da SPEC, e a reuso de `normalize` (SPEC-0022) evitou qualquer duplicação de "o que conta como mesmo texto" entre `remember`/`dedupe`/`search`. O `architecture-reviewer` aprovou sem veto, mas notou um desalinhamento cosmético entre o "Resultado Esperado" da SPEC (o exemplo `atlas memory search "aniversário"`) e o que `normalize` de fato entrega — sem acento, sem substring, só espaço+caixa — um texto que "vende" mais matching do que o algoritmo cumpre.
+
+**A arquitetura ajudou porque...**
+
+o precedente de `dedupe` (SPEC-0023) — método aditivo em `MemoryService`, reusando `normalize` interno, mesmo critério de desempate por ordem de carga — deu um molde exato a seguir, sem inventar uma segunda convenção de ranking/desempate no mesmo módulo. `search` ficou puro/síncrono/sem IO por construção (varre só o array `facts` já carregado, nunca toca `MemoryStorage`), preservando a autoridade exclusiva da Memory sobre o estado persistente (Artigo 11) sem esforço extra; a CLI seguiu só invocando/renderizando, sem acessar `normalize`/`storage` (Artigo 5). Retorno homogêneo com `list()` (`Fact[]`, sem expor scores) manteve a CLI reaproveitando o mesmo formato de renderização.
+
+**A arquitetura atrapalhou porque...**
+
+nada estrutural; o único atrito foi o já conhecido (fakes tipados diretamente quebrando `typecheck` em membro novo de contrato) — não é atrito da arquitetura de produção, é o custo já registrado de estender uma interface pública com múltiplos fakes na base de testes.
+
+**Precisamos mudar...**
+
+nada por encaminhamento estrutural novo — o padrão de fakes quebrando `typecheck` já está documentado e não pede correção de processo (grep pelo **nome do tipo**, não pela construtora, segue a mitigação correta). Vale só um encaminhamento pontual, não bloqueante: o texto do "Resultado Esperado" da SPEC-0027 (e de qualquer exemplo futuro que documente `search`/`atlas memory search`) deveria evitar sugerir matching semântico ou por substring que o `normalize` (espaço+caixa, sem acento/stemming) não entrega — encaminhamento: ajustar o texto na próxima revisão de conteúdo do arquivo da SPEC-0027 ou da futura SPEC que fizer o Cognitive Core consumir `search` (documentação, não código; sem ADR necessário).
+
 ## [SPEC-0026](specs/SPEC-0026-planner-skill-consumption.md) — Consumo de Skills no laço cognitivo: seleção pelo Planner (2026-07-21)
 
 **Descobrimos que...**

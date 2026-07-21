@@ -21,4 +21,5 @@ export interface MemoryService {
   list(): readonly Fact[];
   prompt(): string | undefined;
   dedupe(options?: { readonly apply?: boolean }): Promise<DedupeReport>;
+  search(query: string, options?: { readonly limit?: number }): readonly Fact[];
 }

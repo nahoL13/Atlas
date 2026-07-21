@@ -388,6 +388,45 @@ describe('run (integração apps → core)', () => {
     expect(hListAfterApply.out().match(/meu nome é Lohan/gi)).toHaveLength(1);
   });
 
+  it('memory search "<consulta>" devolve os fatos relevantes; sem overlap, mensagem específica', async () => {
+    const path = await tmpMemoryPath();
+    const h1 = harness();
+    await run(
+      ['remember', 'meu nome é Lohan', '--provider', 'fake', '--memory-path', path],
+      {},
+      h1.gateways,
+      '0.1.0',
+    );
+    const h2 = harness();
+    await run(
+      ['remember', 'prefiro TypeScript', '--provider', 'fake', '--memory-path', path],
+      {},
+      h2.gateways,
+      '0.1.0',
+    );
+
+    const h3 = harness();
+    const code = await run(
+      ['memory', 'search', 'Lohan', '--provider', 'fake', '--memory-path', path],
+      {},
+      h3.gateways,
+      '0.1.0',
+    );
+    expect(code).toBe(0);
+    expect(h3.out()).toContain('meu nome é Lohan');
+    expect(h3.out()).not.toContain('prefiro TypeScript');
+
+    const h4 = harness();
+    const codeNoMatch = await run(
+      ['memory', 'search', 'inexistente', '--provider', 'fake', '--memory-path', path],
+      {},
+      h4.gateways,
+      '0.1.0',
+    );
+    expect(codeNoMatch).toBe(0);
+    expect(h4.out()).toBe('Nenhum fato relevante encontrado.\n');
+  });
+
   it('memory <subcomando desconhecido> erra listando list/dedupe', async () => {
     const h = harness();
     const code = await run(['memory', 'bogus'], {}, h.gateways, '0.1.0');
