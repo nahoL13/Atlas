@@ -53,6 +53,24 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## [SPEC-0025](specs/SPEC-0025-skills-registry-builder.md) — Skills: Skill Registry passivo + Skill Builder (2026-07-21)
+
+**Descobrimos que...**
+
+o padrão recorrente de "membro novo em `AtlasPlatform` quebra só os fakes tipados diretamente" se confirmou de novo, agora pela 4ª+ vez: adicionar `skills`/`skillBuilder` a `AtlasPlatform` (`packages/contracts/src/platform.ts`) quebrou o `typecheck` só de `apps/cli/tests/status.test.ts` (o único fake que implementa `AtlasPlatform` estruturalmente, sem cast); os fakes com `as unknown as AtlasPlatform`/`stubAtlas` usados em `ask.test.ts`/`chat.test.ts`/`memory.test.ts` seguiram escapando do `typecheck` e só teriam sido pegos por `pnpm test` se algum deles invocasse `skills`/`skillBuilder` diretamente — o que não ocorreu nesta fatia, então nem chegaram a quebrar. Também confirmamos que o fluxo ADR-primeiro (Emenda v1.1) funcionou como desenhado: o `architecture-reviewer` deu 1 veto no ADR-0017 (Builder subespecificado — risco real de Skills fabricadas sem Tools mesmo com o Glossary exigindo "conhecimento + regras + Tools"; "contrato bem-formado" vago o bastante para permitir uma implementação spec-compliant porém degenerada; colisão de `id` no upsert do Registry sem trava contra rebaixar uma `permanent`) e a correção coube numa única rodada, sem escalar ao humano.
+
+**A arquitetura ajudou porque...**
+
+o Skill Registry copiou o molde já validado do Tool Registry (`createToolRegistry`, SPEC-0010) sem precisar reabrir nenhuma decisão de forma, e o Skill Builder isolou o único julgamento semântico (a chamada a `gateway.generate`) no mesmo padrão do `learner` (ADR-0016) — parse tolerante a falha, nunca lança, campos determinísticos (`id`/`version`/`scope`) atribuídos fora do que o modelo produz. `@atlas/skills` depender só de `@atlas/contracts`, com `@atlas/core` como único importador de implementação (Regra 11), manteve o "diff de produção vazio" em Planner/Cognitive/Runtime/Observer inteiramente verificável por grep + suíte, exatamente como o Critério de Aceitação previa.
+
+**A arquitetura atrapalhou porque...**
+
+nada a registrar — a primeira fatia deliberadamente **passiva** (capacidade sem consumidor no laço cognitivo) não expôs nenhuma fricção estrutural nova; a única fricção foi o atrito de tipo já conhecido e documentado acima.
+
+**Precisamos mudar...**
+
+nada por encaminhamento novo nesta entrada — o próprio ADR-0017 já nomeia a fronteira da fatia futura (consumo de Skills pelo Planner/usuário) como candidato de Roadmap, não como pendência aberta por esta SPEC. A persistência de Skills em disco (Artigo 11 — autoridade exclusiva da Memória sobre estado persistente não se aplica aqui, mas a ausência de storage é decisão consciente do ADR-0017) permanece nomeada como fatia futura no próprio ADR, sem novo encaminhamento necessário.
+
 ## [SPEC-0024](specs/SPEC-0024-fs-port-fail-closed-verify.md) — Endurecer o `verify` das portas de FS para fail-closed por default (2026-07-20)
 
 **Descobrimos que...**

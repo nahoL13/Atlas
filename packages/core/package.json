@@ -21,6 +21,7 @@
     "@atlas/permissions": "workspace:*",
     "@atlas/persona": "workspace:*",
     "@atlas/runtime": "workspace:*",
+    "@atlas/skills": "workspace:*",
     "@atlas/tools": "workspace:*"
   }
 }

@@ -6,6 +6,7 @@ import { createPersonaService } from '@atlas/persona';
 import { createFileMemoryStorage, createMemoryService, type MemoryStorage } from '@atlas/memory';
 import { createPermissionService } from '@atlas/permissions';
 import { createRuntime, nodeReadlineConfirmPort, type ConfirmPort } from '@atlas/runtime';
+import { createSkillRegistry, createSkillBuilder, BUILTIN_SKILLS } from '@atlas/skills';
 import {
   createToolRegistry,
   createClockTool,
@@ -64,6 +65,8 @@ export async function createAtlas(
   registry.register(createMkdirTool({ fs: fsWrite }));
   registry.register(createAppendFileTool({ fs: fsWrite }));
   const runtime = createRuntime({ registry, permissions, confirm });
+  const skills = createSkillRegistry({ skills: BUILTIN_SKILLS });
+  const skillBuilder = createSkillBuilder({ gateway, registry: skills, tools: registry });
   const cognitive = createCognitiveCore({
     gateway,
     runtime,
@@ -87,6 +90,8 @@ export async function createAtlas(
     cognitive,
     context,
     memory,
+    skills,
+    skillBuilder,
     shutdown: () => lifecycle.shutdown(),
   };
 }

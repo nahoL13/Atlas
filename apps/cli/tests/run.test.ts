@@ -428,4 +428,37 @@ describe('run (integração apps → core)', () => {
     expect(code).toBe(0);
     expect(h.out()).toContain('Nenhum fato com id zzzzzzzz');
   });
+
+  it('skills list mostra o seed embutido', async () => {
+    const h = harness();
+    const code = await run(['skills', 'list', '--provider', 'fake'], {}, h.gateways, '0.1.0');
+    expect(code).toBe(0);
+    expect(h.out()).toContain('permanent');
+  });
+
+  it('skills build "<capacidade>" com provider fake imprime as pendências (JSON inválido)', async () => {
+    const h = harness();
+    const code = await run(
+      ['skills', 'build', 'resumir arquivos', '--provider', 'fake'],
+      {},
+      h.gateways,
+      '0.1.0',
+    );
+    expect(code).toBe(0);
+    expect(h.out()).toContain('Não foi possível construir a Skill');
+  });
+
+  it('skills build sem capacidade retorna 2 e escreve o uso em stderr', async () => {
+    const h = harness();
+    const code = await run(['skills', 'build'], {}, h.gateways, '0.1.0');
+    expect(code).toBe(2);
+    expect(h.err()).toContain('capacidade');
+  });
+
+  it('--help lista os subcomandos skills', async () => {
+    const h = harness();
+    await run(['--help'], {}, h.gateways, '0.1.0');
+    expect(h.out()).toContain('skills list');
+    expect(h.out()).toContain('skills build');
+  });
 });

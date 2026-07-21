@@ -85,6 +85,9 @@ importers:
       '@atlas/runtime':
         specifier: workspace:*
         version: link:../runtime
+      '@atlas/skills':
+        specifier: workspace:*
+        version: link:../skills
       '@atlas/tools':
         specifier: workspace:*
         version: link:../tools
@@ -118,6 +121,12 @@ importers:
         version: link:../contracts
 
   packages/runtime:
+    dependencies:
+      '@atlas/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+
+  packages/skills:
     dependencies:
       '@atlas/contracts':
         specifier: workspace:*

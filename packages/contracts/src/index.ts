@@ -16,6 +16,16 @@ export type { ContextService, SessionId } from './context.js';
 export type { Persona, PersonaService } from './persona.js';
 export type { Fact, MemoryService, DedupeReport, DedupeGroup } from './memory.js';
 export type {
+  Skill,
+  SkillScope,
+  SkillDescriptor,
+  SkillDraft,
+  SkillRegistry,
+  SkillBuilder,
+  SkillBuildRequest,
+  SkillBuildResult,
+} from './skill.js';
+export type {
   Tool,
   ToolResult,
   ToolDescriptor,

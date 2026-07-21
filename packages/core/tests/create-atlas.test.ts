@@ -290,4 +290,28 @@ describe('createAtlas', () => {
     expect(declinedResult.steps[1]!.result.ok).toBe(true);
     expect(deleted).toEqual(['/out/a.txt']);
   });
+
+  it('SPEC-0025: expõe atlas.skills semeado com >= 1 Skill permanente e atlas.skillBuilder', async () => {
+    const atlas = await createAtlas(
+      { config: { model: { provider: 'fake' } } },
+      { memoryStorage: fakeStorage() },
+    );
+    const list = atlas.skills.list();
+    expect(list.length).toBeGreaterThanOrEqual(1);
+    expect(list.some((s) => s.scope === 'permanent')).toBe(true);
+    expect(atlas.skillBuilder).toBeDefined();
+    await atlas.shutdown();
+  });
+
+  it('SPEC-0025: skillBuilder.build nunca lança e não registra em falha (provider fake não devolve JSON)', async () => {
+    const atlas = await createAtlas(
+      { config: { model: { provider: 'fake' } } },
+      { memoryStorage: fakeStorage() },
+    );
+    const before = atlas.skills.list().length;
+    const result = await atlas.skillBuilder.build({ capability: 'somar dois números' });
+    expect(result.ok).toBe(false);
+    expect(atlas.skills.list().length).toBe(before);
+    await atlas.shutdown();
+  });
 });

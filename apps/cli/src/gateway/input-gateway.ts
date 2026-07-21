@@ -8,13 +8,16 @@ import type {
 } from '@atlas/contracts';
 
 export interface ParsedInput {
-  command: 'status' | 'help' | 'version' | 'ask' | 'chat' | 'remember' | 'forget' | 'memory';
+  command:
+    'status' | 'help' | 'version' | 'ask' | 'chat' | 'remember' | 'forget' | 'memory' | 'skills';
   configOverride: AtlasConfigOverride;
   objective?: string;
   factText?: string;
   factId?: string;
   memorySubcommand?: 'list' | 'dedupe';
   apply?: boolean;
+  skillsSubcommand?: 'list' | 'build';
+  capability?: string;
 }
 
 export interface InputGateway {
@@ -253,6 +256,34 @@ export function createCliInputGateway(): InputGateway {
 
       if (command === 'chat') {
         return { command: 'chat', configOverride: resolveConfigOverride(values, env) };
+      }
+
+      if (command === 'skills') {
+        const sub = positionals[1];
+        if (sub !== undefined && sub !== 'list' && sub !== 'build') {
+          throw new CliUsageError(
+            `subcomando de skills desconhecido: ${sub} (use: atlas skills list|build)`,
+          );
+        }
+        if (sub === 'build') {
+          const capability = positionals[2];
+          if (capability === undefined || capability.trim() === '') {
+            throw new CliUsageError(
+              'o comando "skills build" exige uma capacidade: atlas skills build "<capacidade>"',
+            );
+          }
+          return {
+            command: 'skills',
+            configOverride: resolveConfigOverride(values, env),
+            skillsSubcommand: 'build',
+            capability,
+          };
+        }
+        return {
+          command: 'skills',
+          configOverride: resolveConfigOverride(values, env),
+          skillsSubcommand: 'list',
+        };
       }
 
       throw new CliUsageError(`comando desconhecido: ${String(command)}`);

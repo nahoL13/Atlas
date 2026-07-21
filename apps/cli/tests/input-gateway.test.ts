@@ -259,4 +259,30 @@ describe('CliInputGateway.normalize', () => {
     expect(config.permissions.readRoots).toEqual(['/a', '/b']);
     expect(config.permissions.writeRoots).toEqual(['/c', '/d']);
   });
+
+  it('skills sem subcomando retorna list por default', () => {
+    const parsed = gw.normalize(['skills'], {});
+    expect(parsed.command).toBe('skills');
+    expect(parsed.skillsSubcommand).toBe('list');
+  });
+
+  it('skills list retorna o subcomando list', () => {
+    const parsed = gw.normalize(['skills', 'list'], {});
+    expect(parsed).toEqual({ command: 'skills', configOverride: {}, skillsSubcommand: 'list' });
+  });
+
+  it('skills build "<capacidade>" devolve o subcomando build e a capacidade', () => {
+    const parsed = gw.normalize(['skills', 'build', 'resumir arquivos de texto'], {});
+    expect(parsed.command).toBe('skills');
+    expect(parsed.skillsSubcommand).toBe('build');
+    expect(parsed.capability).toBe('resumir arquivos de texto');
+  });
+
+  it('skills build sem capacidade lança CliUsageError', () => {
+    expect(() => gw.normalize(['skills', 'build'], {})).toThrow(CliUsageError);
+  });
+
+  it('skills com subcomando desconhecido lança CliUsageError', () => {
+    expect(() => gw.normalize(['skills', 'bogus'], {})).toThrow(CliUsageError);
+  });
 });
