@@ -9,6 +9,8 @@ import type {
   ModelGateway,
   Plan,
   Runtime,
+  Skill,
+  SkillDescriptor,
 } from '@atlas/contracts';
 import { createPlanner } from './planner.js';
 import { observe } from './observer.js';
@@ -26,6 +28,18 @@ export const TASK_FRAMING =
   'no mesmo idioma em que ele escreveu. ' +
   'Se faltar informação essencial, diga o que precisa saber em vez de supor.';
 
+/**
+ * Projeção somente-leitura do `SkillRegistry` (SPEC-0026/ADR-0018): menor
+ * privilégio — o Cognitive só lê o catálogo (metadados via `list()`, Skill
+ * completa via `get(id)`), nunca `register`/`deactivate`/`remove`. Tipo
+ * **interno** a este package (não sobe a `@atlas/contracts`), no molde do
+ * provider `memoryPrompt` da SPEC-0021.
+ */
+export interface SkillCatalogPort {
+  list(): readonly SkillDescriptor[];
+  get(id: string): Skill | undefined;
+}
+
 export interface CognitiveCoreDeps {
   gateway: ModelGateway;
   runtime: Runtime;
@@ -40,6 +54,13 @@ export interface CognitiveCoreDeps {
    * package (não sobe a `@atlas/contracts`).
    */
   memoryPrompt?: () => string | undefined;
+  /**
+   * Porta de leitura de Skills (SPEC-0026/ADR-0018), **opcional**. Amostrada
+   * (`list()`) exatamente uma vez por turno em `ask`/`respond` e passada a
+   * `planner.instruction`; ausência preserva o comportamento anterior
+   * (catálogo de Skills vazio, nenhuma injeção).
+   */
+  skillCatalog?: SkillCatalogPort;
 }
 
 /** Formata os resultados de execução para a chamada de composição (ask/respond). */
@@ -105,7 +126,7 @@ interface PlanCycleResult {
 }
 
 export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
-  const { gateway, runtime, personaPrompt, memoryPrompt } = deps;
+  const { gateway, runtime, personaPrompt, memoryPrompt, skillCatalog } = deps;
   const planner = createPlanner();
   const learner = createLearner();
 
@@ -113,10 +134,12 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
    * Compõe o `systemPrompt` a partir de um valor de memória já amostrado
    * (SPEC-0021): `personaPrompt` (estático, composto uma vez na criação —
    * a Persona não muda em runtime) + `memoryValue` (amostrado 1x por turno)
-   * + `TASK_FRAMING` (estático), na mesma ordem/filter/join de sempre.
+   * + `skillInstructions` (SPEC-0026/ADR-0018: só presente na composição,
+   * quando o `Plan` selecionou uma Skill que resolve no catálogo) +
+   * `TASK_FRAMING` (estático), na ordem Persona → Memory → Skill → Task.
    */
-  function compose(memoryValue: string | undefined): string {
-    return [personaPrompt, memoryValue, TASK_FRAMING]
+  function compose(memoryValue: string | undefined, skillInstructions?: string): string {
+    return [personaPrompt, memoryValue, skillInstructions, TASK_FRAMING]
       .filter((part): part is string => part !== undefined && part !== '')
       .join('\n\n');
   }
@@ -152,7 +175,7 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
    */
   async function runPlanCycle(
     firstMessages: Message[],
-    buildComposeMessages: (resultsSummary: string) => Message[],
+    buildComposeMessages: (resultsSummary: string, skillInstructions?: string) => Message[],
     buildLearnMessages: (finalText: string) => Message[],
   ): Promise<PlanCycleResult> {
     let messages = [...firstMessages];
@@ -163,6 +186,7 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
       return { firstText: first.text, plan: null, learned };
     }
 
+    let activeSkillId = plan.skillId;
     const allSteps: ExecutedStep[] = [];
     let execution = await runtime.execute(plan);
     allSteps.push(...execution.steps);
@@ -189,13 +213,22 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
       if (replanPlan === null) {
         break;
       }
+      activeSkillId = replanPlan.skillId;
       execution = await runtime.execute(replanPlan);
       allSteps.push(...execution.steps);
       observation = observe(execution);
     }
 
+    // Skill (SPEC-0026/ADR-0018): resolve o skillId ativo contra o catálogo
+    // só na composição — id inexistente/inativo (get devolve undefined) ou
+    // ausente = sem injeção, turno segue normal.
+    const resolvedSkill =
+      activeSkillId !== undefined ? skillCatalog?.get(activeSkillId) : undefined;
+
     const resultsSummary = formatResults(allSteps);
-    const composed = await gateway.generate({ messages: buildComposeMessages(resultsSummary) });
+    const composed = await gateway.generate({
+      messages: buildComposeMessages(resultsSummary, resolvedSkill?.instructions),
+    });
     const learned = await extractLearned(buildLearnMessages(composed.text));
     return {
       firstText: first.text,
@@ -213,7 +246,10 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
       // extração compartilham o mesmo `systemPrompt`/`memoryValue`.
       const memoryValue = memoryPrompt?.();
       const systemPrompt = compose(memoryValue);
-      const instruction = planner.instruction(runtime.tools());
+      // Amostragem 1x/turno do catálogo de Skills (SPEC-0026): ausência da
+      // porta = catálogo vazio, preservando o comportamento anterior.
+      const skillDescriptors = skillCatalog?.list() ?? [];
+      const instruction = planner.instruction(runtime.tools(), skillDescriptors);
       const planningSystem = [systemPrompt, instruction].filter((part) => part !== '').join('\n\n');
 
       const cycle = await runPlanCycle(
@@ -221,8 +257,8 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
           { role: 'system', content: planningSystem },
           { role: 'user', content: objective },
         ],
-        (results) => [
-          { role: 'system', content: systemPrompt },
+        (results, skillInstructions) => [
+          { role: 'system', content: compose(memoryValue, skillInstructions) },
           {
             role: 'user',
             content:
@@ -263,7 +299,10 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
       const systemPrompt = compose(memoryValue);
       const freshMessages = withFreshSystemHead(conversation.messages, systemPrompt);
 
-      const instruction = planner.instruction(runtime.tools());
+      // Amostragem 1x/turno do catálogo de Skills (SPEC-0026): ausência da
+      // porta = catálogo vazio, preservando o comportamento anterior.
+      const skillDescriptors = skillCatalog?.list() ?? [];
+      const instruction = planner.instruction(runtime.tools(), skillDescriptors);
       const withUser: Message[] = [...freshMessages, { role: 'user', content: input }];
       // Instrução do Planner entra como system message logo antes do turno do
       // usuário (não depois): a última mensagem segue sendo o input do
@@ -279,13 +318,22 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
 
       const cycle = await runPlanCycle(
         firstMessages,
-        (results): Message[] => [
-          ...withUser,
-          {
-            role: 'user',
-            content: `Resultados das ferramentas executadas:\n${results}\n\nResponda usando esses resultados.`,
-          },
-        ],
+        (results, skillInstructions): Message[] => {
+          // Skill (SPEC-0026/ADR-0018): a `Conversation` retornada nunca
+          // carrega as `instructions` da Skill — só a mensagem system
+          // enviada a esta chamada de composição é ajustada.
+          const composeBase =
+            skillInstructions !== undefined
+              ? withFreshSystemHead(withUser, compose(memoryValue, skillInstructions))
+              : withUser;
+          return [
+            ...composeBase,
+            {
+              role: 'user',
+              content: `Resultados das ferramentas executadas:\n${results}\n\nResponda usando esses resultados.`,
+            },
+          ];
+        },
         (finalText): Message[] => [
           ...withUser,
           { role: 'system', content: learner.instruction(memoryValue) },

@@ -33,6 +33,15 @@ export interface PlanStep {
 
 export interface Plan {
   readonly steps: readonly PlanStep[];
+  /**
+   * Id da Skill selecionada pelo Planner/modelo para este plano (ADR-0018,
+   * SPEC-0026), opcional/aditivo no molde do `denialKind?` (ADR-0015). No
+   * máximo uma Skill por plano; ausência = comportamento de hoje. O
+   * Cognitive Core resolve este id contra o catálogo de Skills antes de
+   * injetar as `instructions` na composição — id inexistente/inativo é
+   * ignorado sem quebrar o turno.
+   */
+  readonly skillId?: string;
 }
 
 export interface ExecutedStep {

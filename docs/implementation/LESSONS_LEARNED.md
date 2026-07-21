@@ -53,6 +53,24 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## [SPEC-0026](specs/SPEC-0026-planner-skill-consumption.md) — Consumo de Skills no laço cognitivo: seleção pelo Planner (2026-07-21)
+
+**Descobrimos que...**
+
+o consumo automático de Skills coube inteiro dentro do molde já validado de Persona/Memory (ADR-0010/0011) sem reabrir nenhuma fronteira nova, mas exigiu três ajustes finos que a SPEC não detalhava em código: (1) o `Plan.skillId` selecionado precisa ser **rastreado por passe** — `runPlanCycle` guarda `activeSkillId` e o reatribui a cada replanejamento (`activeSkillId = replanPlan.skillId`), porque o `Plan` inicial e o `Plan` de replan são objetos distintos e só o **último** plano em vigor deve decidir a Skill aplicada na composição; (2) em `respond`, a injeção das `instructions` da Skill exigiu reaplicar `withFreshSystemHead` (helper da SPEC-0021) **só na mensagem enviada à chamada de composição** — a `Conversation` retornada ao chamador nunca leva a Skill, preservando a invisibilidade (Artigo 9) sem reabrir o desenho de `respond` puro; (3) o teste de fiação ponta a ponta em `@atlas/core` (Critério de Aceitação: "a Skill semeada aparece no catálogo oferecido ao Planner") não pôde usar o provider `fake` do Model Gateway — ele só ecoa a última mensagem enviada e não expõe o `systemPrompt` de planejamento para inspeção —, então o teste precisou compor `provider: 'remote'` com um `fetch` fake que captura o corpo da requisição, replicando o padrão já usado alhures no repo para inspecionar mensagens enviadas ao gateway. Nenhum desses três ajustes quebrou fake nenhum: como `Plan.skillId?`, `CognitiveCoreDeps.skillCatalog?` e `Planner.instruction(tools, skills?)` são **todos opcionais/aditivos**, esta é a primeira SPEC desde a SPEC-0019 que toca um contrato consumido amplamente (`Plan`, `CognitiveCoreDeps`) sem disparar o padrão recorrente "membro novo quebra o `typecheck` dos fakes tipados diretamente" (confirmado em SPECs 0017/0019/0022/0023/0025) — confirma, ao contrário, que optatividade total é a mitigação real desse padrão, não apenas um paliativo.
+
+**A arquitetura ajudou porque...**
+
+o ADR-0018 já havia fixado a forma exata (seleção no Planner, aplicação na composição, `skillId` viaja só no `Plan`) e a fronteira de menor privilégio (`SkillCatalogPort` — projeção `list`/`get`, não o `SkillRegistry` inteiro) antes da implementação começar — a SPEC-0026 não teve nenhuma decisão de design em aberto, só execução. O padrão de tipo **interno** ao package que recebe o dado por injeção (`SkillCatalogPort` não sobe a `@atlas/contracts`, mesmo critério do `memoryPrompt` provider da SPEC-0021) manteve o Planner e o Cognitive Core sem importar `@atlas/skills`, verificável por grep — a Regra 5 (componentes desacoplados) e a proibição "Runtime não escolhe Skills" (Module Catalog l. 470) saíram intactas sem esforço extra. `runPlanCycle`, compartilhado por `ask`/`respond` desde a SPEC-0014, de novo fez a fatia valer para os dois comandos a partir de um único ponto de resolução do `skillId`.
+
+**A arquitetura atrapalhou porque...**
+
+nada estrutural; o único atrito real foi a limitação do provider `fake` do Model Gateway para inspecionar o `systemPrompt` de planejamento em teste de fiação de `@atlas/core` — não é uma limitação da arquitetura de produção, é uma lacuna do fake de teste (não expõe as mensagens recebidas), contornável com `remote`+`fetch` fake, mas que exige conhecer esse contorno de antemão.
+
+**Precisamos mudar...**
+
+nada por encaminhamento estrutural novo — o padrão recorrente de fakes quebrando o `typecheck` ao adicionar campo obrigatório/membro obrigatório a contrato já está registrado nas lições anteriores (SPECs 0017/0019/0022/0023/0025) como conhecimento acumulado, sem precisar de nova entrada; esta SPEC apenas reforça, pelo lado oposto, que campos **opcionais/aditivos** de fato evitam a cascata (comportamento já documentado, sem mudança de processo necessária). Vale registrar, para quem revisar o processo de fechamento: o `SPEC-TEMPLATE.md` (Definition of Done) e o `ClaudeCodeAutomation.md` (passo de fecho do `spec-closer`) já convergem — a SPEC-0026 explicitamente delegou lições/docs vivas ao passo `doc-sync`/`spec-closer`, sem repetir a contradição registrada na lição da SPEC-0019 (l. 19) — não é mais candidato a encaminhamento, apenas confirmação de que a correção daquela SPEC segurou.
+
 ## [SPEC-0025](specs/SPEC-0025-skills-registry-builder.md) — Skills: Skill Registry passivo + Skill Builder (2026-07-21)
 
 **Descobrimos que...**

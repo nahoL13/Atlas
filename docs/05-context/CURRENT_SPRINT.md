@@ -2,7 +2,7 @@
 
 > **Project Atlas — Estado do Trabalho Atual**
 
-Atualizado em: 2026-07-21 (SPEC-0025)
+Atualizado em: 2026-07-21 (SPEC-0026)
 
 ---
 
@@ -37,5 +37,6 @@ Objetivo: plataforma mínima operável + primeira interface executável (CLI) + 
 | [SPEC-0023](../implementation/specs/SPEC-0023-legacy-fact-consolidation-dedupe.md) | Consolidação determinística do acervo legado de fatos (`atlas memory dedupe`; `MemoryService.dedupe(options?)` aditivo, dry-run por default; fecha o candidato de 1.3/l. 93 do Roadmap) | Done |
 | [SPEC-0024](../implementation/specs/SPEC-0024-fs-port-fail-closed-verify.md) | Endurecer o `verify` das portas de FS para fail-closed por default (`packages/tools/src/fs-port.ts`; ramo micro da Emenda v1.2; fecha o residual da lição da SPEC-0017) | Done |
 | [SPEC-0025](../implementation/specs/SPEC-0025-skills-registry-builder.md) | Skills: Skill Registry passivo + Skill Builder (`packages/skills`; ADR-0017; `atlas skills list`/`build`; sem consumo no laço cognitivo; fecha o gate 1.4) | Done |
+| [SPEC-0026](../implementation/specs/SPEC-0026-planner-skill-consumption.md) | Consumo de Skills no laço cognitivo — seleção automática pelo Planner (`Plan.skillId?`; `planner.instruction(tools, skills?)`; `CognitiveCoreDeps.skillCatalog?`; ADR-0018; gate 1.4 fecha por inteiro) | Done |
 
 Detalhes de retomada: `docs/05-context/NEXT_CONTEXT.md`.

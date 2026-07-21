@@ -76,6 +76,10 @@ export async function createAtlas(
     // — Artigo 11). Recompõe o systemPrompt a cada ask/respond, fechando o
     // laço de aprendizado dentro da própria sessão.
     memoryPrompt: () => memory.prompt(),
+    // Projeção somente-leitura do SkillRegistry (SPEC-0026/ADR-0018): o
+    // Cognitive só lê o catálogo (list/get), nunca register/deactivate/
+    // remove — menor privilégio, no molde do memoryPrompt acima.
+    skillCatalog: { list: () => skills.list(), get: (id) => skills.get(id) },
   });
   const context = createContextService();
   const lifecycle = createLifecycle();

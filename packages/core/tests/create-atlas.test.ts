@@ -314,4 +314,29 @@ describe('createAtlas', () => {
     expect(atlas.skills.list().length).toBe(before);
     await atlas.shutdown();
   });
+
+  it('SPEC-0026: fia a projeção do SkillRegistry no Cognitive — a Skill semeada aparece no catálogo oferecido ao Planner', async () => {
+    const requestBodies: { messages: { role: string; content: string }[] }[] = [];
+    const fetchFake = (async (_url: string, init?: RequestInit) => {
+      requestBodies.push(JSON.parse((init?.body as string) ?? '{}'));
+      return new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), {
+        status: 200,
+      });
+    }) as typeof fetch;
+    const atlas = await createAtlas(
+      {
+        config: {
+          model: { provider: 'remote', baseUrl: 'http://fake.local', apiKey: 'k', model: 'gpt' },
+        },
+      },
+      { memoryStorage: fakeStorage(), fetch: fetchFake },
+    );
+    const seededSkillId = atlas.skills.list().find((s) => s.scope === 'permanent' && s.active)!.id;
+
+    await atlas.cognitive.ask('olá');
+
+    const planningSystem = requestBodies[0]!.messages.find((m) => m.role === 'system')!.content;
+    expect(planningSystem).toContain(seededSkillId);
+    await atlas.shutdown();
+  });
 });

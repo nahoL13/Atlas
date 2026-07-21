@@ -651,3 +651,205 @@ describe('createCognitiveCore — recomposição ao vivo do memoryPrompt por tur
     expect(extractionCall.messages[0]!.content).not.toMatch(/NÃO reproponha/i);
   });
 });
+
+describe('createCognitiveCore — consumo de Skills no laço cognitivo (SPEC-0026/ADR-0018)', () => {
+  const skillDescriptor = {
+    id: 'skill-summarize-text',
+    name: 'Resumir texto',
+    description: 'resume um texto longo em pontos-chave',
+    scope: 'permanent' as const,
+    version: '1.0.0',
+    active: true,
+  };
+  const skill = {
+    id: 'skill-summarize-text',
+    name: 'Resumir texto',
+    description: 'resume um texto longo em pontos-chave',
+    instructions: 'Sempre resuma em até 3 bullets objetivos.',
+    toolIds: ['read_file'],
+    scope: 'permanent' as const,
+    version: '1.0.0',
+  };
+
+  function skillCatalogFake(skills: (typeof skill)[]) {
+    return {
+      list: () => skills.map((s) => ({ ...skillDescriptor, id: s.id, name: s.name })),
+      get: (id: string) => skills.find((s) => s.id === id),
+    };
+  }
+
+  const runtimeWithReadFile = runtimeWith([{ name: 'read_file', description: 'lê arquivo' }], {
+    steps: [{ tool: 'read_file', args: {}, result: { ok: true, output: 'conteúdo do arquivo' } }],
+  });
+
+  it('ask: quando o modelo seleciona um skillId que resolve, a composição recebe as instructions da Skill', async () => {
+    let call = 0;
+    const { gateway, calls } = stubGateway(async () => {
+      call += 1;
+      if (call === 1) {
+        return {
+          text: '{"steps":[{"tool":"read_file","args":{}}],"skillId":"skill-summarize-text"}',
+        };
+      }
+      return { text: 'resumo composto' };
+    });
+    const core = createCognitiveCore({
+      gateway,
+      runtime: runtimeWithReadFile,
+      skillCatalog: skillCatalogFake([skill]),
+    });
+
+    const answer = await core.ask('resuma o arquivo x.txt');
+
+    expect(answer.text).toBe('resumo composto');
+    // 1ª chamada leva a instrução do Planner com o catálogo de Skills
+    expect(calls[0]!.messages[0]!.content).toContain('skill-summarize-text');
+    // a composição (2ª chamada) contém as instructions da Skill selecionada
+    expect(calls[1]!.messages[0]!.content).toContain('Sempre resuma em até 3 bullets objetivos.');
+  });
+
+  it('ask: skillId inexistente é ignorado, turno completa sem injeção e sem lançar', async () => {
+    let call = 0;
+    const { gateway, calls } = stubGateway(async () => {
+      call += 1;
+      if (call === 1) {
+        return { text: '{"steps":[{"tool":"read_file","args":{}}],"skillId":"skill-inexistente"}' };
+      }
+      return { text: 'resumo composto' };
+    });
+    const core = createCognitiveCore({
+      gateway,
+      runtime: runtimeWithReadFile,
+      skillCatalog: skillCatalogFake([skill]),
+    });
+
+    const answer = await core.ask('resuma o arquivo x.txt');
+
+    expect(answer.text).toBe('resumo composto');
+    expect(calls[1]!.messages[0]!.content).not.toContain('Sempre resuma em até 3 bullets');
+  });
+
+  it('ask: sem skillId no plano, turno completa sem injeção', async () => {
+    let call = 0;
+    const { gateway, calls } = stubGateway(async () => {
+      call += 1;
+      if (call === 1) return { text: '{"steps":[{"tool":"read_file","args":{}}]}' };
+      return { text: 'resumo composto' };
+    });
+    const core = createCognitiveCore({
+      gateway,
+      runtime: runtimeWithReadFile,
+      skillCatalog: skillCatalogFake([skill]),
+    });
+
+    await core.ask('resuma o arquivo x.txt');
+
+    expect(calls[1]!.messages[0]!.content).not.toContain('Sempre resuma em até 3 bullets');
+  });
+
+  it('ask: sem porta de Skills, Planner recebe catálogo vazio e comportamento é o de hoje', async () => {
+    let call = 0;
+    const { gateway, calls } = stubGateway(async () => {
+      call += 1;
+      if (call === 1) return { text: '{"steps":[{"tool":"read_file","args":{}}]}' };
+      return { text: 'resumo composto' };
+    });
+    const core = createCognitiveCore({ gateway, runtime: runtimeWithReadFile });
+
+    await core.ask('resuma o arquivo x.txt');
+
+    expect(calls[0]!.messages[0]!.content).not.toContain('skillId');
+  });
+
+  it('respond: skillId resolvido injeta instructions só na chamada de composição, não na Conversation retornada', async () => {
+    let call = 0;
+    const { gateway, calls } = stubGateway(async () => {
+      call += 1;
+      if (call === 1) {
+        return {
+          text: '{"steps":[{"tool":"read_file","args":{}}],"skillId":"skill-summarize-text"}',
+        };
+      }
+      return { text: 'resumo composto' };
+    });
+    const core = createCognitiveCore({
+      gateway,
+      runtime: runtimeWithReadFile,
+      skillCatalog: skillCatalogFake([skill]),
+    });
+    const conversation = core.startConversation();
+
+    const turn = await core.respond(conversation, 'resuma o arquivo x.txt');
+
+    expect(turn.reply).toBe('resumo composto');
+    expect(
+      calls[1]!.messages.some((m) => m.content.includes('Sempre resuma em até 3 bullets')),
+    ).toBe(true);
+    // a Conversation retornada não vaza instructions/skillId ao usuário
+    for (const message of turn.conversation.messages) {
+      expect(message.content).not.toContain('Sempre resuma em até 3 bullets');
+      expect(message.content).not.toContain('skillId');
+      expect(message.content).not.toContain('skill-summarize-text');
+    }
+    expect(turn).not.toHaveProperty('skillId');
+  });
+
+  it('respond: skillId ausente/inexistente não injeta e não quebra o turno', async () => {
+    let call = 0;
+    const { gateway, calls } = stubGateway(async () => {
+      call += 1;
+      if (call === 1) return { text: '{"steps":[{"tool":"read_file","args":{}}]}' };
+      return { text: 'resumo composto' };
+    });
+    const core = createCognitiveCore({
+      gateway,
+      runtime: runtimeWithReadFile,
+      skillCatalog: skillCatalogFake([skill]),
+    });
+    const conversation = core.startConversation();
+
+    const turn = await core.respond(conversation, 'resuma o arquivo x.txt');
+
+    expect(turn.reply).toBe('resumo composto');
+    expect(
+      calls[1]!.messages.some((m) => m.content.includes('Sempre resuma em até 3 bullets')),
+    ).toBe(false);
+  });
+
+  it('AskResult não expõe skillId', async () => {
+    let call = 0;
+    const { gateway } = stubGateway(async () => {
+      call += 1;
+      if (call === 1) {
+        return {
+          text: '{"steps":[{"tool":"read_file","args":{}}],"skillId":"skill-summarize-text"}',
+        };
+      }
+      return { text: 'resumo composto' };
+    });
+    const core = createCognitiveCore({
+      gateway,
+      runtime: runtimeWithReadFile,
+      skillCatalog: skillCatalogFake([skill]),
+    });
+
+    const answer = await core.ask('resuma o arquivo x.txt');
+
+    expect(answer).not.toHaveProperty('skillId');
+  });
+
+  it('sem plano (resposta direta), Skill não é consumida mesmo com porta ativa', async () => {
+    const { gateway, calls } = stubGateway(async () => ({ text: 'resposta direta' }));
+    const core = createCognitiveCore({
+      gateway,
+      runtime: emptyRuntime,
+      skillCatalog: skillCatalogFake([skill]),
+    });
+
+    const answer = await core.ask('oi');
+
+    expect(answer.text).toBe('resposta direta');
+    // sem Tools no runtime, instruction() já retorna string vazia (comportamento existente)
+    expect(calls[0]!.messages[0]!.content).toBe(TASK_FRAMING);
+  });
+});

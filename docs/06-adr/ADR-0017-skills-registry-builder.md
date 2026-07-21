@@ -6,6 +6,8 @@ Status: Accepted
 
 Data: 2026-07-20
 
+> **Nota de atualização (2026-07-21, ADR-0018):** a decisão "Registry passivo — nada no laço cognitivo consome Skills" era explicitamente a **primeira** fatia, com o consumo adiado. O [ADR-0018](ADR-0018-planner-skill-consumption.md) (`Accepted`) **ativa o consumo** pela forma A (seleção pelo Planner/modelo). Este ADR permanece `Accepted` quanto ao Skill Registry e ao Skill Builder — as proibições estruturais aqui fixadas (Builder nunca promove `temporary`→`permanent`, Skill não fala com o usuário, `permanent` protegida contra sobrescrita, Builder não persiste sem validação) seguem intactas. A **persistência** do acervo de Skills continua fora de escopo até uma fatia futura casada com o consumo de Skills `temporary`.
+
 ---
 
 # Contexto
