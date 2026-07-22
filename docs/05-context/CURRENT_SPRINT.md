@@ -2,7 +2,7 @@
 
 > **Project Atlas — Estado do Trabalho Atual**
 
-Atualizado em: 2026-07-22 (SPEC-0030)
+Atualizado em: 2026-07-22 (SPEC-0031)
 
 ---
 
@@ -42,5 +42,6 @@ Objetivo: plataforma mínima operável + primeira interface executável (CLI) + 
 | [SPEC-0028](../implementation/specs/SPEC-0028-git-read-only-tools.md) | Tools de git somente-leitura (`git_status`/`git_diff`/`git_log` em `@atlas/tools`; toplevel real contido às `readRoots` pelo `verify` injetado, ADR-0013/ADR-0014; candidato de 1.4, parcialmente entregue — não fecha o item) | Done |
 | [SPEC-0029](../implementation/specs/SPEC-0029-episodic-project-memory.md) | Categorias de conhecimento no Memory Service — memória episódica e memória de projetos (`MemoryCategory`; `Fact.category?`/`subject?`; invariante `project ⇔ subject` garantida no módulo; `atlas remember --category/--subject`, `atlas memory list --category`; nota no ADR-0011; **fecha por inteiro o gate 1.3 — último gate aberto da Fase 1**) | Done |
 | [SPEC-0030](../implementation/specs/SPEC-0030-query-aware-memory-recall.md) | Injeção de memória guiada pela consulta do turno (`MemoryService.prompt({ query?, limit? })` consumido pelo Cognitive Core, `MEMORY_RECALL_LIMIT = 20`; fecha a fatia futura nomeada pela SPEC-0027; candidato de 1.3, não gate — todos os gates da Fase 1 já fechados) | Done |
+| [SPEC-0031](../implementation/specs/SPEC-0031-desktop-foundation.md) | Desktop Foundation — primeira janela do app desktop `apps/desktop`/`@atlas/desktop` sobre Electron (ADR-0019; round-trip mínimo `status`; Core só no main process, IPC via `contextBridge`; `NODE_OPTIONS=--import=tsx` estende o ADR-0005 ao Electron; abre a Fase 2, item 2.1, primeira fatia) | Done |
 
 Detalhes de retomada: `docs/05-context/NEXT_CONTEXT.md`.

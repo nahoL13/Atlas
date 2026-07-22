@@ -53,6 +53,24 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## [SPEC-0031](specs/SPEC-0031-desktop-foundation.md) — Desktop Foundation (2026-07-22)
+
+**Descobrimos que...**
+
+o padrão sem-`dist` do [ADR-0005](../06-adr/ADR-0005-app-typescript-execution.md) (execução via `tsx`) não atravessa a fronteira do Electron sem ajuste: `electron --import tsx ./src/main.ts` (flag com espaço) falha silenciosamente — o parser de argv do Electron trata `tsx` como *app path*, não como valor de `--import`, e nada carrega; corrigir para `--import=tsx` (com `=`) resolve o parsing, mas o hook de remapeamento `.js`→`.ts` do `tsx` em imports relativos ainda não se propaga ao carregamento do processo principal do Electron, e a app quebra com `ERR_MODULE_NOT_FOUND` ao resolver `./model-gateway.js` dentro de `@atlas/model-gateway`. A correção que preserva o princípio sem-`dist` foi mover o hook de flag do binário para variável de ambiente: `NODE_OPTIONS=--import=tsx electron ./src/main.ts`, validado ponta a ponta (main process carrega `@atlas/core` e toda a árvore transitiva sem erro de módulo). Descobrimos também que `preload.js` colide com `"type": "module"` no `package.json` do app: o preload do Electron usa `require('electron')` (CommonJS), e um `.js` puro seria interpretado como ESM pela resolução de módulos do Node mais próxima — renomear para `preload.cjs` resolve sem exigir um `package.json` aninhado.
+
+**A arquitetura ajudou porque...**
+
+o padrão casca-fina (`main.ts`) × camada testável (`core-bridge.ts`) da SPEC-0003 se transplantou para um segundo app quase sem fricção — toda a lógica de valor (`resolveStatusSnapshot`) ficou isolada do runtime gráfico e testável no Vitest sem Electron, preservando autor≠verificador mesmo sem harness E2E. A fronteira de contratos públicos (`createAtlas`/`@atlas/contracts`) também se provou genérica o bastante para um segundo consumidor sem qualquer mudança em `@atlas/core`/`@atlas/contracts` — zero diff nesses packages, confirmando que a Constituição (Artigo 4) já bastava para acomodar uma segunda interface.
+
+**A arquitetura atrapalhou porque...**
+
+o smoke visual de um app Electron não é executável no shell de automação usado nesta sessão (sem WindowServer/display anexado) — `app.whenReady()` nunca resolve nesse ambiente, exigindo confirmação humana em sessão gráfica real antes de fechar a SPEC. Não é uma falha do design do Atlas, mas um atrito real de processo que vai se repetir nas próximas fatias desktop (2.2-2.4): toda mudança visual dessa camada carrega uma etapa que só um humano pode validar.
+
+**Precisamos mudar...**
+
+nada de estrutural agora — o atrito do smoke manual é inerente a GUI e já está documentado como padrão esperado (`apps/desktop/CLAUDE.md`, Observações da SPEC). Encaminhamento: nenhum ADR/SPEC novo necessário; as próximas SPECs da Fase 2 (2.1-restante/2.2) devem repetir explicitamente o mesmo aviso de confirmação humana pendente no seu próprio Definition of Done, em vez de assumir que o ambiente de automação consegue validar visualmente.
+
 ## [SPEC-0030](specs/SPEC-0030-query-aware-memory-recall.md) — Injeção de memória guiada pela consulta do turno (2026-07-22)
 
 **Descobrimos que...**

@@ -138,9 +138,9 @@ Esse critério não é automático — a decisão de "Fase 1 está madura o bast
 
 ## 2.1 Fundação da Interface
 
-- Decisão de stack para `apps/desktop` (em aberto — candidata a ADR próprio quando esta fase começar).
-- Bootstrap de `apps/desktop` consumindo o Core pelos mesmos contratos já usados pelo `apps/cli` (`atlas.cognitive.ask`/`respond`, `AskResult`/`ConversationTurn`, `steps`).
-- Adapters equivalentes aos da CLI, mas para GUI: um `ConfirmPort` que abre um diálogo em vez de pausar o terminal; uma superfície de renderização para os `steps` de execução em vez de texto puro (`renderSteps`).
+- ~~Decisão de stack para `apps/desktop`~~ **entregue** — [ADR-0019](../06-adr/ADR-0019-desktop-electron-stack.md) (Electron), formalizado pela [SPEC-0031](../implementation/specs/SPEC-0031-desktop-foundation.md).
+- ~~Bootstrap de `apps/desktop`~~ **entregue** (SPEC-0031) — consome o Core pelos mesmos contratos públicos que `apps/cli` (`createAtlas`, `AtlasConfig`), num round-trip mínimo (`status`, não `ask`/`respond` ainda); Core só no main process, IPC via `contextBridge`.
+- Adapters equivalentes aos da CLI, mas para GUI, **seguem candidatos** (2.1-restante): um `ConfirmPort` que abre um diálogo em vez de pausar o terminal; uma superfície de renderização para os `steps` de execução em vez de texto puro (`renderSteps`); `atlas.cognitive.ask`/`respond` (`AskResult`/`ConversationTurn`) ainda não consumidos pela janela.
 
 ## 2.2 Experiência Conversacional
 

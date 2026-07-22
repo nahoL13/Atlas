@@ -15,7 +15,7 @@ Este documento existe para responder, antes de começar a implementar uma SPEC, 
 | SPEC | Título | Status | Sessões | Última atividade | Tokens brutos | Tokens efetivos |
 |---|---|---|---:|---|---:|---:|
 | SPEC-0002 | Core Bootstrap — contratos públicos e plataforma mínima | Done | 1 | 2026-07-11 | 139.415.926 | 35.026.030 |
-| SPEC-0003 | CLI Foundation — primeira interface executável (`apps/cli`) | Done | 1 | 2026-07-13 | 60.891.692 | 10.113.708 |
+| SPEC-0003 | CLI Foundation — primeira interface executável (`apps/cli`) | Done | 1 | 2026-07-13 | 62.444.090 | 10.687.238 |
 | SPEC-0004 | Model Gateway — acesso padronizado a modelos de IA (`packages/model-gateway`) | Done | 1 | 2026-07-13 | 28.347.247 | 5.018.577 |
 | SPEC-0005 | Cognitive Core mínimo — primeiro orquestrador + comando `atlas ask` (`packages/cognitive`) | Done | 1 | 2026-07-13 | 13.574.092 | 3.780.718 |
 | SPEC-0006 | Chat interativo multi-turno na CLI — `atlas chat` + Cognitive Core consciente de conversa | Done | 1 | 2026-07-13 | 58.133.918 | 9.449.082 |
@@ -41,7 +41,9 @@ Este documento existe para responder, antes de começar a implementar uma SPEC, 
 | SPEC-0026 | Consumo de Skills no laço cognitivo — seleção automática pelo Planner | Done | 2 | 2026-07-21 | 30.841.635 | 6.647.715 |
 | SPEC-0027 | Busca/recuperação determinística de fatos no Memory Service (`MemoryService.search` + `atlas memory search`) | Done | 2 | 2026-07-21 | 16.871.226 | 4.315.035 |
 | SPEC-0028 | Tools de git somente-leitura (`git_status` / `git_diff` / `git_log`) em `@atlas/tools`, com o toplevel real do repositório contido às `readRoots` pelo `verify` injetado (ADR-0013 + ADR-0014) | Done | 3 | 2026-07-22 | 27.513.938 | 6.897.798 |
-| SPEC-0029 | Categorias de conhecimento no Memory Service: memória episódica e memória de projetos | Done | 2 | 2026-07-22 | 29.483.346 | 6.269.286 |
+| SPEC-0029 | Categorias de conhecimento no Memory Service: memória episódica e memória de projetos | Done | 2 | 2026-07-22 | 30.361.670 | 6.453.279 |
+| SPEC-0030 | Injeção de memória guiada pela consulta do turno (`MemoryService.prompt({ query, limit })` consumido pelo Cognitive Core) | Done | 2 | 2026-07-22 | 27.430.080 | 5.519.152 |
+| SPEC-0031 | Desktop Foundation — primeira janela do app desktop (`apps/desktop`), um round-trip com o Core | Review | 1 | 2026-07-22 | 25.675.889 | 4.638.918 |
 
 ## Detalhamento por fase
 
@@ -50,7 +52,7 @@ Fase = qual agente fez o trabalho. **Criação/Decisão** é o que roda no **fio
 | SPEC | Criação/Decisão | Rascunho | Revisão | Implementação | Verificação | Fechamento | Apoio (outros agentes) |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | SPEC-0002 | 35.026.030 | 0 | 0 | 0 | 0 | 0 | 0 |
-| SPEC-0003 | 10.113.708 | 0 | 0 | 0 | 0 | 0 | 0 |
+| SPEC-0003 | 10.113.708 | 573.530 | 0 | 0 | 0 | 0 | 0 |
 | SPEC-0004 | 5.018.577 | 0 | 0 | 0 | 0 | 0 | 0 |
 | SPEC-0005 | 3.154.069 | 0 | 0 | 0 | 0 | 0 | 626.649 |
 | SPEC-0006 | 9.449.082 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -76,7 +78,9 @@ Fase = qual agente fez o trabalho. **Criação/Decisão** é o que roda no **fio
 | SPEC-0026 | 2.398.768 | 720.490 | 406.234 | 1.341.392 | 488.732 | 1.292.099 | 0 |
 | SPEC-0027 | 850.496 | 1.173.015 | 253.612 | 917.616 | 398.798 | 721.498 | 0 |
 | SPEC-0028 | 2.326.233 | 0 | 988.117 | 1.798.251 | 527.382 | 1.257.815 | 0 |
-| SPEC-0029 | 866.761 | 839.896 | 540.730 | 2.221.757 | 586.135 | 1.214.007 | 0 |
+| SPEC-0029 | 1.050.754 | 839.896 | 540.730 | 2.221.757 | 586.135 | 1.214.007 | 0 |
+| SPEC-0030 | 989.067 | 673.326 | 367.030 | 1.541.200 | 431.151 | 1.517.378 | 0 |
+| SPEC-0031 | 1.136.382 | 0 | 587.597 | 2.476.361 | 438.578 | 0 | 0 |
 
 ## Eficiência de processo (overhead ÷ implementação)
 
@@ -100,11 +104,13 @@ Razão entre o custo de **processo** (todas as fases exceto Implementação — 
 | SPEC-0026 | 1.341.392 | 5.306.323 | 4.0× |
 | SPEC-0027 | 917.616 | 3.397.419 | 3.7× |
 | SPEC-0028 | 1.798.251 | 5.099.547 | 2.8× |
-| SPEC-0029 | 2.221.757 | 4.047.529 | 1.8× |
+| SPEC-0029 | 2.221.757 | 4.231.522 | 1.9× |
+| SPEC-0030 | 1.541.200 | 3.977.952 | 2.6× |
+| SPEC-0031 | 2.476.361 | 2.162.557 | 0.9× |
 
 ## Como estimar antes de começar uma SPEC nova
 
-- SPECs concluídas (`Done`) até agora: 28. Custo médio: **9.363.627 tokens efetivos**. Faixa observada: 3.308.128 – 35.026.030 tokens efetivos.
+- SPECs concluídas (`Done`) até agora: 29. Custo médio: **9.257.181 tokens efetivos**. Faixa observada: 3.308.128 – 35.026.030 tokens efetivos.
 
 - Compare a SPEC que você está prestes a começar com as mais parecidas em tamanho na tabela acima (número de itens em "Escopo"/"Critérios de Aceitação", quantidade de "Arquivos Esperados"). Uma SPEC do porte de uma linha já concluída tende a custar perto do que ela custou.
 - Se o consumo já acumulado na sessão atual (rode o relatório detalhado, `.claude/usage-report.md`) mais a estimativa da próxima SPEC passar perto do seu limite de janela, prefira parar num ponto de commit limpo e retomar na próxima sessão em vez de começar e arriscar cortar a implementação pela metade.
