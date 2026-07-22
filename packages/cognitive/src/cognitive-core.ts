@@ -23,6 +23,15 @@ import { createLearner } from './learner.js';
  */
 const REPLAN_BUDGET = 1;
 
+/**
+ * Orçamento de fatos injetados por turno (SPEC-0030): teto fixo embutido,
+ * mesmo molde de `REPLAN_BUDGET` e do teto de 3 do learner — não
+ * configurável por flag/env nesta fatia. Passado à Memory Service junto com
+ * a consulta do turno; a Memory decide a seleção (autoridade exclusiva
+ * sobre recuperação, Artigo 11).
+ */
+const MEMORY_RECALL_LIMIT = 20;
+
 export const TASK_FRAMING =
   'Responda ao objetivo do usuário de forma clara, correta e objetiva, ' +
   'no mesmo idioma em que ele escreveu. ' +
@@ -52,8 +61,15 @@ export interface CognitiveCoreDeps {
    * Cognitive continua sem conhecer o conceito de Memory: recebe apenas uma
    * função que devolve `string | undefined`, tipo **interno** a este
    * package (não sobe a `@atlas/contracts`).
+   *
+   * Desde a SPEC-0030, a mesma porta ganha argumentos: `query` (o input do
+   * turno — `objective` em `ask`, `input` em `respond`, `''` em
+   * `startConversation`) e `limit` (`MEMORY_RECALL_LIMIT`). A Memory
+   * Service usa `query`/`limit` para selecionar, dentro do seu próprio
+   * módulo, quais fatos entram no texto — o Cognitive continua recebendo
+   * apenas a string resultante.
    */
-  memoryPrompt?: () => string | undefined;
+  memoryPrompt?: (query: string, limit: number) => string | undefined;
   /**
    * Porta de leitura de Skills (SPEC-0026/ADR-0018), **opcional**. Amostrada
    * (`list()`) exatamente uma vez por turno em `ask`/`respond` e passada a
@@ -244,7 +260,7 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
       // Amostragem única por turno (SPEC-0021): o provider é chamado
       // exatamente 1x aqui; planejamento, replanejamento, composição e
       // extração compartilham o mesmo `systemPrompt`/`memoryValue`.
-      const memoryValue = memoryPrompt?.();
+      const memoryValue = memoryPrompt?.(objective, MEMORY_RECALL_LIMIT);
       const systemPrompt = compose(memoryValue);
       // Amostragem 1x/turno do catálogo de Skills (SPEC-0026): ausência da
       // porta = catálogo vazio, preservando o comportamento anterior.
@@ -286,7 +302,7 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
     startConversation(): Conversation {
       // O prompt do momento (SPEC-0021): o provider é amostrado na criação
       // da conversa, como já fazia com o valor estático.
-      const systemPrompt = compose(memoryPrompt?.());
+      const systemPrompt = compose(memoryPrompt?.('', MEMORY_RECALL_LIMIT));
       return { messages: [{ role: 'system', content: systemPrompt }] };
     },
 
@@ -295,7 +311,7 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
       // da conversa é substituída pelo prompt fresco (ou inserida no topo
       // quando não houver nenhuma) — tanto nas mensagens enviadas ao modelo
       // quanto na `Conversation` retornada (fonte única, sem prompt morto).
-      const memoryValue = memoryPrompt?.();
+      const memoryValue = memoryPrompt?.(input, MEMORY_RECALL_LIMIT);
       const systemPrompt = compose(memoryValue);
       const freshMessages = withFreshSystemHead(conversation.messages, systemPrompt);
 

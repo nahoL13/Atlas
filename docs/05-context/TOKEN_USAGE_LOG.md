@@ -41,7 +41,7 @@ Este documento existe para responder, antes de começar a implementar uma SPEC, 
 | SPEC-0026 | Consumo de Skills no laço cognitivo — seleção automática pelo Planner | Done | 2 | 2026-07-21 | 30.841.635 | 6.647.715 |
 | SPEC-0027 | Busca/recuperação determinística de fatos no Memory Service (`MemoryService.search` + `atlas memory search`) | Done | 2 | 2026-07-21 | 16.871.226 | 4.315.035 |
 | SPEC-0028 | Tools de git somente-leitura (`git_status` / `git_diff` / `git_log`) em `@atlas/tools`, com o toplevel real do repositório contido às `readRoots` pelo `verify` injetado (ADR-0013 + ADR-0014) | Done | 3 | 2026-07-22 | 27.513.938 | 6.897.798 |
-| SPEC-0029 | Categorias de conhecimento no Memory Service: memória episódica e memória de projetos | Draft | 1 | 2026-07-22 | 3.796.162 | 1.698.370 |
+| SPEC-0029 | Categorias de conhecimento no Memory Service: memória episódica e memória de projetos | Done | 2 | 2026-07-22 | 29.483.346 | 6.269.286 |
 
 ## Detalhamento por fase
 
@@ -76,7 +76,7 @@ Fase = qual agente fez o trabalho. **Criação/Decisão** é o que roda no **fio
 | SPEC-0026 | 2.398.768 | 720.490 | 406.234 | 1.341.392 | 488.732 | 1.292.099 | 0 |
 | SPEC-0027 | 850.496 | 1.173.015 | 253.612 | 917.616 | 398.798 | 721.498 | 0 |
 | SPEC-0028 | 2.326.233 | 0 | 988.117 | 1.798.251 | 527.382 | 1.257.815 | 0 |
-| SPEC-0029 | 502.383 | 839.896 | 356.091 | 0 | 0 | 0 | 0 |
+| SPEC-0029 | 866.761 | 839.896 | 540.730 | 2.221.757 | 586.135 | 1.214.007 | 0 |
 
 ## Eficiência de processo (overhead ÷ implementação)
 
@@ -100,10 +100,11 @@ Razão entre o custo de **processo** (todas as fases exceto Implementação — 
 | SPEC-0026 | 1.341.392 | 5.306.323 | 4.0× |
 | SPEC-0027 | 917.616 | 3.397.419 | 3.7× |
 | SPEC-0028 | 1.798.251 | 5.099.547 | 2.8× |
+| SPEC-0029 | 2.221.757 | 4.047.529 | 1.8× |
 
 ## Como estimar antes de começar uma SPEC nova
 
-- SPECs concluídas (`Done`) até agora: 27. Custo médio: **9.478.232 tokens efetivos**. Faixa observada: 3.308.128 – 35.026.030 tokens efetivos.
+- SPECs concluídas (`Done`) até agora: 28. Custo médio: **9.363.627 tokens efetivos**. Faixa observada: 3.308.128 – 35.026.030 tokens efetivos.
 
 - Compare a SPEC que você está prestes a começar com as mais parecidas em tamanho na tabela acima (número de itens em "Escopo"/"Critérios de Aceitação", quantidade de "Arquivos Esperados"). Uma SPEC do porte de uma linha já concluída tende a custar perto do que ela custou.
 - Se o consumo já acumulado na sessão atual (rode o relatório detalhado, `.claude/usage-report.md`) mais a estimativa da próxima SPEC passar perto do seu limite de janela, prefira parar num ponto de commit limpo e retomar na próxima sessão em vez de começar e arriscar cortar a implementação pela metade.

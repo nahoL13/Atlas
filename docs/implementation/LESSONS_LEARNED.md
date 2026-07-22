@@ -53,6 +53,24 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## [SPEC-0030](specs/SPEC-0030-query-aware-memory-recall.md) — Injeção de memória guiada pela consulta do turno (2026-07-22)
+
+**Descobrimos que...**
+
+fechar a fatia futura nomeada textualmente pela SPEC-0027 (consumo de `search` pelo Cognitive a partir da consulta do turno) coube, de novo, num parâmetro **opcional** em `MemoryService.prompt` — o mesmo molde aditivo que já vinha protegendo os fakes de `MemoryService` desde a SPEC-0026 se repetiu aqui pela **3ª vez** (após SPECs 0026 e 0029), e desta vez também no tipo interno `CognitiveCoreDeps.memoryPrompt`: `() => string` é atribuível a `(query, limit) => string` em TypeScript, então nenhum fake zero-arg em `@atlas/cognitive` precisou de reescrita. O `architecture-reviewer` aprovou a SPEC **sem veto** — 1ª aprovação direta desde a SPEC-0027 numa fatia que toca `@atlas/memory`/`@atlas/cognitive`/`@atlas/core`/`@atlas/contracts` simultaneamente — mas registrou 5 achados não-bloqueantes que a implementação incorporou: o orçamento (`limit`) restringe **número de fatos**, não bytes, então "fecha o custo do ADR-0011" era overclaim (a nota de atualização foi corrigida para "contém parcialmente"); o no-op de `remember` (SPEC-0022) só reconhece duplicata **textual exata normalizada**, então uma reproposição parafraseada pelo learner é gravada como `Fact` novo; e — consequência composta dos dois pontos anteriores — com acervo maior que o orçamento e consulta sem match, o completamento por ordem de carga ascendente favorece sistematicamente os fatos **mais antigos**, deixando o fato recém-aprendido invisível ao `memoryValue` até casar lexicalmente com alguma consulta futura, o que aumenta a chance de o learner re-propor exatamente esse fato.
+
+**A arquitetura ajudou porque...**
+
+o precedente "porta interna ganha argumentos, não vira uma segunda porta" (D3, molde do próprio `memoryPrompt`/SPEC-0021 e do `skillCatalog?`/SPEC-0026) evitou a pergunta "qual provider vence" que uma porta nova (`memoryRecall?`) coexistindo com `memoryPrompt` teria introduzido. A autoridade exclusiva da Memory sobre recuperação (Artigo 11) manteve a seleção e a composição por seções (`fact → project → episode`, SPEC-0029) inteiramente dentro de `@atlas/memory` — o Cognitive e o Core nunca precisaram conhecer `Fact[]`, só reusar `search` (SPEC-0027) por trás de um helper puro top-level (`selectFacts`). O teto fixo embutido (`MEMORY_RECALL_LIMIT = 20`) seguiu o molde já estabelecido por `REPLAN_BUDGET`/teto de 3 do learner — nenhuma decisão de design nova sobre "onde vive uma constante de composição de prompt".
+
+**A arquitetura atrapalhou porque...**
+
+nada estrutural. O único atrito real foi de teste: o primeiro caso de "ordem de carga" escrito pelo implementer partiu de uma expectativa errada — assumiu que o fato mais relevante apareceria **por último** na saída — quando a implementação correta preserva a ordem de carga do array inteiro, não a ordem de inserção no `Set` de seleção; só foi detectado rodando o teste e inspecionando a saída real. Um segundo ponto pequeno, de estilo: `prompt` precisou de auto-referência a `service.search`, forçando o objeto literal do `MemoryService` a virar `const service: MemoryService = {...}; return service;` em vez do retorno direto do literal usado até aqui — desvio pequeno e local, não repetido em nenhum outro lugar do arquivo.
+
+**Precisamos mudar...**
+
+nada por encaminhamento estrutural novo — os 5 achados do `architecture-reviewer` já foram corrigidos na própria implementação/documentação desta SPEC (nota do ADR-0011 diz "parcialmente", nota do ADR-0016 nomeia a lacuna de paráfrase e a interação com a ordem de carga). Um encaminhamento de processo, não bloqueante, registrado aqui por já ser a 2ª vez que aparece nesta mesma família de SPECs: o **contra-padrão útil** "parâmetro opcional em método de interface é aditivo de verdade em TS por atribuibilidade de aridade" merece uma nota permanente (não só em Lessons Learned) para quem for desenhar a próxima mudança em `MemoryService`/`CognitiveCoreDeps` — encaminhamento: se o padrão se confirmar numa 4ª SPEC, considerar registrá-lo como observação estável no `DevelopmentGuide.md`, não antes (ainda é conhecimento tácito replicável por leitura deste arquivo). O teto por **tamanho de texto** (bytes) que o ADR-0011 nomeou como custo não fechado por esta fatia segue candidato aberto de 1.3, sem encaminhamento novo além do já registrado no próprio Roadmap.
+
 ## [SPEC-0029](specs/SPEC-0029-episodic-project-memory.md) — Categorias de conhecimento no Memory Service: memória episódica e memória de projetos (2026-07-22)
 
 **Descobrimos que...**

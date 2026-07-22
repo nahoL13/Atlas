@@ -724,4 +724,149 @@ describe('createMemoryService', () => {
       });
     });
   });
+
+  describe('prompt(options) — seleção guiada pela consulta com orçamento (SPEC-0030)', () => {
+    it('não-regressão: prompt() sem argumento é byte a byte idêntico ao literal fixado (três categorias)', async () => {
+      const svc = await createMemoryService({ storage: fakeStorage() });
+      await svc.remember('prefiro respostas curtas');
+      await svc.remember('usa pnpm workspaces', 'user', { category: 'project', subject: 'Atlas' });
+      await svc.remember('quebrei o build ao renomear Fact', 'user', { category: 'episode' });
+
+      const expected =
+        'O usuário pediu para você lembrar os seguintes fatos e preferências:\n' +
+        '- prefiro respostas curtas\n\n' +
+        'Sobre os projetos do usuário:\n' +
+        '[projeto Atlas]\n' +
+        '- usa pnpm workspaces\n\n' +
+        'Episódios que o usuário pediu para você lembrar:\n' +
+        '- quebrei o build ao renomear Fact';
+
+      expect(svc.prompt()).toBe(expected);
+    });
+
+    it('prompt({ query }) sem limit devolve o mesmo que prompt()', async () => {
+      const svc = await createMemoryService({ storage: fakeStorage() });
+      await svc.remember('prefiro respostas curtas');
+      await svc.remember('gosta de café');
+      expect(svc.prompt({ query: 'café' })).toBe(svc.prompt());
+    });
+
+    it('prompt({ query, limit }) com facts.length <= limit devolve o mesmo que prompt()', async () => {
+      const svc = await createMemoryService({ storage: fakeStorage() });
+      await svc.remember('prefiro respostas curtas');
+      await svc.remember('gosta de café');
+      expect(svc.prompt({ query: 'café', limit: 10 })).toBe(svc.prompt());
+    });
+
+    it('seleção com orçamento: fatos relevantes "do fundo" da lista aparecem no texto; total composto = limit', async () => {
+      const svc = await createMemoryService({ storage: fakeStorage() });
+      await svc.remember('fato irrelevante 1');
+      await svc.remember('fato irrelevante 2');
+      await svc.remember('fato irrelevante 3');
+      const { fact: relevant } = await svc.remember('gosta muito de café expresso');
+
+      const prompt = svc.prompt({ query: 'café', limit: 2 });
+      expect(prompt).toContain(relevant.text);
+      const lines = prompt!.split('\n').filter((line) => line.startsWith('- '));
+      expect(lines).toHaveLength(2);
+    });
+
+    it('piso de orçamento: query vazia devolve os limit primeiros fatos em ordem de carga (não undefined, não vazio)', async () => {
+      const svc = await createMemoryService({ storage: fakeStorage() });
+      await svc.remember('fato um');
+      await svc.remember('fato dois');
+      await svc.remember('fato três');
+
+      const prompt = svc.prompt({ query: '', limit: 2 });
+      expect(prompt).toBeDefined();
+      expect(prompt).toBe(
+        'O usuário pediu para você lembrar os seguintes fatos e preferências:\n' +
+          '- fato um\n' +
+          '- fato dois',
+      );
+    });
+
+    it('piso de orçamento: query sem overlap com nenhum fato devolve os limit primeiros em ordem de carga', async () => {
+      const svc = await createMemoryService({ storage: fakeStorage() });
+      await svc.remember('fato um');
+      await svc.remember('fato dois');
+      await svc.remember('fato três');
+
+      const prompt = svc.prompt({ query: 'zzz inexistente', limit: 2 });
+      expect(prompt).toBe(
+        'O usuário pediu para você lembrar os seguintes fatos e preferências:\n' +
+          '- fato um\n' +
+          '- fato dois',
+      );
+    });
+
+    it('determinismo: duas chamadas com o mesmo acervo/query/limit devolvem a mesma string', async () => {
+      const svc = await createMemoryService({ storage: fakeStorage() });
+      await svc.remember('fato um');
+      await svc.remember('gosta de café');
+      await svc.remember('fato três');
+      const first = svc.prompt({ query: 'café', limit: 2 });
+      const second = svc.prompt({ query: 'café', limit: 2 });
+      expect(first).toBe(second);
+    });
+
+    it('ordem: o subconjunto é composto em ordem de carga, não em ordem de relevância (relevante é o último carregado)', async () => {
+      const svc = await createMemoryService({ storage: fakeStorage() });
+      await svc.remember('fato zero');
+      await svc.remember('fato um');
+      await svc.remember('gosta muito de café');
+
+      const prompt = svc.prompt({ query: 'café', limit: 2 });
+      expect(prompt).toBe(
+        'O usuário pediu para você lembrar os seguintes fatos e preferências:\n' +
+          '- fato zero\n' +
+          '- gosta muito de café',
+      );
+    });
+
+    it('seções preservadas: subconjunto só de fact omite project/episode', async () => {
+      const svc = await createMemoryService({ storage: fakeStorage() });
+      await svc.remember('fato relevante café', 'user', { category: 'fact' });
+      await svc.remember('projeto usa café', 'user', { category: 'project', subject: 'atlas' });
+      await svc.remember('episódio café', 'user', { category: 'episode' });
+      await svc.remember('fato extra sem relação');
+
+      const prompt = svc.prompt({ query: 'café', limit: 1 });
+      expect(prompt).toContain('O usuário pediu para você lembrar');
+      expect(prompt).not.toContain('Sobre os projetos');
+      expect(prompt).not.toContain('Episódios que');
+    });
+
+    it('seções preservadas: subconjunto com project mantém agrupamento [projeto <subject>]', async () => {
+      const svc = await createMemoryService({ storage: fakeStorage() });
+      await svc.remember('fato um');
+      await svc.remember('fato dois');
+      await svc.remember('usa pnpm workspaces', 'user', { category: 'project', subject: 'atlas' });
+
+      const prompt = svc.prompt({ query: 'pnpm', limit: 3 });
+      expect(prompt).toContain('[projeto atlas]');
+      expect(prompt).toContain('- usa pnpm workspaces');
+    });
+
+    it('pureza: não muta facts (list() idêntico antes/depois) e não chama storage.load/save', async () => {
+      const storage = fakeStorage([
+        { id: 'a1', text: 'fato um', createdAt: '2026-01-01T00:00:00.000Z' },
+        { id: 'a2', text: 'gosta de café', createdAt: '2026-01-02T00:00:00.000Z' },
+      ]);
+      const svc = await createMemoryService({ storage });
+      const guardedStorage = {
+        load: () => {
+          throw new Error('load não deveria ser chamado por prompt');
+        },
+        save: () => {
+          throw new Error('save não deveria ser chamado por prompt');
+        },
+      };
+      Object.assign(storage, guardedStorage);
+
+      const listBefore = svc.list();
+      expect(() => svc.prompt({ query: 'café', limit: 1 })).not.toThrow();
+      expect(svc.list()).toEqual(listBefore);
+    });
+  });
 });

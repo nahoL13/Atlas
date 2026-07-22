@@ -124,10 +124,44 @@ function composePrompt(facts: readonly Fact[]): string | undefined {
   return sections.join('\n\n');
 }
 
+// Seleção com orçamento (SPEC-0030): reusa `search`/`normalize` — nenhuma
+// segunda definição de relevância. Sem `limit`, ou com o acervo inteiro
+// cabendo no orçamento, a seleção é o acervo completo (dump de hoje,
+// comportamento inobservável enquanto o problema não existe, D6). Caso
+// contrário: os relevantes por `search(query, { limit })` entram primeiro;
+// o restante do orçamento é completado pelos fatos remanescentes em ordem
+// de carga (D5, piso — nunca menos que `min(total, limit)`); a seleção
+// final é sempre reordenada pela ordem de carga original antes da
+// composição (D8 — a relevância decide quem entra, nunca a ordem).
+function selectFacts(
+  facts: readonly Fact[],
+  searchFn: (query: string, options?: { readonly limit?: number }) => readonly Fact[],
+  options: { readonly query?: string; readonly limit?: number } | undefined,
+): readonly Fact[] {
+  const limit = options?.limit;
+  if (limit === undefined || facts.length <= limit) {
+    return facts;
+  }
+
+  const relevant = searchFn(options?.query ?? '', { limit });
+  const selectedIds = new Set(relevant.map((fact) => fact.id));
+
+  for (const fact of facts) {
+    if (selectedIds.size >= limit) {
+      break;
+    }
+    if (!selectedIds.has(fact.id)) {
+      selectedIds.add(fact.id);
+    }
+  }
+
+  return facts.filter((fact) => selectedIds.has(fact.id));
+}
+
 export async function createMemoryService(deps: MemoryServiceDeps): Promise<MemoryService> {
   const facts: Fact[] = [...(await deps.storage.load())];
 
-  return {
+  const service: MemoryService = {
     async remember(
       text: string,
       source: 'user' | 'learned' = 'user',
@@ -176,8 +210,9 @@ export async function createMemoryService(deps: MemoryServiceDeps): Promise<Memo
       return facts.filter((fact) => effectiveCategory(fact.category) === category);
     },
 
-    prompt(): string | undefined {
-      return composePrompt(facts);
+    prompt(options?: { readonly query?: string; readonly limit?: number }): string | undefined {
+      const selected = selectFacts(facts, service.search, options);
+      return composePrompt(selected);
     },
 
     async dedupe(options?: { readonly apply?: boolean }): Promise<DedupeReport> {
@@ -269,4 +304,6 @@ export async function createMemoryService(deps: MemoryServiceDeps): Promise<Memo
       return options?.limit !== undefined ? results.slice(0, options.limit) : results;
     },
   };
+
+  return service;
 }

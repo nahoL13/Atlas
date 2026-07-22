@@ -84,8 +84,10 @@ export async function createAtlas(
     // Provider síncrono (SPEC-0021): amostrado 1x por turno pelo Cognitive,
     // sempre delegando à Memory (autoridade exclusiva do estado persistente
     // — Artigo 11). Recompõe o systemPrompt a cada ask/respond, fechando o
-    // laço de aprendizado dentro da própria sessão.
-    memoryPrompt: () => memory.prompt(),
+    // laço de aprendizado dentro da própria sessão. Desde a SPEC-0030, o
+    // provider recebe a consulta do turno e o orçamento de fatos e apenas
+    // repassa — a seleção vive inteiramente dentro da Memory.
+    memoryPrompt: (query, limit) => memory.prompt({ query, limit }),
     // Projeção somente-leitura do SkillRegistry (SPEC-0026/ADR-0018): o
     // Cognitive só lê o catálogo (list/get), nunca register/deactivate/
     // remove — menor privilégio, no molde do memoryPrompt acima.

@@ -24,6 +24,18 @@ function memoryProviderFake(...values: string[]): {
   return { provider, counter };
 }
 
+function memoryProviderArgsFake(value: string): {
+  provider: (query: string, limit: number) => string | undefined;
+  calls: { query: string; limit: number }[];
+} {
+  const calls: { query: string; limit: number }[] = [];
+  const provider = (query: string, limit: number) => {
+    calls.push({ query, limit });
+    return value;
+  };
+  return { provider, calls };
+}
+
 function stubGateway(impl: (request: GenerateRequest) => Promise<GenerateResult>): {
   gateway: ModelGateway;
   calls: GenerateRequest[];
@@ -649,6 +661,80 @@ describe('createCognitiveCore — recomposição ao vivo do memoryPrompt por tur
     const extractionCall = genCalls[1]!;
     expect(extractionCall.messages[0]!.content).not.toContain('Fatos já conhecidos');
     expect(extractionCall.messages[0]!.content).not.toMatch(/NÃO reproponha/i);
+  });
+});
+
+describe('createCognitiveCore — injeção de memória guiada pela consulta do turno (SPEC-0030)', () => {
+  const MEMORY_RECALL_LIMIT = 20;
+
+  it('ask: provider recebe o objective como query e MEMORY_RECALL_LIMIT como limit', async () => {
+    const { gateway } = stubGateway(async () => ({ text: '[]' }));
+    const { provider, calls } = memoryProviderArgsFake('Fatos: X.');
+    const core = createCognitiveCore({ gateway, runtime: emptyRuntime, memoryPrompt: provider });
+
+    await core.ask('qual é a capital do Brasil?');
+
+    expect(calls).toEqual([{ query: 'qual é a capital do Brasil?', limit: MEMORY_RECALL_LIMIT }]);
+  });
+
+  it('respond: provider recebe o input do turno corrente como query (não o histórico)', async () => {
+    const { gateway } = stubGateway(async () => ({ text: '[]' }));
+    const { provider, calls } = memoryProviderArgsFake('Fatos: X.');
+    const core = createCognitiveCore({ gateway, runtime: emptyRuntime, memoryPrompt: provider });
+    const conversation = core.startConversation();
+    calls.length = 0; // isola a amostragem de startConversation da de respond
+
+    await core.respond(conversation, 'e a da Argentina?');
+
+    expect(calls).toEqual([{ query: 'e a da Argentina?', limit: MEMORY_RECALL_LIMIT }]);
+  });
+
+  it('startConversation: provider recebe query vazia e MEMORY_RECALL_LIMIT', () => {
+    const { gateway } = stubGateway(async () => ({ text: 'x' }));
+    const { provider, calls } = memoryProviderArgsFake('Fatos: X.');
+    createCognitiveCore({
+      gateway,
+      runtime: emptyRuntime,
+      memoryPrompt: provider,
+    }).startConversation();
+
+    expect(calls).toEqual([{ query: '', limit: MEMORY_RECALL_LIMIT }]);
+  });
+
+  it('contagens de generate inalteradas: sem plano → 2 chamadas por ask', async () => {
+    const { gateway, calls: genCalls } = stubGateway(async () => ({ text: 'resposta' }));
+    const core = createCognitiveCore({
+      gateway,
+      runtime: emptyRuntime,
+      memoryPrompt: () => 'Fatos: X.',
+    });
+
+    await core.ask('oi');
+
+    expect(genCalls).toHaveLength(2);
+  });
+
+  it('provider ausente: comportamento idêntico ao de hoje, nenhuma fatia de memória, nada lança', async () => {
+    const { gateway, calls: genCalls } = stubGateway(async () => ({ text: 'resposta' }));
+    const core = createCognitiveCore({ gateway, runtime: emptyRuntime });
+
+    const answer = await core.ask('oi');
+
+    expect(answer.text).toBe('resposta');
+    expect(genCalls[0]!.messages[0]!.content).not.toContain('Fatos');
+  });
+
+  it('providers de aridade zero (pré-SPEC-0030) seguem válidos sem reescrita — migração opcional', async () => {
+    const { gateway } = stubGateway(async () => ({ text: 'resposta' }));
+    const core = createCognitiveCore({
+      gateway,
+      runtime: emptyRuntime,
+      memoryPrompt: () => 'Fatos: legado.',
+    });
+
+    const answer = await core.ask('oi');
+
+    expect(answer.text).toBe('resposta');
   });
 });
 

@@ -129,6 +129,30 @@ describe('createAtlas', () => {
     await atlas.shutdown();
   });
 
+  it('memoryPrompt fiado com query/limit (SPEC-0030): fato relevante à consulta do turno entra no system prompt mesmo com acervo maior que o orçamento', async () => {
+    const initial: Fact[] = Array.from({ length: 25 }, (_, i) => ({
+      id: `f${i}`,
+      text: `fato irrelevante número ${i}`,
+      createdAt: `2026-01-01T00:00:${String(i).padStart(2, '0')}.000Z`,
+    }));
+    initial.push({
+      id: 'relevante',
+      text: 'projeto atlas usa pnpm workspaces',
+      createdAt: '2026-01-02T00:00:00.000Z',
+    });
+    const atlas = await createAtlas(
+      { config: { model: { provider: 'fake' } } },
+      { memoryStorage: fakeStorage(initial) },
+    );
+    expect(atlas.memory.list()).toHaveLength(26);
+
+    const conversation = atlas.cognitive.startConversation();
+    const turn = await atlas.cognitive.respond(conversation, 'o que o projeto atlas usa?');
+
+    expect(turn.conversation.messages[0]!.content).toContain('projeto atlas usa pnpm workspaces');
+    await atlas.shutdown();
+  });
+
   it('sem fatos, não injeta bloco de memória no system prompt', async () => {
     const atlas = await createAtlas(
       { config: { model: { provider: 'fake' } } },

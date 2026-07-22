@@ -27,7 +27,7 @@ export interface MemoryService {
   ): Promise<{ fact: Fact; created: boolean }>;
   forget(id: string): Promise<boolean>;
   list(options?: { readonly category?: MemoryCategory }): readonly Fact[];
-  prompt(): string | undefined;
+  prompt(options?: { readonly query?: string; readonly limit?: number }): string | undefined;
   dedupe(options?: { readonly apply?: boolean }): Promise<DedupeReport>;
   search(query: string, options?: { readonly limit?: number }): readonly Fact[];
 }
