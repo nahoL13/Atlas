@@ -31,8 +31,9 @@ Commands:
   ask "<objetivo>"     Envia um objetivo ao núcleo cognitivo e imprime a resposta
   chat                 Abre uma conversa interativa com o núcleo cognitivo
   remember "<fato>"    Grava um fato/preferência persistente
+                       (ou episódio/memória de projeto — ver --category/--subject)
   forget <id>          Remove um fato memorizado
-  memory list          Lista os fatos memorizados
+  memory list [--category <c>]  Lista os fatos memorizados, com filtro opcional
   memory dedupe [--apply]  Consolida duplicatas do acervo (dry-run por default)
   memory search "<consulta>"  Busca fatos relevantes à consulta
   skills list          Lista o catálogo de Skills (id, nome, scope, ativo/inativo, versão)
@@ -51,6 +52,10 @@ Options:
       --allow-write <p> Diretório permitido para escrita (repetível; default: nenhum).
                        ATLAS_ALLOW_WRITE aceita lista separada por
                        path.delimiter do SO (":" no POSIX, ";" no Windows)
+      --category <c>   Categoria de memória (fact|episode|project) para
+                       "remember" e filtro para "memory list"
+      --subject <p>    Projeto ao qual a memória pertence (exige
+                       --category project)
       --provider <p>   Provedor de modelo (local|remote|fake)
       --model <m>      Nome do modelo
       --base-url <u>   Base URL do provedor de modelo
@@ -110,7 +115,10 @@ export async function run(
         } else if (parsed.command === 'chat') {
           await runChat(atlas, output, chatLineReader!);
         } else if (parsed.command === 'remember') {
-          await runRemember(atlas, parsed.factText ?? '', output);
+          await runRemember(atlas, parsed.factText ?? '', output, {
+            ...(parsed.factCategory !== undefined ? { category: parsed.factCategory } : {}),
+            ...(parsed.factSubject !== undefined ? { subject: parsed.factSubject } : {}),
+          });
         } else if (parsed.command === 'forget') {
           await runForget(atlas, parsed.factId ?? '', output);
         } else if (parsed.command === 'memory') {
@@ -119,7 +127,11 @@ export async function run(
           } else if (parsed.memorySubcommand === 'search') {
             runMemorySearch(atlas, parsed.searchQuery ?? '', output);
           } else {
-            runMemoryList(atlas, output);
+            runMemoryList(
+              atlas,
+              output,
+              parsed.listCategory !== undefined ? { category: parsed.listCategory } : undefined,
+            );
           }
         } else if (parsed.command === 'skills') {
           if (parsed.skillsSubcommand === 'build') {

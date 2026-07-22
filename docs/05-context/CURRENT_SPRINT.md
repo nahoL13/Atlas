@@ -2,7 +2,7 @@
 
 > **Project Atlas — Estado do Trabalho Atual**
 
-Atualizado em: 2026-07-22 (SPEC-0028)
+Atualizado em: 2026-07-22 (SPEC-0029)
 
 ---
 
@@ -40,5 +40,6 @@ Objetivo: plataforma mínima operável + primeira interface executável (CLI) + 
 | [SPEC-0026](../implementation/specs/SPEC-0026-planner-skill-consumption.md) | Consumo de Skills no laço cognitivo — seleção automática pelo Planner (`Plan.skillId?`; `planner.instruction(tools, skills?)`; `CognitiveCoreDeps.skillCatalog?`; ADR-0018; gate 1.4 fecha por inteiro) | Done |
 | [SPEC-0027](../implementation/specs/SPEC-0027-memory-fact-retrieval.md) | Busca/recuperação determinística de fatos no Memory Service (`MemoryService.search(query, options?)`; `atlas memory search "<consulta>"`; nota no ADR-0011; candidato de 1.3, não fecha o gate) | Done |
 | [SPEC-0028](../implementation/specs/SPEC-0028-git-read-only-tools.md) | Tools de git somente-leitura (`git_status`/`git_diff`/`git_log` em `@atlas/tools`; toplevel real contido às `readRoots` pelo `verify` injetado, ADR-0013/ADR-0014; candidato de 1.4, parcialmente entregue — não fecha o item) | Done |
+| [SPEC-0029](../implementation/specs/SPEC-0029-episodic-project-memory.md) | Categorias de conhecimento no Memory Service — memória episódica e memória de projetos (`MemoryCategory`; `Fact.category?`/`subject?`; invariante `project ⇔ subject` garantida no módulo; `atlas remember --category/--subject`, `atlas memory list --category`; nota no ADR-0011; **fecha por inteiro o gate 1.3 — último gate aberto da Fase 1**) | Done |
 
 Detalhes de retomada: `docs/05-context/NEXT_CONTEXT.md`.

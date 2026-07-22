@@ -500,4 +500,196 @@ describe('run (integração apps → core)', () => {
     expect(h.out()).toContain('skills list');
     expect(h.out()).toContain('skills build');
   });
+
+  describe('categorias de memória — episódica e de projetos (SPEC-0029)', () => {
+    it('remember --category episode grava um episódio; memory list exibe a categoria', async () => {
+      const path = await tmpMemoryPath();
+      const h1 = harness();
+      const code1 = await run(
+        [
+          'remember',
+          'quebrei o build ao renomear Fact',
+          '--category',
+          'episode',
+          '--provider',
+          'fake',
+          '--memory-path',
+          path,
+        ],
+        {},
+        h1.gateways,
+        '0.1.0',
+      );
+      expect(code1).toBe(0);
+      expect(h1.out()).toMatch(/^Lembrado \[[^\]]+\]:/);
+
+      const h2 = harness();
+      await run(
+        ['memory', 'list', '--provider', 'fake', '--memory-path', path],
+        {},
+        h2.gateways,
+        '0.1.0',
+      );
+      expect(h2.out()).toContain('categoria: episode');
+    });
+
+    it('remember --category project --subject atlas grava memória de projeto', async () => {
+      const path = await tmpMemoryPath();
+      const h1 = harness();
+      const code1 = await run(
+        [
+          'remember',
+          'usa pnpm workspaces',
+          '--category',
+          'project',
+          '--subject',
+          'atlas',
+          '--provider',
+          'fake',
+          '--memory-path',
+          path,
+        ],
+        {},
+        h1.gateways,
+        '0.1.0',
+      );
+      expect(code1).toBe(0);
+
+      const h2 = harness();
+      await run(
+        ['memory', 'list', '--provider', 'fake', '--memory-path', path],
+        {},
+        h2.gateways,
+        '0.1.0',
+      );
+      expect(h2.out()).toContain('categoria: project');
+      expect(h2.out()).toContain('projeto: atlas');
+    });
+
+    it('remember --category project sem --subject é CliUsageError mencionando --subject', async () => {
+      const h = harness();
+      const code = await run(
+        ['remember', 'texto', '--category', 'project', '--provider', 'fake'],
+        {},
+        h.gateways,
+        '0.1.0',
+      );
+      expect(code).toBe(2);
+      expect(h.err()).toContain('--subject');
+    });
+
+    it('remember --category project --subject "" e "   " são CliUsageError', async () => {
+      const h1 = harness();
+      const code1 = await run(
+        ['remember', 'texto', '--category', 'project', '--subject', '', '--provider', 'fake'],
+        {},
+        h1.gateways,
+        '0.1.0',
+      );
+      expect(code1).toBe(2);
+
+      const h2 = harness();
+      const code2 = await run(
+        ['remember', 'texto', '--category', 'project', '--subject', '   ', '--provider', 'fake'],
+        {},
+        h2.gateways,
+        '0.1.0',
+      );
+      expect(code2).toBe(2);
+    });
+
+    it('--subject combinado com categoria diferente de project é CliUsageError', async () => {
+      const h1 = harness();
+      const code1 = await run(
+        ['remember', 'texto', '--category', 'episode', '--subject', 'atlas', '--provider', 'fake'],
+        {},
+        h1.gateways,
+        '0.1.0',
+      );
+      expect(code1).toBe(2);
+      expect(h1.err()).toContain('--subject');
+
+      const h2 = harness();
+      const code2 = await run(
+        ['remember', 'texto', '--subject', 'atlas', '--provider', 'fake'],
+        {},
+        h2.gateways,
+        '0.1.0',
+      );
+      expect(code2).toBe(2);
+    });
+
+    it('--category desconhecida é CliUsageError listando os valores aceitos', async () => {
+      const h = harness();
+      const code = await run(
+        ['remember', 'texto', '--category', 'bogus', '--provider', 'fake'],
+        {},
+        h.gateways,
+        '0.1.0',
+      );
+      expect(code).toBe(2);
+      expect(h.err()).toContain('fact|episode|project');
+    });
+
+    it('memory list --category project lista só memória de projeto', async () => {
+      const path = await tmpMemoryPath();
+      const h1 = harness();
+      await run(
+        ['remember', 'fato comum', '--provider', 'fake', '--memory-path', path],
+        {},
+        h1.gateways,
+        '0.1.0',
+      );
+      const h2 = harness();
+      await run(
+        [
+          'remember',
+          'usa pnpm',
+          '--category',
+          'project',
+          '--subject',
+          'atlas',
+          '--provider',
+          'fake',
+          '--memory-path',
+          path,
+        ],
+        {},
+        h2.gateways,
+        '0.1.0',
+      );
+
+      const h3 = harness();
+      const code = await run(
+        ['memory', 'list', '--category', 'project', '--provider', 'fake', '--memory-path', path],
+        {},
+        h3.gateways,
+        '0.1.0',
+      );
+      expect(code).toBe(0);
+      expect(h3.out()).toContain('usa pnpm');
+      expect(h3.out()).not.toContain('fato comum');
+    });
+
+    it('memory list --category project sem resultados imprime a mensagem de acervo vazio', async () => {
+      const path = await tmpMemoryPath();
+      const h1 = harness();
+      await run(
+        ['remember', 'fato comum', '--provider', 'fake', '--memory-path', path],
+        {},
+        h1.gateways,
+        '0.1.0',
+      );
+
+      const h2 = harness();
+      const code = await run(
+        ['memory', 'list', '--category', 'project', '--provider', 'fake', '--memory-path', path],
+        {},
+        h2.gateways,
+        '0.1.0',
+      );
+      expect(code).toBe(0);
+      expect(h2.out()).toContain('Nenhum fato memorizado');
+    });
+  });
 });

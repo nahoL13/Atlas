@@ -1,4 +1,11 @@
-import type { DedupeGroup, DedupeReport, Fact, MemoryService } from '@atlas/contracts';
+import type {
+  DedupeGroup,
+  DedupeReport,
+  Fact,
+  MemoryCategory,
+  MemoryService,
+} from '@atlas/contracts';
+import { MemoryError } from './errors.js';
 import type { MemoryStorage } from './storage/memory-storage.js';
 
 export interface MemoryServiceDeps {
@@ -12,6 +19,111 @@ function normalize(text: string): string {
   return text.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+// Categoria efetiva de um Fact: ausência ≡ 'fact' (SPEC-0029, D5) — acervo
+// legado sem `category` é tratado como fato em toda a lógica (duplicata,
+// filtro, prompt).
+function effectiveCategory(category: MemoryCategory | undefined): MemoryCategory {
+  return category ?? 'fact';
+}
+
+// Separador de campos da chave de duplicata: caractere de controle que nao
+// aparece em texto digitado por um usuario, evitando colisao de fronteira
+// entre categoria/subject/texto (ex.: subject "a" + texto "b c" nao pode
+// colidir com subject "a b" + texto "c").
+const DEDUPE_KEY_SEPARATOR = '\u0001';
+
+// Chave de duplicata determinística (SPEC-0029, D7): estende a chave da
+// SPEC-0022 para a tupla categoria + subject + texto, todos normalizados.
+function dedupeKey(fact: {
+  text: string;
+  category?: MemoryCategory | undefined;
+  subject?: string | undefined;
+}): string {
+  return [
+    normalize(effectiveCategory(fact.category)),
+    normalize(fact.subject ?? ''),
+    normalize(fact.text),
+  ].join(DEDUPE_KEY_SEPARATOR);
+}
+
+// Invariante do modelo persistido (SPEC-0029, D11/D15): "memória de projeto
+// exige projeto" é garantia do módulo, não da borda — lança antes de
+// qualquer mutação ou storage.save. `subject` que colapsa para vazio após
+// `normalize` é tratado como ausente e inválido (D15).
+function validateCategorySubject(
+  category: MemoryCategory | undefined,
+  subject: string | undefined,
+): void {
+  const hasSubject = subject !== undefined && normalize(subject) !== '';
+  if (category === 'project' && !hasSubject) {
+    throw new MemoryError('memória de projeto (category: "project") exige um subject não vazio');
+  }
+  if (hasSubject && category !== 'project') {
+    throw new MemoryError(
+      `subject só é válido com category: "project" (recebido: ${category ?? 'fact'})`,
+    );
+  }
+}
+
+// Composição de prompt() agrupada por categoria (SPEC-0029, D8): ordem fixa
+// fact → project → episode, seções unidas por linha em branco, molduras e
+// formato literais. A seção `fact` é byte a byte igual à anterior a esta
+// SPEC (não-regressão).
+function composePrompt(facts: readonly Fact[]): string | undefined {
+  const factLines = facts
+    .filter((fact) => effectiveCategory(fact.category) === 'fact')
+    .map((fact) => `- ${fact.text}`);
+
+  // Agrupa por subject normalizado (mesmo critério de igualdade do resto do
+  // módulo), mas exibe o subject original do primeiro registro daquele
+  // grupo (subcabeçalho `[projeto <subject>]`, D8).
+  const projectFacts = facts.filter((fact) => effectiveCategory(fact.category) === 'project');
+  const subjectKeysInOrder: string[] = [];
+  const displaySubjectByKey = new Map<string, string>();
+  const bySubjectKey = new Map<string, Fact[]>();
+  for (const fact of projectFacts) {
+    const rawSubject = fact.subject ?? '';
+    const key = normalize(rawSubject);
+    const group = bySubjectKey.get(key);
+    if (group !== undefined) {
+      group.push(fact);
+    } else {
+      bySubjectKey.set(key, [fact]);
+      displaySubjectByKey.set(key, rawSubject);
+      subjectKeysInOrder.push(key);
+    }
+  }
+
+  const episodeLines = facts
+    .filter((fact) => effectiveCategory(fact.category) === 'episode')
+    .map((fact) => `- ${fact.text}`);
+
+  const sections: string[] = [];
+
+  if (factLines.length > 0) {
+    sections.push(
+      `O usuário pediu para você lembrar os seguintes fatos e preferências:\n${factLines.join('\n')}`,
+    );
+  }
+
+  if (subjectKeysInOrder.length > 0) {
+    const projectBlocks = subjectKeysInOrder.map((key) => {
+      const lines = bySubjectKey.get(key)!.map((fact) => `- ${fact.text}`);
+      return `[projeto ${displaySubjectByKey.get(key)!}]\n${lines.join('\n')}`;
+    });
+    sections.push(`Sobre os projetos do usuário:\n${projectBlocks.join('\n')}`);
+  }
+
+  if (episodeLines.length > 0) {
+    sections.push(`Episódios que o usuário pediu para você lembrar:\n${episodeLines.join('\n')}`);
+  }
+
+  if (sections.length === 0) {
+    return undefined;
+  }
+  return sections.join('\n\n');
+}
+
 export async function createMemoryService(deps: MemoryServiceDeps): Promise<MemoryService> {
   const facts: Fact[] = [...(await deps.storage.load())];
 
@@ -19,9 +131,17 @@ export async function createMemoryService(deps: MemoryServiceDeps): Promise<Memo
     async remember(
       text: string,
       source: 'user' | 'learned' = 'user',
+      options?: { readonly category?: MemoryCategory; readonly subject?: string },
     ): Promise<{ fact: Fact; created: boolean }> {
-      const key = normalize(text);
-      const existing = facts.find((fact) => normalize(fact.text) === key);
+      const category = options?.category;
+      const subject = options?.subject;
+      validateCategorySubject(category, subject);
+
+      const key = dedupeKey({ text, category, subject });
+      const existing = facts.find(
+        (fact) =>
+          dedupeKey({ text: fact.text, category: fact.category, subject: fact.subject }) === key,
+      );
       if (existing !== undefined) {
         return { fact: existing, created: false };
       }
@@ -30,6 +150,8 @@ export async function createMemoryService(deps: MemoryServiceDeps): Promise<Memo
         text,
         createdAt: new Date().toISOString(),
         source,
+        category: category ?? 'fact',
+        ...(subject !== undefined ? { subject } : {}),
       };
       facts.push(fact);
       await deps.storage.save(facts);
@@ -46,26 +168,27 @@ export async function createMemoryService(deps: MemoryServiceDeps): Promise<Memo
       return true;
     },
 
-    list(): readonly Fact[] {
-      return [...facts];
+    list(options?: { readonly category?: MemoryCategory }): readonly Fact[] {
+      if (options?.category === undefined) {
+        return [...facts];
+      }
+      const category = options.category;
+      return facts.filter((fact) => effectiveCategory(fact.category) === category);
     },
 
     prompt(): string | undefined {
-      if (facts.length === 0) {
-        return undefined;
-      }
-      const lines = facts.map((fact) => `- ${fact.text}`);
-      return `O usuário pediu para você lembrar os seguintes fatos e preferências:\n${lines.join('\n')}`;
+      return composePrompt(facts);
     },
 
     async dedupe(options?: { readonly apply?: boolean }): Promise<DedupeReport> {
       const apply = options?.apply ?? false;
 
-      // Agrupa por chave de normalização preservando a ordem de carga (índice
-      // em `facts`), para o desempate D3 (menor índice) ser trivial.
+      // Agrupa por chave de normalização (categoria + subject + texto,
+      // SPEC-0029/D7), preservando a ordem de carga (índice em `facts`), para
+      // o desempate D3 (menor índice) ser trivial.
       const groupsByKey = new Map<string, Fact[]>();
       for (const fact of facts) {
-        const key = normalize(fact.text);
+        const key = dedupeKey({ text: fact.text, category: fact.category, subject: fact.subject });
         const group = groupsByKey.get(key);
         if (group !== undefined) {
           group.push(fact);

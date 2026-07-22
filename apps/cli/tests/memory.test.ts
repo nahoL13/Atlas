@@ -93,6 +93,64 @@ describe('runMemoryList — origem (SPEC-0020)', () => {
     );
     expect(cap.text()).toContain('origem: user');
   });
+
+  it('exibe a categoria de cada registro (SPEC-0029)', () => {
+    const cap = capture();
+    runMemoryList(
+      atlasWithFacts([
+        {
+          id: 'a1',
+          text: 'quebrei o build',
+          createdAt: '2026-07-19T00:00:00.000Z',
+          category: 'episode',
+        },
+      ]),
+      cap.output,
+    );
+    expect(cap.text()).toContain('categoria: episode');
+  });
+
+  it('exibe o projeto quando houver subject (SPEC-0029)', () => {
+    const cap = capture();
+    runMemoryList(
+      atlasWithFacts([
+        {
+          id: 'a1',
+          text: 'usa pnpm',
+          createdAt: '2026-07-19T00:00:00.000Z',
+          category: 'project',
+          subject: 'atlas',
+        },
+      ]),
+      cap.output,
+    );
+    expect(cap.text()).toContain('categoria: project');
+    expect(cap.text()).toContain('projeto: atlas');
+  });
+
+  it('fato legado sem category é exibido como "fact"', () => {
+    const cap = capture();
+    runMemoryList(
+      atlasWithFacts([{ id: 'a1', text: 'fato antigo', createdAt: '2026-07-19T00:00:00.000Z' }]),
+      cap.output,
+    );
+    expect(cap.text()).toContain('categoria: fact');
+  });
+
+  it('repassa o filtro de categoria a atlas.memory.list', () => {
+    const cap = capture();
+    const calls: Array<{ category?: string } | undefined> = [];
+    const atlas = {
+      memory: {
+        list: (options?: { category?: string }) => {
+          calls.push(options);
+          return [];
+        },
+      },
+    } as unknown as AtlasPlatform;
+    runMemoryList(atlas, cap.output, { category: 'project' });
+    expect(calls).toEqual([{ category: 'project' }]);
+  });
 });
 
 describe('runMemorySearch (SPEC-0027)', () => {

@@ -13,10 +13,13 @@ export interface ParsedInput {
   configOverride: AtlasConfigOverride;
   objective?: string;
   factText?: string;
+  factCategory?: 'fact' | 'episode' | 'project';
+  factSubject?: string;
   factId?: string;
   memorySubcommand?: 'list' | 'dedupe' | 'search';
   apply?: boolean;
   searchQuery?: string;
+  listCategory?: 'fact' | 'episode' | 'project';
   skillsSubcommand?: 'list' | 'build';
   capability?: string;
 }
@@ -44,6 +47,48 @@ interface CliValues {
   'base-url'?: string | undefined;
   'api-key'?: string | undefined;
   apply?: boolean | undefined;
+  category?: string | undefined;
+  subject?: string | undefined;
+}
+
+const MEMORY_CATEGORIES = ['fact', 'episode', 'project'] as const;
+type MemoryCategoryFlag = (typeof MEMORY_CATEGORIES)[number];
+
+function isMemoryCategory(value: string): value is MemoryCategoryFlag {
+  return (MEMORY_CATEGORIES as readonly string[]).includes(value);
+}
+
+/**
+ * Valida `--category`/`--subject` na borda (antecipação amigável da
+ * invariante do módulo, SPEC-0029/D11): categoria desconhecida, `project`
+ * sem `subject` (ou em branco), e `subject` fora de `project`. A garantia
+ * real vive em `@atlas/memory` — aqui é só `CliUsageError` antecipada.
+ */
+function resolveFactCategoryAndSubject(values: CliValues): {
+  factCategory?: MemoryCategoryFlag;
+  factSubject?: string;
+} {
+  const rawCategory = values.category;
+  const rawSubject = values.subject;
+
+  if (rawCategory !== undefined && !isMemoryCategory(rawCategory)) {
+    throw new CliUsageError(`--category desconhecida: ${rawCategory} (use: fact|episode|project)`);
+  }
+
+  const subjectIsBlank = rawSubject !== undefined && rawSubject.trim() === '';
+
+  if (rawCategory === 'project') {
+    if (rawSubject === undefined || subjectIsBlank) {
+      throw new CliUsageError('--category project exige --subject <projeto>');
+    }
+  } else if (rawSubject !== undefined) {
+    throw new CliUsageError('--subject só é válido com --category project');
+  }
+
+  return {
+    ...(rawCategory !== undefined ? { factCategory: rawCategory } : {}),
+    ...(rawSubject !== undefined && !subjectIsBlank ? { factSubject: rawSubject } : {}),
+  };
 }
 
 function filterNonEmpty(segments: readonly string[]): string[] {
@@ -177,6 +222,8 @@ function parseArgvOrThrow(argv: string[]) {
         'base-url': { type: 'string' },
         'api-key': { type: 'string' },
         apply: { type: 'boolean' },
+        category: { type: 'string' },
+        subject: { type: 'string' },
       },
     });
   } catch (cause) {
@@ -221,10 +268,13 @@ export function createCliInputGateway(): InputGateway {
         if (text === undefined || text.trim() === '') {
           throw new CliUsageError('o comando "remember" exige um fato: atlas remember "<fato>"');
         }
+        const { factCategory, factSubject } = resolveFactCategoryAndSubject(values);
         return {
           command: 'remember',
           configOverride: resolveConfigOverride(values, env),
           factText: text,
+          ...(factCategory !== undefined ? { factCategory } : {}),
+          ...(factSubject !== undefined ? { factSubject } : {}),
         };
       }
 
@@ -261,11 +311,18 @@ export function createCliInputGateway(): InputGateway {
             searchQuery: query,
           };
         }
+        const rawCategory = values.category;
+        if (rawCategory !== undefined && !isMemoryCategory(rawCategory)) {
+          throw new CliUsageError(
+            `--category desconhecida: ${rawCategory} (use: fact|episode|project)`,
+          );
+        }
         return {
           command: 'memory',
           configOverride: resolveConfigOverride(values, env),
           memorySubcommand: sub === 'dedupe' ? 'dedupe' : 'list',
           apply: values.apply === true,
+          ...(rawCategory !== undefined ? { listCategory: rawCategory } : {}),
         };
       }
 

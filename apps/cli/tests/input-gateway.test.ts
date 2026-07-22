@@ -305,4 +305,84 @@ describe('CliInputGateway.normalize', () => {
       expect((cause as Error).message).toContain('list|dedupe|search');
     }
   });
+
+  describe('categorias de memória (SPEC-0029)', () => {
+    it('remember --category episode devolve factCategory', () => {
+      const parsed = gw.normalize(['remember', 'texto', '--category', 'episode'], {});
+      expect(parsed.factCategory).toBe('episode');
+      expect(parsed.factSubject).toBeUndefined();
+    });
+
+    it('remember --category project --subject atlas devolve factCategory e factSubject', () => {
+      const parsed = gw.normalize(
+        ['remember', 'texto', '--category', 'project', '--subject', 'atlas'],
+        {},
+      );
+      expect(parsed.factCategory).toBe('project');
+      expect(parsed.factSubject).toBe('atlas');
+    });
+
+    it('remember --category project sem --subject lança CliUsageError mencionando --subject', () => {
+      expect(() => gw.normalize(['remember', 'texto', '--category', 'project'], {})).toThrow(
+        CliUsageError,
+      );
+      try {
+        gw.normalize(['remember', 'texto', '--category', 'project'], {});
+      } catch (cause) {
+        expect((cause as Error).message).toContain('--subject');
+      }
+    });
+
+    it.each(['', '   ', '\t\n'])(
+      'remember --category project --subject %j (colapsa para vazio) lança CliUsageError',
+      (subject) => {
+        expect(() =>
+          gw.normalize(['remember', 'texto', '--category', 'project', '--subject', subject], {}),
+        ).toThrow(CliUsageError);
+      },
+    );
+
+    it('remember --subject sem --category project lança CliUsageError', () => {
+      expect(() => gw.normalize(['remember', 'texto', '--subject', 'atlas'], {})).toThrow(
+        CliUsageError,
+      );
+    });
+
+    it('remember --subject com --category fact/episode lança CliUsageError', () => {
+      expect(() =>
+        gw.normalize(['remember', 'texto', '--category', 'fact', '--subject', 'atlas'], {}),
+      ).toThrow(CliUsageError);
+      expect(() =>
+        gw.normalize(['remember', 'texto', '--category', 'episode', '--subject', 'atlas'], {}),
+      ).toThrow(CliUsageError);
+    });
+
+    it('remember --category desconhecida lança CliUsageError listando os valores aceitos', () => {
+      expect(() => gw.normalize(['remember', 'texto', '--category', 'bogus'], {})).toThrow(
+        CliUsageError,
+      );
+      try {
+        gw.normalize(['remember', 'texto', '--category', 'bogus'], {});
+      } catch (cause) {
+        expect((cause as Error).message).toContain('fact|episode|project');
+      }
+    });
+
+    it('memory list --category project devolve listCategory', () => {
+      const parsed = gw.normalize(['memory', 'list', '--category', 'project'], {});
+      expect(parsed.listCategory).toBe('project');
+    });
+
+    it('memory list --category desconhecida lança CliUsageError', () => {
+      expect(() => gw.normalize(['memory', 'list', '--category', 'bogus'], {})).toThrow(
+        CliUsageError,
+      );
+    });
+
+    it('remember sem --category/--subject não define factCategory/factSubject', () => {
+      const parsed = gw.normalize(['remember', 'texto'], {});
+      expect(parsed.factCategory).toBeUndefined();
+      expect(parsed.factSubject).toBeUndefined();
+    });
+  });
 });

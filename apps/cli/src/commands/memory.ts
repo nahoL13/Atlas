@@ -1,15 +1,21 @@
-import type { AtlasPlatform } from '@atlas/contracts';
+import type { AtlasPlatform, MemoryCategory } from '@atlas/contracts';
 import type { OutputGateway } from '../gateway/output-gateway.js';
 
-export function runMemoryList(atlas: AtlasPlatform, output: OutputGateway): void {
-  const facts = atlas.memory.list();
+export function runMemoryList(
+  atlas: AtlasPlatform,
+  output: OutputGateway,
+  options?: { readonly category?: MemoryCategory },
+): void {
+  const facts = atlas.memory.list(options);
   if (facts.length === 0) {
     output.write('Nenhum fato memorizado.\n');
     return;
   }
-  const lines = facts.map(
-    (fact) => `[${fact.id}] ${fact.text} (${fact.createdAt}) — origem: ${fact.source ?? 'user'}`,
-  );
+  const lines = facts.map((fact) => {
+    const category = fact.category ?? 'fact';
+    const subjectSuffix = fact.subject !== undefined ? ` — projeto: ${fact.subject}` : '';
+    return `[${fact.id}] ${fact.text} (${fact.createdAt}) — origem: ${fact.source ?? 'user'} — categoria: ${category}${subjectSuffix}`;
+  });
   output.write(`${lines.join('\n')}\n`);
 }
 

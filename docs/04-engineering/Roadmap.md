@@ -87,7 +87,7 @@ Estas são mudanças arquiteturais novas (exigem brainstorming + possivelmente A
 
 ## 1.3 Memory Service — Próximas Fatias
 
-- `gate · SPEC direta` — Memória episódica e memória de projetos (hoje só fatos/preferências explícitos) — é o item que cumpre o critério "mais de uma categoria de conhecimento".
+- ✅ `gate · SPEC direta` — Memória episódica e memória de projetos — **entregue pela [SPEC-0029](../implementation/specs/SPEC-0029-episodic-project-memory.md)** (2026-07-22, nota de atualização no [ADR-0011](../06-adr/ADR-0011-memory-service-persistence.md), sem ADR novo). `MemoryCategory = 'fact' | 'episode' | 'project'`; `Fact.category?`/`subject?`, ambos opcionais; a invariante "memória de projeto exige `subject` válido" é garantida **dentro do `@atlas/memory`** (Artigo 11), não só na CLI; chave de duplicata e `prompt()` (composição por seção, ordem `fact → project → episode`) passam a considerar categoria/projeto. **Cumpre o critério "mais de uma categoria de conhecimento" e fecha, com isso, o último gate aberto da Fase 1.**
 - `candidato · SPEC direta` — Busca/indexação sobre os fatos armazenados.
 - `candidato · SPEC direta` — Retenção e classificação (nem todo fato tem o mesmo peso/prazo de validade).
 - `candidato · SPEC direta` — Relações entre informações.
@@ -123,10 +123,10 @@ A Fase 1 é considerada completa quando todos os itens marcados **`gate`** estiv
 - ✅ O Cognitive Lifecycle está implementado nas sete etapas (Compreensão → Raciocínio → Planejamento → Execução → Observação → Aprendizado → Resposta) — a Observação foi fechada pela [SPEC-0019](../implementation/specs/SPEC-0019-observation-replan-loop.md) e o Aprendizado pela [SPEC-0020](../implementation/specs/SPEC-0020-learning-post-turn-extraction.md); o item 1.2 está completo.
 - ✅ As limitações de segurança marcadas como gate em 1.1 estão fechadas (TOCTOU — [SPEC-0017](../implementation/specs/SPEC-0017-toctou-atomic-enforcement.md) — e múltiplas raízes — [SPEC-0018](../implementation/specs/SPEC-0018-multiple-permission-roots-cli.md)). Limitações novas descobertas depois entram como itens novos com sua própria marcação — este critério cobre a lista atual, não é aberto.
 - ✅ Skills existem como conceito implementado, não só documentado (gate de 1.4) — a [SPEC-0025](../implementation/specs/SPEC-0025-skills-registry-builder.md) materializou o Skill Registry + Skill Builder em `packages/skills`; o consumo de Skills no laço cognitivo (fora deste critério de gate) segue candidato futuro.
-- A Memory Service cobre mais de uma categoria de conhecimento, não só fatos explícitos (gate de 1.3).
+- ✅ A Memory Service cobre mais de uma categoria de conhecimento, não só fatos explícitos (gate de 1.3) — a [SPEC-0029](../implementation/specs/SPEC-0029-episodic-project-memory.md) (2026-07-22) entregou `MemoryCategory = 'fact' | 'episode' | 'project'`, com a invariante de categoria/projeto garantida dentro do próprio Memory Service.
 - Os contratos centrais (`@atlas/contracts`) estão estáveis o suficiente para que uma segunda interface (Fase 2) possa consumi-los sem esperar mudanças estruturais frequentes.
 
-Os itens marcados **`candidato`** não bloqueiam a conclusão — podem ser entregues durante a fase ou migrar para uma fase seguinte sem reabrir este critério.
+**Com a SPEC-0029, todos os itens marcados `gate` desta fase estão entregues** (Cognitive Lifecycle nas sete etapas — 1.2; segurança TOCTOU e múltiplas raízes — 1.1; Skills — 1.4; Memory Service com mais de uma categoria — 1.3). Os itens marcados **`candidato`** não bloqueiam a conclusão — podem ser entregues durante a fase ou migrar para uma fase seguinte sem reabrir este critério.
 
 Esse critério não é automático — a decisão de "Fase 1 está madura o bastante, podemos começar a Fase 2" é do usuário, não do Roadmap.
 

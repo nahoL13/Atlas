@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Fact } from '@atlas/contracts';
 import type { MemoryStorage } from '../src/index.js';
-import { createMemoryService } from '../src/index.js';
+import { createMemoryService, MemoryError } from '../src/index.js';
 
 function fakeStorage(initial: Fact[] = []): MemoryStorage & { saved: Fact[][] } {
   let facts: Fact[] = [...initial];
@@ -366,6 +366,362 @@ describe('createMemoryService', () => {
       const second = svc.search('café');
       expect(svc.list()).toEqual(listBefore);
       expect(first).toEqual(second);
+    });
+
+    it('search continua varrendo todas as categorias', async () => {
+      const storage = fakeStorage();
+      const svc = await createMemoryService({ storage });
+      await svc.remember('prefiro café', 'user', { category: 'episode' });
+      await svc.remember('projeto usa café expresso', 'user', {
+        category: 'project',
+        subject: 'atlas',
+      });
+      expect(
+        svc
+          .search('café')
+          .map((f) => f.text)
+          .sort(),
+      ).toEqual(['prefiro café', 'projeto usa café expresso'].sort());
+    });
+  });
+
+  describe('categorias — memória episódica e de projetos (SPEC-0029)', () => {
+    it('remember(texto, source, { category: "episode" }) cria um Fact com essa categoria', async () => {
+      const svc = await createMemoryService({ storage: fakeStorage() });
+      const { fact } = await svc.remember('quebrei o build ao renomear Fact', 'user', {
+        category: 'episode',
+      });
+      expect(fact.category).toBe('episode');
+      expect(fact.subject).toBeUndefined();
+    });
+
+    it('remember(texto, source, { category: "project", subject: "atlas" }) grava categoria e subject', async () => {
+      const svc = await createMemoryService({ storage: fakeStorage() });
+      const { fact } = await svc.remember('usa pnpm workspaces', 'user', {
+        category: 'project',
+        subject: 'atlas',
+      });
+      expect(fact.category).toBe('project');
+      expect(fact.subject).toBe('atlas');
+    });
+
+    it('remember(texto) sem options cria um Fact com category "fact" e sem subject', async () => {
+      const svc = await createMemoryService({ storage: fakeStorage() });
+      const { fact } = await svc.remember('prefiro respostas curtas');
+      expect(fact.category).toBe('fact');
+      expect(fact.subject).toBeUndefined();
+    });
+
+    it('mesmo texto em categorias diferentes cria dois registros (created: true nas duas)', async () => {
+      const svc = await createMemoryService({ storage: fakeStorage() });
+      const a = await svc.remember('renomeei Fact', 'user', { category: 'fact' });
+      const b = await svc.remember('renomeei Fact', 'user', { category: 'episode' });
+      expect(a.created).toBe(true);
+      expect(b.created).toBe(true);
+      expect(svc.list()).toHaveLength(2);
+    });
+
+    it('mesmo texto/categoria/subject é no-op idempotente (created: false, sem storage.save, sem promoção)', async () => {
+      const storage = fakeStorage();
+      const svc = await createMemoryService({ storage });
+      const first = await svc.remember('usa pnpm', 'learned', {
+        category: 'project',
+        subject: 'atlas',
+      });
+      const savesAfterFirst = storage.saved.length;
+      const second = await svc.remember('usa pnpm', 'user', {
+        category: 'project',
+        subject: 'ATLAS',
+      });
+      expect(second.created).toBe(false);
+      expect(second.fact.id).toBe(first.fact.id);
+      expect(second.fact.source).toBe('learned');
+      expect(storage.saved.length).toBe(savesAfterFirst);
+      expect(svc.list()).toHaveLength(1);
+    });
+
+    it('mesmo texto na categoria "project" com subject diferente cria dois registros', async () => {
+      const svc = await createMemoryService({ storage: fakeStorage() });
+      const a = await svc.remember('usa pnpm', 'user', { category: 'project', subject: 'atlas' });
+      const b = await svc.remember('usa pnpm', 'user', {
+        category: 'project',
+        subject: 'finfit',
+      });
+      expect(a.created).toBe(true);
+      expect(b.created).toBe(true);
+      expect(svc.list()).toHaveLength(2);
+    });
+
+    it('registro legado sem category é tratado como "fact" para efeito de duplicata', async () => {
+      const storage = fakeStorage([
+        { id: 'legacy1', text: 'meu nome é Lohan', createdAt: '2026-01-01T00:00:00.000Z' },
+      ]);
+      const svc = await createMemoryService({ storage });
+      const { created } = await svc.remember('meu nome é Lohan');
+      expect(created).toBe(false);
+      expect(svc.list()).toHaveLength(1);
+    });
+
+    describe('invariante do modelo persistido (garantida pelo módulo, D11/D15)', () => {
+      it('category "project" sem subject rejeita com MemoryError, sem save nem mudança em list()', async () => {
+        const storage = fakeStorage();
+        const svc = await createMemoryService({ storage });
+        await expect(svc.remember('sem projeto', 'user', { category: 'project' })).rejects.toThrow(
+          MemoryError,
+        );
+        expect(storage.saved).toHaveLength(0);
+        expect(svc.list()).toHaveLength(0);
+      });
+
+      it.each(['', '   ', '\t\n'])(
+        'category "project" com subject %j (colapsa para vazio) rejeita com MemoryError',
+        async (subject) => {
+          const storage = fakeStorage();
+          const svc = await createMemoryService({ storage });
+          await expect(
+            svc.remember('texto', 'user', { category: 'project', subject }),
+          ).rejects.toThrow(MemoryError);
+          expect(storage.saved).toHaveLength(0);
+          expect(svc.list()).toHaveLength(0);
+        },
+      );
+
+      it('subject sem category rejeita com MemoryError', async () => {
+        const storage = fakeStorage();
+        const svc = await createMemoryService({ storage });
+        await expect(svc.remember('texto', 'user', { subject: 'atlas' })).rejects.toThrow(
+          MemoryError,
+        );
+        expect(storage.saved).toHaveLength(0);
+        expect(svc.list()).toHaveLength(0);
+      });
+
+      it.each(['fact', 'episode'] as const)(
+        'subject com category "%s" rejeita com MemoryError',
+        async (category) => {
+          const storage = fakeStorage();
+          const svc = await createMemoryService({ storage });
+          await expect(
+            svc.remember('texto', 'user', { category, subject: 'atlas' }),
+          ).rejects.toThrow(MemoryError);
+          expect(storage.saved).toHaveLength(0);
+          expect(svc.list()).toHaveLength(0);
+        },
+      );
+
+      it('rejeições valem para qualquer chamador (API pública direto, sem CLI)', async () => {
+        const storage = fakeStorage();
+        const svc = await createMemoryService({ storage });
+        await expect(
+          svc.remember('texto', 'user', { category: 'project', subject: '' }),
+        ).rejects.toBeInstanceOf(MemoryError);
+      });
+
+      it('o acervo legado não é revalidado no load (registros legados carregam normalmente)', async () => {
+        const storage = fakeStorage([
+          {
+            id: 'weird',
+            text: 'registro com subject sem category, gravado fora desta invariante',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            subject: 'projeto-orfao',
+          } as Fact,
+        ]);
+        const svc = await createMemoryService({ storage });
+        expect(svc.list()).toHaveLength(1);
+        expect(svc.list()[0]!.subject).toBe('projeto-orfao');
+      });
+    });
+
+    describe('list com filtro por categoria', () => {
+      it('list() sem argumento devolve todos os registros na ordem de carga', async () => {
+        const svc = await createMemoryService({ storage: fakeStorage() });
+        await svc.remember('a');
+        await svc.remember('b', 'user', { category: 'episode' });
+        expect(svc.list().map((f) => f.text)).toEqual(['a', 'b']);
+      });
+
+      it('list({ category: "episode" }) devolve apenas os registros dessa categoria', async () => {
+        const svc = await createMemoryService({ storage: fakeStorage() });
+        await svc.remember('a');
+        await svc.remember('b', 'user', { category: 'episode' });
+        await svc.remember('c', 'user', { category: 'episode' });
+        expect(svc.list({ category: 'episode' }).map((f) => f.text)).toEqual(['b', 'c']);
+      });
+
+      it('list({ category: "fact" }) inclui registros legados sem category', async () => {
+        const storage = fakeStorage([
+          { id: 'legacy1', text: 'fato legado', createdAt: '2026-01-01T00:00:00.000Z' },
+        ]);
+        const svc = await createMemoryService({ storage });
+        await svc.remember('fato novo');
+        expect(svc.list({ category: 'fact' }).map((f) => f.text)).toEqual([
+          'fato legado',
+          'fato novo',
+        ]);
+      });
+
+      it('filtro sem correspondência devolve []', async () => {
+        const svc = await createMemoryService({ storage: fakeStorage() });
+        await svc.remember('a');
+        expect(svc.list({ category: 'project' })).toEqual([]);
+      });
+    });
+
+    describe('prompt() agrupado por categoria (D8)', () => {
+      it('não-regressão: só fatos produz exatamente a mesma string de antes desta SPEC', async () => {
+        const svc = await createMemoryService({ storage: fakeStorage() });
+        await svc.remember('meu nome é Lohan');
+        await svc.remember('prefiro TypeScript');
+        expect(svc.prompt()).toBe(
+          'O usuário pediu para você lembrar os seguintes fatos e preferências:\n' +
+            '- meu nome é Lohan\n' +
+            '- prefiro TypeScript',
+        );
+      });
+
+      it('registros legados sem category entram na seção fact (não-regressão)', async () => {
+        const storage = fakeStorage([
+          { id: 'legacy1', text: 'fato antigo', createdAt: '2026-01-01T00:00:00.000Z' },
+        ]);
+        const svc = await createMemoryService({ storage });
+        expect(svc.prompt()).toBe(
+          'O usuário pediu para você lembrar os seguintes fatos e preferências:\n- fato antigo',
+        );
+      });
+
+      it('com as três categorias, produz seções na ordem fact → project → episode, formato literal', async () => {
+        const svc = await createMemoryService({ storage: fakeStorage() });
+        await svc.remember('prefiro respostas curtas');
+        await svc.remember('usa pnpm workspaces', 'user', {
+          category: 'project',
+          subject: 'Atlas',
+        });
+        await svc.remember('quebrei o build ao renomear Fact', 'user', { category: 'episode' });
+
+        expect(svc.prompt()).toBe(
+          'O usuário pediu para você lembrar os seguintes fatos e preferências:\n' +
+            '- prefiro respostas curtas\n\n' +
+            'Sobre os projetos do usuário:\n' +
+            '[projeto Atlas]\n' +
+            '- usa pnpm workspaces\n\n' +
+            'Episódios que o usuário pediu para você lembrar:\n' +
+            '- quebrei o build ao renomear Fact',
+        );
+      });
+
+      it('dois registros do mesmo subject aparecem sob um único subcabeçalho, na ordem de carga', async () => {
+        const svc = await createMemoryService({ storage: fakeStorage() });
+        await svc.remember('usa pnpm workspaces', 'user', {
+          category: 'project',
+          subject: 'atlas',
+        });
+        await svc.remember('usa TypeScript strict', 'user', {
+          category: 'project',
+          subject: 'atlas',
+        });
+        expect(svc.prompt()).toBe(
+          'Sobre os projetos do usuário:\n' +
+            '[projeto atlas]\n' +
+            '- usa pnpm workspaces\n' +
+            '- usa TypeScript strict',
+        );
+      });
+
+      it('ordem entre projetos é a de primeira ocorrência na ordem de carga (não alfabética)', async () => {
+        const svc = await createMemoryService({ storage: fakeStorage() });
+        await svc.remember('projeto zeta usa X', 'user', { category: 'project', subject: 'zeta' });
+        await svc.remember('projeto alfa usa Y', 'user', { category: 'project', subject: 'alfa' });
+        expect(svc.prompt()).toBe(
+          'Sobre os projetos do usuário:\n' +
+            '[projeto zeta]\n' +
+            '- projeto zeta usa X\n' +
+            '[projeto alfa]\n' +
+            '- projeto alfa usa Y',
+        );
+      });
+
+      it('seções vazias são omitidas (só episode)', async () => {
+        const svc = await createMemoryService({ storage: fakeStorage() });
+        await svc.remember('quebrei o build', 'user', { category: 'episode' });
+        expect(svc.prompt()).toBe(
+          'Episódios que o usuário pediu para você lembrar:\n- quebrei o build',
+        );
+      });
+
+      it('sem nenhum registro, prompt() devolve undefined', async () => {
+        const svc = await createMemoryService({ storage: fakeStorage() });
+        expect(svc.prompt()).toBeUndefined();
+      });
+    });
+
+    describe('dedupe considera categoria e subject (D7)', () => {
+      it('dry-run não agrupa registros de categorias (ou subjects) diferentes com o mesmo texto', async () => {
+        const storage = fakeStorage([
+          { id: 'f1', text: 'usa pnpm', createdAt: '2026-01-01T00:00:00.000Z', category: 'fact' },
+          {
+            id: 'e1',
+            text: 'usa pnpm',
+            createdAt: '2026-01-02T00:00:00.000Z',
+            category: 'episode',
+          },
+          {
+            id: 'p1',
+            text: 'usa pnpm',
+            createdAt: '2026-01-03T00:00:00.000Z',
+            category: 'project',
+            subject: 'atlas',
+          },
+          {
+            id: 'p2',
+            text: 'usa pnpm',
+            createdAt: '2026-01-04T00:00:00.000Z',
+            category: 'project',
+            subject: 'finfit',
+          },
+        ]);
+        const svc = await createMemoryService({ storage });
+        const report = await svc.dedupe();
+        expect(report.groups).toHaveLength(0);
+      });
+
+      it('dedupe() sobre um acervo só de fatos produz o mesmo relatório de antes desta SPEC', async () => {
+        const storage = fakeStorage([
+          { id: 'a1', text: 'Meu Nome é Lohan', createdAt: '2026-01-01T00:00:00.000Z' },
+          { id: 'a3', text: '  meu   nome é lohan ', createdAt: '2026-01-03T00:00:00.000Z' },
+        ]);
+        const svc = await createMemoryService({ storage });
+        const report = await svc.dedupe();
+        expect(report.groups).toHaveLength(1);
+        const [group] = report.groups;
+        expect(group!.survivor.id).toBe('a1');
+        expect(group!.duplicates.map((d) => d.id)).toEqual(['a3']);
+      });
+
+      it('dedupe({ apply: true }) preserva category/subject do sobrevivente, sem merge', async () => {
+        const storage = fakeStorage([
+          {
+            id: 'p1',
+            text: 'usa pnpm',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            category: 'project',
+            subject: 'atlas',
+          },
+          {
+            id: 'p2',
+            text: 'USA PNPM',
+            createdAt: '2026-01-02T00:00:00.000Z',
+            category: 'project',
+            subject: 'ATLAS',
+          },
+        ]);
+        const svc = await createMemoryService({ storage });
+        const report = await svc.dedupe({ apply: true });
+        expect(report.applied).toBe(true);
+        const survivor = svc.list()[0]!;
+        expect(survivor.id).toBe('p1');
+        expect(survivor.category).toBe('project');
+        expect(survivor.subject).toBe('atlas');
+      });
     });
   });
 });

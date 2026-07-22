@@ -53,6 +53,24 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## [SPEC-0029](specs/SPEC-0029-episodic-project-memory.md) — Categorias de conhecimento no Memory Service: memória episódica e memória de projetos (2026-07-22)
+
+**Descobrimos que...**
+
+o gate remanescente da Fase 1 (1.3, l. 90) — "mais de uma categoria de conhecimento" — coube inteiro num único tipo `Fact` com dois campos opcionais (`category?`, `subject?`) e um terceiro parâmetro opcional em `remember`, sem tocar `search`/`forget`/a porta `MemoryStorage`. O `architecture-reviewer` vetou a 1ª versão da SPEC (1 rodada, sem escalação) com três achados: **F1** — a invariante "memória de projeto exige projeto" estava desenhada para viver só na CLI, deixando a autoridade do estado persistente (Artigo 11) fora do módulo que a Constituição atribui a ela; corrigida movendo a validação (`MemoryError`, antes de qualquer mutação/`storage.save`) para dentro do `@atlas/memory`, com a CLI só antecipando a mensagem amigável. **F2** — a fail-closed ficou incompleta: um `subject` que colapsasse para vazio (`''`/`'   '`/`'\t\n'`) após `normalize` teria colapsado, na chave de duplicata, para a mesma chave de "projeto sem nome" que a invariante deveria proibir — corrigido tratando qualquer `subject` em branco como ausente e inválido, não como "sem projeto". **F3** — o formato/ordem da seção `project` em `prompt()` estava descrito vagamente na 1ª versão, no caminho mais sensível do sistema (o texto entra no system prompt de toda geração); corrigido fixando literalmente o formato (`[projeto <subject>]`, ordem por primeira ocorrência na carga) para o `spec-validator`/`spec-closer` não precisarem inventar a expectativa.
+
+**A arquitetura ajudou porque...**
+
+o padrão "membro novo 100% opcional/aditivo em `MemoryService`" (confirmado desde a SPEC-0026) evitou de novo a cascata de quebra de `typecheck` dos fakes tipados diretamente (`apps/cli/tests/status.test.ts` compilou sem alteração) — 2ª ocorrência desse contra-exemplo depois da SPEC-0026, contra as 6+ ocorrências do padrão oposto (membro obrigatório novo quebra o typecheck) registradas nas SPECs 0017–0027. O helper `normalize` interno (SPEC-0022) absorveu a extensão da chave de duplicata (categoria+subject+texto) sem duplicação, e o precedente de "nota de atualização no ADR-0011 em vez de ADR novo" (SPECs 0021/0022/0023/0027) se aplicou de novo sem atrito — nenhuma fronteira estrutural nova foi revisitada, só uma capacidade já documentada no Module Catalog ("Deve gerenciar: memória de projetos; memória episódica") passou a existir na implementação.
+
+**A arquitetura atrapalhou porque...**
+
+nada estrutural; o atrito real foi um erro mecânico do `spec-implementer`: ao escrever o separador da chave de duplicata via `Edit` inline, um byte de controle **NUL literal** foi gravado por engano no arquivo-fonte, só detectado porque `grep` passou a reportar "binary file matches" em vez de dar match normal em texto. Regra derivada: nunca inserir caracteres de controle literais via `Edit`/`Write` — sempre a forma escapada da linguagem-alvo (aqui, `''`). Um segundo ponto, de ferramenta e não de arquitetura: o wrapper `rtk`/hook de `grep` devolveu saídas inconsistentes ("N matches in 0 files", "Binary file matches") para buscas simples em arquivo texto, exigindo cair para `\grep` bruto.
+
+**Precisamos mudar...**
+
+nada por encaminhamento estrutural novo — a invariante já vive na autoridade certa (F1) e a fail-closed já cobre o branco (F2). Um encaminhamento de processo, não bloqueante: registrar a regra "nunca escrever caracteres de controle literais via `Edit`/`Write`" como um item de atenção mecânica para o `spec-implementer` — não exige ADR nem SPEC nova, é observação para a próxima revisão de conteúdo do fluxo de implementação, já coberta por esta própria entrada de Lições Aprendidas (encaminhamento: nenhuma ação adicional além deste registro; se o atrito se repetir, considerar nota no `DevelopmentGuide.md`). A assimetria de renderização entre `memory search` e `memory list` e o filtro por categoria em `search`, observados pelo `architecture-reviewer`, seguem fora de escopo por decisão consciente do próprio reviewer, sem encaminhamento pendente.
+
 ## [SPEC-0028](specs/SPEC-0028-git-read-only-tools.md) — Tools de git somente-leitura (`git_status`/`git_diff`/`git_log`) em `@atlas/tools` (2026-07-22)
 
 **Descobrimos que...**
