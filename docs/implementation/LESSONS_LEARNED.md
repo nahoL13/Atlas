@@ -53,6 +53,24 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## [SPEC-0032](specs/SPEC-0032-desktop-confirm-steps-adapters.md) — Desktop: adapters de confirmação e traço de execução (2026-07-22)
+
+**Descobrimos que...**
+
+`dialog.showMessageBox` do Electron só revela seu atrito de tipos no `main.ts` real, não nos testes unitários do adapter isolado: `MessageBoxOptions` exige `type` como union literal (`'warning' | ...`, não `string` genérico) e `buttons: string[]` mutável (não `readonly string[]`), então o `DialogOptions` local do `confirm-port.ts` precisou espelhar exatamente essas restrições para satisfazer o typecheck de `main.ts` — um erro que só aparece ao compilar a casca de produção, não no `showMessageBox` fake dos testes. Descobrimos também que a superfície pronta do Core (`createAtlas` com `CreateAtlasDeps.confirm`, `atlas.cognitive.ask`, `AskResult`/`ExecutedStep` já em `@atlas/contracts`) bastou por inteiro para o segundo adapter de GUI — zero mudança em `@atlas/contracts`/`@atlas/core`/`@atlas/runtime`/`@atlas/permissions`/`@atlas/cognitive`, confirmando de novo (após a SPEC-0031) que a fronteira de contratos públicos já era genérica o bastante para uma segunda interface com etapa cognitiva.
+
+**A arquitetura ajudou porque...**
+
+o molde casca-fina (`main.ts`) × camada testável (`core-bridge.ts`/`confirm-port.ts`/`steps-view.ts`) da SPEC-0031 se repetiu sem fricção para os dois adapters novos: toda a lógica de valor (`createDialogConfirmPort`, `formatSteps`, `resolveAskSnapshot`) ficou isolada do runtime gráfico e testável no Vitest com um `showMessageBox` fake, sem harness de Electron — preservando autor≠verificador mesmo para uma capacidade (confirmação de destrutiva via diálogo nativo) que só existia até aqui atrás de um terminal.
+
+**A arquitetura atrapalhou porque...**
+
+o smoke visual (janela real + diálogo de confirmação de `delete_file`) segue não-executável no shell de automação sem WindowServer — mesmo atrito já registrado pela SPEC-0031, agora confirmado como recorrente em toda fatia visual da Fase 2 (2.1-restante); a suíte automatizada de `resolveAskSnapshot` roda só sobre o gateway `fake` determinístico, sem exercitar um round-trip real com `delete_file`/`ConfirmPort` — esse caminho fica inteiramente a cargo do smoke manual, sem cobertura automatizada nesta fatia.
+
+**Precisamos mudar...**
+
+nada de estrutural agora — o atrito do smoke manual é o mesmo já documentado e esperado desde a SPEC-0031 (`apps/desktop/CLAUDE.md`), e volta a se confirmar recorrente. Encaminhamento: nenhum ADR/SPEC novo necessário; a próxima fatia da Fase 2 (2.2, chat visual multi-turno) deve repetir o mesmo aviso de confirmação humana pendente no seu Definition of Done, e — se decidir exercitar o caminho `delete_file`/diálogo real por teste automatizado — precisará de um harness de Electron dedicado (Fora do Escopo desta e da SPEC-0031).
+
 ## [SPEC-0031](specs/SPEC-0031-desktop-foundation.md) — Desktop Foundation (2026-07-22)
 
 **Descobrimos que...**
