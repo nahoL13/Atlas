@@ -7,11 +7,13 @@ import { createRuntime } from '@atlas/runtime';
 import type { ConfirmPort } from '@atlas/runtime';
 import {
   createDeleteFileTool,
+  createGitStatusTool,
   createReadFileTool,
   createToolRegistry,
   createWriteFileTool,
+  nodeGitReadPort,
 } from '@atlas/tools';
-import type { FsReadPort, FsWritePort } from '@atlas/tools';
+import type { ExecGit, FsReadPort, FsWritePort, GitReadPort } from '@atlas/tools';
 import { createAtlas } from '../src/index.js';
 
 function fakeStorage(initial: Fact[] = []): MemoryStorage {
@@ -312,6 +314,80 @@ describe('createAtlas', () => {
     const result = await atlas.skillBuilder.build({ capability: 'somar dois números' });
     expect(result.ok).toBe(false);
     expect(atlas.skills.list().length).toBe(before);
+    await atlas.shutdown();
+  });
+
+  it('SPEC-0028: git_status roda com cwd = toplevel verificado por isContained e é negado quando o toplevel escapa da raiz (git não roda)', async () => {
+    const execCalls: string[][] = [];
+    const exec: ExecGit = async (args) => {
+      execCalls.push([...args]);
+      if (args.includes('rev-parse')) return '/proj\n';
+      return 'nothing to commit, working tree clean\n';
+    };
+    const realpath = (path: string) => Promise.resolve(path);
+
+    const insideRoots = createPermissionService({ readRoots: ['/proj'], writeRoots: [] });
+    const insideGit = nodeGitReadPort({
+      verify: insideRoots.isContained.bind(insideRoots),
+      exec,
+      realpath,
+    });
+    const insideRegistry = createToolRegistry();
+    insideRegistry.register(createGitStatusTool({ git: insideGit, cwd: () => '/proj' }));
+    const insideRuntime = createRuntime({
+      registry: insideRegistry,
+      permissions: insideRoots,
+      confirm: fakeConfirm(true),
+    });
+    const allowed = await insideRuntime.execute({ steps: [{ tool: 'git_status', args: {} }] });
+    expect(allowed.steps[0]!.result.ok).toBe(true);
+
+    const outsideRoots = createPermissionService({ readRoots: ['/other'], writeRoots: [] });
+    const outsideGit = nodeGitReadPort({
+      verify: outsideRoots.isContained.bind(outsideRoots),
+      exec,
+      realpath,
+    });
+    const outsideRegistry = createToolRegistry();
+    outsideRegistry.register(createGitStatusTool({ git: outsideGit, cwd: () => '/proj' }));
+    const outsideRuntime = createRuntime({
+      registry: outsideRegistry,
+      permissions: outsideRoots,
+      confirm: fakeConfirm(true),
+    });
+    const denied = await outsideRuntime.execute({ steps: [{ tool: 'git_status', args: {} }] });
+    expect(denied.steps[0]!.result.ok).toBe(false);
+
+    // "status" só apareceu na chamada permitida — na negada, só rev-parse rodou.
+    expect(execCalls.filter((args) => args.includes('status'))).toHaveLength(1);
+  });
+
+  it('SPEC-0028: atlas.cognitive.ask, com git fake + gateway fake, seleciona git_status e produz steps com sucesso', async () => {
+    const gitFake: GitReadPort = {
+      status: async (cwd) => ({ repository: cwd, text: 'clean', truncated: false }),
+      diff: async (cwd) => ({ repository: cwd, text: '', truncated: false }),
+      log: async (cwd) => ({ repository: cwd, text: '', truncated: false }),
+    };
+    const fetchFake = (async () =>
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: '{"steps":[{"tool":"git_status","args":{}}]}' } }],
+        }),
+        { status: 200 },
+      )) as typeof fetch;
+    const atlas = await createAtlas(
+      {
+        config: {
+          model: { provider: 'remote', baseUrl: 'http://fake.local', apiKey: 'k', model: 'gpt' },
+        },
+      },
+      { memoryStorage: fakeStorage(), fetch: fetchFake, git: gitFake },
+    );
+
+    const answer = await atlas.cognitive.ask('o que mudou no meu repositório?');
+
+    expect(answer.steps).toBeDefined();
+    expect(answer.steps!.some((step) => step.tool === 'git_status' && step.result.ok)).toBe(true);
     await atlas.shutdown();
   });
 

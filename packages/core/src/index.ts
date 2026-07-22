@@ -17,10 +17,15 @@ import {
   createDeleteFileTool,
   createMkdirTool,
   createAppendFileTool,
+  createGitStatusTool,
+  createGitDiffTool,
+  createGitLogTool,
   nodeFsReadPort,
   nodeFsWritePort,
+  nodeGitReadPort,
   type FsReadPort,
   type FsWritePort,
+  type GitReadPort,
 } from '@atlas/tools';
 import { loadConfig } from './config/load-config.js';
 import { createLifecycle } from './lifecycle/lifecycle.js';
@@ -34,6 +39,7 @@ export interface CreateAtlasDeps {
   memoryStorage?: MemoryStorage;
   fsRead?: FsReadPort;
   fsWrite?: FsWritePort;
+  git?: GitReadPort;
   confirm?: ConfirmPort;
 }
 
@@ -55,6 +61,7 @@ export async function createAtlas(
   const verify = permissions.isContained.bind(permissions);
   const fsRead = deps.fsRead ?? nodeFsReadPort({ verify });
   const fsWrite = deps.fsWrite ?? nodeFsWritePort({ verify });
+  const git = deps.git ?? nodeGitReadPort({ verify });
   const registry = createToolRegistry();
   registry.register(createClockTool());
   registry.register(createCalcTool());
@@ -64,6 +71,9 @@ export async function createAtlas(
   registry.register(createDeleteFileTool({ fs: fsWrite }));
   registry.register(createMkdirTool({ fs: fsWrite }));
   registry.register(createAppendFileTool({ fs: fsWrite }));
+  registry.register(createGitStatusTool({ git }));
+  registry.register(createGitDiffTool({ git }));
+  registry.register(createGitLogTool({ git }));
   const runtime = createRuntime({ registry, permissions, confirm });
   const skills = createSkillRegistry({ skills: BUILTIN_SKILLS });
   const skillBuilder = createSkillBuilder({ gateway, registry: skills, tools: registry });

@@ -53,6 +53,24 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## [SPEC-0028](specs/SPEC-0028-git-read-only-tools.md) — Tools de git somente-leitura (`git_status`/`git_diff`/`git_log`) em `@atlas/tools` (2026-07-22)
+
+**Descobrimos que...**
+
+a premissa inicial da SPEC ("os requisitos de `git_status`/`git_diff`/`git_log` são idênticos aos de `list_dir`") era **falsa** e só se revelou no gate do `architecture-reviewer` (1º veto, sem escalação): `list_dir` nunca lê acima do path declarado, mas `git status`/`diff`/`log` **sobem pelos diretórios pais** até encontrar o toplevel do repositório — com `readRoots = [/proj/packages/tools]`, o gate aprovaria esse diretório enquanto o git relataria (e, no `diff`, imprimiria o conteúdo de) todo `/proj`. É exatamente o defeito que o ADR-0013 nomeou ("o valor do portão está em julgar o recurso concreto"), reintroduzido por outro caminho: o recurso declarado não seria o recurso lido. A correção (descobrir o toplevel real via `rev-parse` → `realpath` → aplicar `verify` sobre ele, só então rodar o subcomando) reusou inteiramente o predicado `Verify` e o critério de residual documentado do ADR-0014/SPEC-0024, sem abrir ADR novo. Um segundo achado do gate, menor mas real: `git status` pode atualizar `.git/index` (refresh do stat cache) e tomar lock — escrita real sob veredicto `read` num repositório com `writeRoots` vazio por default; resolvido com `--no-optional-locks` obrigatório em todo argv, asseverado por spy, em vez do caminho mais caro de promover `git_status` para `access: 'write'`.
+
+**A arquitetura ajudou porque...**
+
+o padrão "Tool declara `requirements` como dado + porta injetável aplica o veredicto no instante do uso" (ADR-0013/ADR-0014) absorveu uma porta inteiramente nova — que descobre um recurso em vez de recebê-lo pronto — sem precisar de nenhuma peça arquitetural nova: o `Verify` de `fs-port.ts` foi reusado tal e qual, e `@atlas/core` já sabia fiar `permissions.isContained.bind(permissions)` para uma porta com essa forma. O precedente de `list_dir` ficando fora do fecho atômico do ADR-0014 ("sem fd a ancorar, residual documentado") deu o molde exato para tratar o TOCTOU do diretório-alvo aqui: mesma linguagem, mesmo critério de quando documentar em vez de fechar. `Fora do Escopo` explícito no Roadmap (l. 100) — "execução de comandos arbitrários é fatia separada, `ADR primeiro`" — deu um limite nítido para a allowlist de opções (`staged`/`maxCount`), evitando que o teto de saída fosse "resolvido" abrindo refs/ranges arbitrários.
+
+**A arquitetura atrapalhou porque...**
+
+nada estrutural novo; o único atrito de implementação foi a **recorrência** já registrada na lição da SPEC-0020: `exactOptionalPropertyTypes` quebrou os fakes de teste de `git-diff`/`git-log` ao propagar `opts?` possivelmente `undefined` para um campo opcional de array literal, corrigido com `opts ?? {}` no fake. O padrão recorrente de "membro novo em contrato quebra o `typecheck` dos fakes tipados diretamente" (confirmado 6ª+ vez nas SPECs 0017–0027) **não** se repetiu aqui — a Tool nova é aditiva via Tool Registry, `@atlas/contracts` ficou com diff vazio.
+
+**Precisamos mudar...**
+
+nada por encaminhamento estrutural novo. Um encaminhamento pontual, não bloqueante, já registrado nesta entrega: a próxima fatia de "leitura de estrutura de projeto" (mesmo item 1.4 do Roadmap) deveria reusar a descoberta de toplevel via `rev-parse --show-toplevel` desta SPEC em vez de reimplementá-la — observação do `architecture-reviewer`, encaminhamento: considerar na SPEC que fizer essa fatia (documentação, sem ADR necessário). Um segundo ponto de processo, registrado para calibrar decisões futuras de "cabe na sessão": esta SPEC teve custo alto de contexto (drafter 2 rodadas, reviewer 2 rodadas, implementer interrompido por limite mensal de gasto no meio da implementação e retomado por `SendMessage` com contexto intacto) — encaminhamento: nenhuma mudança de processo pedida, só registrar que retomar o mesmo agente por `SendMessage` preservou o trabalho já em disco sem custo de re-explicação, e que o `TOKEN_USAGE_LOG.md` deve refletir esse custo real (o `spec-closer` não edita essa tabela manualmente — é regenerada por `scripts/claude-usage-report.py`).
+
 ## [SPEC-0027](specs/SPEC-0027-memory-fact-retrieval.md) — Busca/recuperação determinística de fatos no Memory Service (2026-07-21)
 
 **Descobrimos que...**
