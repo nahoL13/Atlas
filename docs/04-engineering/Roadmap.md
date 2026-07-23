@@ -158,7 +158,7 @@ Já reservado no PRD ("suporte básico à voz") e no `ProjectStructure.md` ("fut
 
 ## 2.4 Persistência e Gerência Local
 
-- Gerência visual de memória (listar, esquecer fatos pela interface, não só CLI).
+- ~~Gerência visual de memória (listar, esquecer fatos pela interface, não só CLI).~~ **entregue** — [SPEC-0034](../implementation/specs/SPEC-0034-desktop-visual-memory-management.md) (listar + esquecer, round-trip stateless pelo `MemoryService`).
 - Seleção/troca de Persona em runtime (hoje só por flag/env na inicialização).
 - Configuração de permissões (`readRoots`/`writeRoots`) por interface gráfica, não só flags.
 

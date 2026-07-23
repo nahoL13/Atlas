@@ -53,6 +53,24 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## [SPEC-0034](specs/SPEC-0034-desktop-visual-memory-management.md) — Desktop: gerência visual de memória — listar e esquecer fatos (2026-07-23)
+
+**Descobrimos que...**
+
+a memória, ao contrário do chat (SPEC-0033), é conhecimento **durável em disco** (ADR-0011) — por isso `resolveMemorySnapshot`/`forgetFact` puderam voltar ao molde **stateless** de `resolveStatusSnapshot`/`resolveAskSnapshot` (sobem e desligam o Core por chamada) em vez de reusar o padrão de Core-vivo-entre-turnos que a SPEC-0033 introduziu: as duas fatias visuais consecutivas do desktop usaram dois moldes de ciclo de vida diferentes, e cada um foi a escolha certa para a natureza do dado que consome (estado em memória × estado em disco), não uma inconsistência. Confirmamos de novo, pela 4ª vez seguida nas fatias do desktop (0031/0032/0033/0034), que a superfície pronta do Core (`createAtlas`, `atlas.memory.list`/`forget`) bastou por inteiro — zero mudança em `@atlas/contracts`/`@atlas/core`/`@atlas/memory`/qualquer outro package do Core.
+
+**A arquitetura ajudou porque...**
+
+o par casca-fina (`main.ts`) × camada testável (`core-bridge.ts`), consolidado desde a SPEC-0031, absorveu sem fricção um terceiro round-trip stateless em cima de um contrato de módulo diferente (`MemoryService` em vez de `Cognitive Core`) — a mesma forma (`createAtlas` → operação → `finally` shutdown) generalizou para uma superfície de domínio nova sem precisar de ajuste estrutural; `FactSnapshot` seguiu exatamente o precedente de `StatusSnapshot`/`AskSnapshot`/`TurnSnapshot` (tipo local, defaults resolvidos antes do IPC), reduzindo a decisão de design a "aplicar o molde já validado".
+
+**A arquitetura atrapalhou porque...**
+
+o smoke manual visual segue não-executável no shell de automação sem WindowServer — 4ª fatia visual seguida (0031/0032/0033/0034) com essa mesma pendência honesta; o atrito está plenamente recorrente e documentado, não mais uma descoberta.
+
+**Precisamos mudar...**
+
+nada de estrutural quanto ao smoke manual — encaminhamento já registrado desde a SPEC-0031 (harness de Electron dedicado, se algum dia uma fatia decidir cobrir a UI por teste automatizado, fora do escopo de todas as SPECs do desktop até aqui). Quanto ao achado não-bloqueante do `architecture-reviewer` nesta SPEC (a Decisão 5 — esquecer sem confirmação — deveria ter ancorado também no Artigo 8, além do ADR-0013; e a numeração de Artigos citada nas SPECs desktop está com nits herdados — Core-orquestrador é Artigo 3 não 4, Persona-única é Artigo 2 não 7): nenhuma mudança de código necessária, mas encaminhamento — higienizar a numeração de Artigos nas próximas SPECs do desktop que citarem a Constituição, e revisar a fundamentação da Decisão 5 na SPEC-0034 se ela for referenciada como precedente por uma fatia futura.
+
 ## [SPEC-0033](specs/SPEC-0033-desktop-visual-chat.md) — Desktop: chat visual multi-turno com sessão viva do Core (2026-07-23)
 
 **Descobrimos que...**

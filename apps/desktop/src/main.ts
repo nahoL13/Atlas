@@ -3,8 +3,10 @@ import { dirname, join } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import {
   closeChatSession,
+  forgetFact,
   openChatSession,
   resolveAskSnapshot,
+  resolveMemorySnapshot,
   resolveStatusSnapshot,
   sendChatTurn,
 } from './core-bridge.js';
@@ -38,6 +40,9 @@ ipcMain.handle('atlas:status', () => resolveStatusSnapshot());
 ipcMain.handle('atlas:ask', (_event, objective: string) =>
   resolveAskSnapshot(objective, { confirm }),
 );
+
+ipcMain.handle('atlas:memory:list', () => resolveMemorySnapshot());
+ipcMain.handle('atlas:memory:forget', (_event, id: string) => forgetFact(id));
 
 // Rastreia as sessões de chat abertas por esta janela só para o teardown no
 // desligamento da app — o registro que efetivamente segura o Core vivo é o

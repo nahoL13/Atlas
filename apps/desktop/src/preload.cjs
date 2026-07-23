@@ -8,4 +8,8 @@ contextBridge.exposeInMainWorld('atlas', {
     send: (session, input) => ipcRenderer.invoke('atlas:chat:send', session, input),
     close: (session) => ipcRenderer.invoke('atlas:chat:close', session),
   },
+  memory: {
+    list: () => ipcRenderer.invoke('atlas:memory:list'),
+    forget: (id) => ipcRenderer.invoke('atlas:memory:forget', id),
+  },
 });

@@ -96,3 +96,40 @@ document.getElementById('chat-form').addEventListener('submit', (event) => {
       inputEl.focus();
     });
 });
+
+// Painel de memória (item 2.4): lista os fatos memorizados e permite
+// esquecer um por vez — round-trips stateless (`atlas.memory.list`/`forget`,
+// o Core sobe e desliga por chamada). O renderer só pinta `FactSnapshot[]`
+// plano, sem conhecer `Fact`/`packages/*`.
+function renderMemoryList(facts) {
+  const listEl = document.getElementById('memory-list');
+  listEl.textContent = '';
+  for (const fact of facts) {
+    const item = document.createElement('li');
+    const subjectSuffix = fact.subject !== undefined ? ` — projeto: ${fact.subject}` : '';
+    const label = document.createElement('span');
+    label.textContent = `[${fact.id}] ${fact.text} (${fact.createdAt}) — origem: ${fact.source} — categoria: ${fact.category}${subjectSuffix}`;
+    const forgetButton = document.createElement('button');
+    forgetButton.type = 'button';
+    forgetButton.textContent = 'Esquecer';
+    forgetButton.addEventListener('click', () => {
+      forgetButton.disabled = true;
+      window.atlas.memory.forget(fact.id).finally(() => {
+        loadMemoryList();
+      });
+    });
+    item.appendChild(label);
+    item.appendChild(forgetButton);
+    listEl.appendChild(item);
+  }
+}
+
+function loadMemoryList() {
+  window.atlas.memory.list().then(renderMemoryList);
+}
+
+document.getElementById('memory-refresh').addEventListener('click', () => {
+  loadMemoryList();
+});
+
+loadMemoryList();

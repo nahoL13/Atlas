@@ -177,3 +177,60 @@ export async function closeChatSession(session: SessionId): Promise<void> {
   atlas.context.closeSession(session);
   await atlas.shutdown();
 }
+
+export interface FactSnapshot {
+  readonly id: string;
+  readonly text: string;
+  readonly createdAt: string;
+  readonly source: string;
+  readonly category: string;
+  readonly subject?: string;
+}
+
+/**
+ * Round-trip stateless com o Core (espelho de `resolveStatusSnapshot`, e
+ * equivalente GUI de `atlas memory list`/`runMemoryList`): sobe a plataforma
+ * via `createAtlas`, lê `atlas.memory.list()`, mapeia cada `Fact` num
+ * `FactSnapshot` plano serializável por IPC — resolvendo os mesmos defaults
+ * que a CLI resolve na renderização (`source ?? 'user'`, `category ?? 'fact'`)
+ * — desliga (`finally`) e devolve a lista. Nunca lê o arquivo de memória
+ * diretamente (Artigo 11) — a leitura passa sempre pelo `MemoryService`.
+ */
+export async function resolveMemorySnapshot(
+  deps: { configOverride?: AtlasConfigOverride } = {},
+): Promise<readonly FactSnapshot[]> {
+  const { configOverride = {} } = deps;
+  const atlas = await createAtlas({ config: configOverride });
+  try {
+    return atlas.memory.list().map((fact) => ({
+      id: fact.id,
+      text: fact.text,
+      createdAt: fact.createdAt,
+      source: fact.source ?? 'user',
+      category: fact.category ?? 'fact',
+      ...(fact.subject !== undefined ? { subject: fact.subject } : {}),
+    }));
+  } finally {
+    await atlas.shutdown();
+  }
+}
+
+/**
+ * Round-trip stateless com o Core (espelho de `resolveMemorySnapshot`, e
+ * equivalente GUI de `atlas forget <id>`/`runForget`): sobe a plataforma via
+ * `createAtlas`, chama `atlas.memory.forget(id)`, desliga (`finally`) e
+ * devolve se algo foi removido — paridade com `runForget` (nunca lança para
+ * um id inexistente, apenas devolve `false`).
+ */
+export async function forgetFact(
+  id: string,
+  deps: { configOverride?: AtlasConfigOverride } = {},
+): Promise<boolean> {
+  const { configOverride = {} } = deps;
+  const atlas = await createAtlas({ config: configOverride });
+  try {
+    return await atlas.memory.forget(id);
+  } finally {
+    await atlas.shutdown();
+  }
+}
