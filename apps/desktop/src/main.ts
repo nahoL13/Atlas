@@ -1,7 +1,14 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
-import { resolveAskSnapshot, resolveStatusSnapshot } from './core-bridge.js';
+import {
+  closeChatSession,
+  openChatSession,
+  resolveAskSnapshot,
+  resolveStatusSnapshot,
+  sendChatTurn,
+} from './core-bridge.js';
+import type { SessionId } from '@atlas/contracts';
 import { createDialogConfirmPort } from './confirm-port.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -32,6 +39,40 @@ ipcMain.handle('atlas:ask', (_event, objective: string) =>
   resolveAskSnapshot(objective, { confirm }),
 );
 
+// Rastreia as sessões de chat abertas por esta janela só para o teardown no
+// desligamento da app — o registro que efetivamente segura o Core vivo é o
+// mapa interno de `core-bridge.ts`.
+const openChatSessionIds = new Set<SessionId>();
+
+ipcMain.handle('atlas:chat:open', async () => {
+  const session = await openChatSession({ confirm });
+  openChatSessionIds.add(session);
+  return session;
+});
+ipcMain.handle('atlas:chat:send', (_event, session: SessionId, input: string) =>
+  sendChatTurn(session, input),
+);
+ipcMain.handle('atlas:chat:close', async (_event, session: SessionId) => {
+  openChatSessionIds.delete(session);
+  await closeChatSession(session);
+});
+
+/**
+ * Teardown das sessões de chat vivas no desligamento da app (nenhum Core
+ * órfão) — tolerante a sessões já encerradas/inexistentes.
+ */
+async function closeAllChatSessions(): Promise<void> {
+  const sessions = [...openChatSessionIds];
+  openChatSessionIds.clear();
+  for (const session of sessions) {
+    try {
+      await closeChatSession(session);
+    } catch {
+      // já encerrada/desconhecida — nada a fazer.
+    }
+  }
+}
+
 void app.whenReady().then(() => {
   createWindow();
 
@@ -43,7 +84,13 @@ void app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  void closeAllChatSessions().finally(() => {
+    if (process.platform !== 'darwin') {
+      app.quit();
+    }
+  });
+});
+
+app.on('before-quit', () => {
+  void closeAllChatSessions();
 });

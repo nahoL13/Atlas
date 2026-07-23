@@ -53,6 +53,24 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## [SPEC-0033](specs/SPEC-0033-desktop-visual-chat.md) — Desktop: chat visual multi-turno com sessão viva do Core (2026-07-23)
+
+**Descobrimos que...**
+
+o texto da própria SPEC continha uma ambiguidade entre o Escopo ("`closeChatSession` idempotente/tolerante a handle já encerrado") e um Critério de Aceitação que exige rejeição estruturada para uma `SessionId` que nunca foi aberta — foram resolvidos tratando "nunca aberta" e "já encerrada" identicamente (ambas rejeitam com erro estruturado, nunca `TypeError`), lendo "tolerante" como "não crasha o processo", não como "engole o erro em silêncio". Descobrimos também que o `core-bridge.ts` não expõe (por design) a listagem das sessões vivas registradas internamente — o `main.ts` precisou de um `Set<SessionId>` próprio (`openChatSessionIds`) para viabilizar o teardown no shutdown da app, um ajuste pequeno não listado explicitamente no fluxo da SPEC mas coerente com "garantir shutdown do Core". Por fim, confirmamos que a superfície pronta do Core (`createAtlas` com `CreateAtlasDeps.confirm`, `atlas.cognitive.respond`/`startConversation`, `atlas.context.openSession`/`getConversation`/`updateConversation`/`closeSession`) bastou por inteiro para o "grande salto" de manter o Core vivo entre turnos — zero mudança em `@atlas/contracts`/`@atlas/core`/`@atlas/runtime`/`@atlas/cognitive`/`@atlas/context`/`@atlas/permissions`, a 3ª vez consecutiva (após SPECs 0031/0032) que a fronteira de contratos públicos do Core já era genérica o bastante para uma capacidade nova na janela.
+
+**A arquitetura ajudou porque...**
+
+o molde casca-fina (`main.ts`) × camada testável (`core-bridge.ts`) das SPECs 0031/0032 absorveu sem fricção o padrão de ciclo de vida novo (sessão viva registrada por `SessionId`, mediação `sendChatTurn` no formato que o ADR-0009 já previa para a aplicação); os adapters de GUI da SPEC-0032 (`createDialogConfirmPort`, `formatSteps`) foram reusados **sem nenhuma alteração** (diff vazio nos dois arquivos), confirmando que a divisão adapter × consumo já estava correta desde a fatia anterior.
+
+**A arquitetura atrapalhou porque...**
+
+o smoke manual visual (janela real + dois turnos encadeados com contexto + diálogo nativo de `delete_file`) segue não-executável no shell de automação sem WindowServer — 3ª SPEC visual seguida (0031/0032/0033) com essa mesma pendência honesta, agora claramente recorrente em toda fatia da Fase 2, não mais um atrito isolado.
+
+**Precisamos mudar...**
+
+nada de estrutural agora quanto ao smoke manual — o atrito é o mesmo já documentado desde a SPEC-0031 e volta a se confirmar recorrente; encaminhamento: nenhum ADR/SPEC novo necessário, mas se uma fatia futura decidir cobrir `delete_file`/diálogo real por teste automatizado, precisará de um harness de Electron dedicado (fora do escopo desta e das SPECs 0031/0032). Quanto à ambiguidade textual do Escopo × Critérios de Aceitação: nenhuma mudança de documentação necessária agora — a leitura unificada ("nunca aberta" = "já encerrada", ambas rejeição estruturada) já está registrada nesta entrada como precedente para SPECs futuras de ciclo de vida com handle.
+
 ## [SPEC-0032](specs/SPEC-0032-desktop-confirm-steps-adapters.md) — Desktop: adapters de confirmação e traço de execução (2026-07-22)
 
 **Descobrimos que...**

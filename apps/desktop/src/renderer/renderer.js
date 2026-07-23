@@ -37,3 +37,62 @@ document.getElementById('ask-form').addEventListener('submit', (event) => {
     resultEl.textContent = lines.join('\n');
   });
 });
+
+// Chat visual multi-turno (item 2.2): o Core é mantido vivo no main process
+// entre turnos — a `session` é um handle opaco (string), o `Conversation`
+// nunca cruza o IPC. O renderer só pinta o `TurnSnapshot` plano que chega
+// (reply/steps/learned); um turno por vez (entrada desabilitada em voo).
+let chatSession = null;
+
+function appendTranscriptLine(text) {
+  const transcript = document.getElementById('chat-transcript');
+  const line = document.createElement('pre');
+  line.textContent = text;
+  transcript.appendChild(line);
+}
+
+function appendTurn(userInput, snapshot) {
+  appendTranscriptLine(`> ${userInput}`);
+  for (const step of snapshot.steps) {
+    const marker = step.denialKind !== undefined ? ` [${step.denialKind}]` : '';
+    appendTranscriptLine(`🔧 ${step.tool} → ${step.outcome}${marker}`);
+  }
+  appendTranscriptLine(snapshot.reply);
+  for (const fact of snapshot.learned) {
+    appendTranscriptLine(`💡 lembrado: ${fact}`);
+  }
+}
+
+window.atlas.chat.open().then((session) => {
+  chatSession = session;
+  appendTranscriptLine('(sessão de chat aberta)');
+});
+
+document.getElementById('chat-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  if (chatSession === null) {
+    return;
+  }
+  const inputEl = document.getElementById('chat-input');
+  const input = inputEl.value.trim();
+  if (input === '') {
+    return;
+  }
+  const sendButton = document.getElementById('chat-send');
+  inputEl.disabled = true;
+  sendButton.disabled = true;
+  window.atlas.chat
+    .send(chatSession, input)
+    .then((snapshot) => {
+      appendTurn(input, snapshot);
+      inputEl.value = '';
+    })
+    .catch((error) => {
+      appendTranscriptLine(`⚠️ ${error.message ?? error}`);
+    })
+    .finally(() => {
+      inputEl.disabled = false;
+      sendButton.disabled = false;
+      inputEl.focus();
+    });
+});
