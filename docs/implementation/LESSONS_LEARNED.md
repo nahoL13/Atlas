@@ -53,6 +53,24 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## [SPEC-0035](specs/SPEC-0035-desktop-voice-output-tts.md) — Desktop: saída de voz (TTS) — falar a resposta do chat (2026-07-24)
+
+**Descobrimos que...**
+
+`renderer.js` — `<script>` clássico carregado por `window.loadFile` sem `type="module"` e sem bundler (ADR-0019) — não consegue literalmente `import` um módulo TypeScript do app em tempo de execução, diferente de `confirm-port.ts`/`steps-view.ts` (que só o main process consome, via o hook `tsx`). `src/speech-output.ts` (o módulo puro/testado) e o glue do renderer, portanto, não podem compartilhar o mesmo código-fonte nesta fatia: o mesmo algoritmo (`createSpeechOutput` — normaliza, no-op em vazio, cancela-antes-de-falar, fail-safe, `isAvailable` via `getVoices().length > 0`) precisou ser **replicado deliberadamente** em JS puro dentro de `renderer.js`, com um comentário apontando a duplicação e o teste de referência (`tests/speech-output.test.ts`). Confirmamos também, pela 5ª vez seguida nas fatias do desktop (0031-0035), que a fronteira Core/renderer absorveu uma capacidade de produto inteiramente nova (voz) sem tocar `@atlas/contracts`/`@atlas/core`/qualquer package do Core — a Web Speech API embutida do Chromium (E2, decisão humana) bastou.
+
+**A arquitetura ajudou porque...**
+
+o molde de módulo puro + porta estrutural local (`SpeechSynthesisPort`/`UtteranceSpec`, no formato de `ConfirmPort`) generalizou de novo sem ajuste: a lógica de decisão (o quê/quando falar, disponibilidade de voz) ficou 100% testável no Vitest sem DOM, isolando a única parte não testável (a chamada real a `window.speechSynthesis`/`SpeechSynthesisUtterance`) no glue do renderer — o mesmo padrão que já isola `dialog.showMessageBox` em `main.ts`.
+
+**A arquitetura atrapalhou porque...**
+
+o smoke manual visual segue não-executável no shell de automação sem WindowServer/saída de áudio — 5ª fatia visual seguida (0031-0035) com essa mesma pendência honesta, plenamente recorrente. Além disso, esta é a primeira fatia em que a ausência de bundler no renderer (decisão do ADR-0019, correta para o escopo do desktop) virou um atrito concreto e não só uma restrição teórica: duas cópias do mesmo algoritmo, uma testada e uma não, com risco real de deriva silenciosa se um dos dois lados mudar sem o outro.
+
+**Precisamos mudar...**
+
+registrar o padrão "glue do renderer não pode importar módulos TS do app — replicação espelhada intencional, com risco de deriva" como conhecimento explícito, não tácito (encaminhamento: nota adicionada em `apps/desktop/CLAUDE.md`, seção desta SPEC, e nos Critérios/Arquivos Esperados da própria SPEC-0035, corrigindo o texto que sugeria "renderer instancia `createSpeechOutput`" como se fosse um import direto executável). Se uma fatia futura decidir introduzir um bundler para o renderer (fora de escopo de toda SPEC do desktop até aqui), esta duplicação deixaria de ser necessária — mas essa é uma decisão de stack que exige ADR (Artigo 13), não uma mudança implícita.
+
 ## [SPEC-0034](specs/SPEC-0034-desktop-visual-memory-management.md) — Desktop: gerência visual de memória — listar e esquecer fatos (2026-07-23)
 
 **Descobrimos que...**

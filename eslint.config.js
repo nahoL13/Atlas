@@ -22,7 +22,11 @@ export default tseslint.config(
   {
     files: ['apps/desktop/src/renderer/**/*.js'],
     languageOptions: {
-      globals: { window: 'readonly', document: 'readonly' },
+      globals: {
+        window: 'readonly',
+        document: 'readonly',
+        SpeechSynthesisUtterance: 'readonly',
+      },
     },
   },
 );

@@ -44,11 +44,113 @@ document.getElementById('ask-form').addEventListener('submit', (event) => {
 // (reply/steps/learned); um turno por vez (entrada desabilitada em voo).
 let chatSession = null;
 
+// Saída de voz (TTS, item 2.3): adapter local sobre a Web Speech API do
+// Chromium (glue de navegador, não testada em unidade — não coberta pelo
+// Vitest, que roda sem sessão gráfica/DOM).
+//
+// Nota de arquitetura: `renderer.js` é um `<script>` clássico carregado por
+// `window.loadFile` (sem `type="module"`, sem bundler — ADR-0019), não pode
+// `import` o módulo TypeScript `src/speech-output.ts` (que só é consumido
+// pelo Vitest, via o mesmo hook `tsx` usado pelo main process). Por isso a
+// função abaixo replica deliberadamente, em JS puro, o mesmo algoritmo
+// testado em `tests/speech-output.test.ts` (`createSpeechOutput`):
+// normaliza o texto, no-op em vazio, cancela a fala anterior antes de
+// iniciar a próxima, fail-safe (nunca lança), `isAvailable` via
+// `getVoices().length > 0`. Qualquer mudança de comportamento deve ser
+// espelhada nos dois lugares.
+const synth = {
+  speak(spec) {
+    window.speechSynthesis.speak(new SpeechSynthesisUtterance(spec.text));
+  },
+  cancel() {
+    window.speechSynthesis.cancel();
+  },
+  getVoices() {
+    return window.speechSynthesis === undefined ? [] : window.speechSynthesis.getVoices();
+  },
+};
+
+function createSpeechOutputGlue({ synth }) {
+  return {
+    speak(text) {
+      const normalized = text.trim().replace(/\s+/g, ' ');
+      if (normalized === '') {
+        return;
+      }
+      try {
+        synth.cancel();
+        synth.speak({ text: normalized });
+      } catch {
+        // fail-safe: nunca propaga para o fluxo do chat
+      }
+    },
+    cancel() {
+      try {
+        synth.cancel();
+      } catch {
+        // fail-safe: nunca propaga
+      }
+    },
+    isAvailable() {
+      try {
+        return synth.getVoices().length > 0;
+      } catch {
+        return false;
+      }
+    },
+  };
+}
+
+const speechOutput = createSpeechOutputGlue({ synth });
+
+// Quirk conhecido do Chromium: `getVoices()` costuma devolver `[]` na
+// primeira chamada, até o evento `voiceschanged` disparar de forma
+// assíncrona. Um `isAvailable()` de tiro único no load do turno arriscaria
+// desabilitar o botão num sistema que TEM voz (falso-negativo). Por isso a
+// lista de botões "Ouvir" pendentes é reavaliada quando `voiceschanged`
+// dispara (ou preguiçosamente, a cada clique).
+const pendingSpeakButtons = new Set();
+
+function refreshSpeakButton(button) {
+  const available = speechOutput.isAvailable();
+  button.disabled = !available;
+  button.title = available ? '' : 'voz indisponível neste sistema';
+}
+
+if (window.speechSynthesis !== undefined) {
+  window.speechSynthesis.addEventListener('voiceschanged', () => {
+    for (const button of pendingSpeakButtons) {
+      refreshSpeakButton(button);
+    }
+  });
+}
+
 function appendTranscriptLine(text) {
   const transcript = document.getElementById('chat-transcript');
   const line = document.createElement('pre');
   line.textContent = text;
   transcript.appendChild(line);
+}
+
+function appendReply(text) {
+  const transcript = document.getElementById('chat-transcript');
+  const wrapper = document.createElement('div');
+  const line = document.createElement('pre');
+  line.textContent = text;
+  const speakButton = document.createElement('button');
+  speakButton.type = 'button';
+  speakButton.textContent = '🔊 Ouvir';
+  speakButton.addEventListener('click', () => {
+    refreshSpeakButton(speakButton);
+    if (!speakButton.disabled) {
+      speechOutput.speak(text);
+    }
+  });
+  refreshSpeakButton(speakButton);
+  pendingSpeakButtons.add(speakButton);
+  wrapper.appendChild(line);
+  wrapper.appendChild(speakButton);
+  transcript.appendChild(wrapper);
 }
 
 function appendTurn(userInput, snapshot) {
@@ -57,7 +159,7 @@ function appendTurn(userInput, snapshot) {
     const marker = step.denialKind !== undefined ? ` [${step.denialKind}]` : '';
     appendTranscriptLine(`🔧 ${step.tool} → ${step.outcome}${marker}`);
   }
-  appendTranscriptLine(snapshot.reply);
+  appendReply(snapshot.reply);
   for (const fact of snapshot.learned) {
     appendTranscriptLine(`💡 lembrado: ${fact}`);
   }

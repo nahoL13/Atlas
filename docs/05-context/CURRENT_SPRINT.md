@@ -2,7 +2,7 @@
 
 > **Project Atlas — Estado do Trabalho Atual**
 
-Atualizado em: 2026-07-23 (SPEC-0034)
+Atualizado em: 2026-07-24 (SPEC-0035)
 
 ---
 
@@ -46,5 +46,6 @@ Objetivo: plataforma mínima operável + primeira interface executável (CLI) + 
 | [SPEC-0032](../implementation/specs/SPEC-0032-desktop-confirm-steps-adapters.md) | Desktop: adapters de confirmação e traço de execução — `ConfirmPort` de diálogo nativo (`confirm-port.ts`) + traço visual de `steps` (`steps-view.ts`) + consumo `ask` de tiro único (`resolveAskSnapshot`), fechando a fatia 2.1-restante do Roadmap; `respond`/multi-turno seguem para o item 2.2 | Done |
 | [SPEC-0033](../implementation/specs/SPEC-0033-desktop-visual-chat.md) | Desktop: chat visual multi-turno — Core mantido vivo entre turnos no main process (`openChatSession`/`sendChatTurn`/`closeChatSession`), sessão viva pelo Context Service, reusando adapters da SPEC-0032; equivalente GUI do `atlas chat`; primeira linha do item 2.2, voz (2.3) e gerência visual (2.4) seguem futuras | Done |
 | [SPEC-0034](../implementation/specs/SPEC-0034-desktop-visual-memory-management.md) | Desktop: gerência visual de memória — listar e esquecer fatos (`resolveMemorySnapshot`/`forgetFact`, stateless, `MemoryService.list`/`forget`), equivalente GUI de `atlas memory list`/`atlas forget`; primeira linha do item 2.4, troca de Persona em runtime e permissões por GUI seguem futuras | Done |
+| [SPEC-0035](../implementation/specs/SPEC-0035-desktop-voice-output-tts.md) | Desktop: saída de voz (TTS) — botão "🔊 Ouvir" por resposta do chat (`speech-output.ts`/`createSpeechOutput`, via `window.speechSynthesis`), primeira fatia do item 2.3; STT/wake word adiados a ADR novo (Escalação E1) | Done |
 
 Detalhes de retomada: `docs/05-context/NEXT_CONTEXT.md`.
