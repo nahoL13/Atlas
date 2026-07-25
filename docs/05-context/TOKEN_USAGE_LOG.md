@@ -45,9 +45,9 @@ Este documento existe para responder, antes de começar a implementar uma SPEC, 
 | SPEC-0030 | Injeção de memória guiada pela consulta do turno (`MemoryService.prompt({ query, limit })` consumido pelo Cognitive Core) | Done | 2 | 2026-07-22 | 27.430.080 | 5.519.152 |
 | SPEC-0031 | Desktop Foundation — primeira janela do app desktop (`apps/desktop`), um round-trip com o Core | Done | 1 | 2026-07-22 | 32.647.284 | 5.815.214 |
 | SPEC-0032 | Desktop: `ConfirmPort` via diálogo nativo + superfície visual dos `steps`, exercitados por um `ask` de tiro único | Draft | 1 | 2026-07-23 | 22.130.273 | 5.545.354 |
-| SPEC-0033 | Desktop: chat visual multi-turno na janela — `respond`/`Conversation` viva entre turnos sobre a sessão do Context Service, com o Core mantido vivo no main process | Draft | 1 | 2026-07-23 | 14.855.752 | 4.825.214 |
+| SPEC-0033 | Desktop: chat visual multi-turno na janela — `respond`/`Conversation` viva entre turnos sobre a sessão do Context Service, com o Core mantido vivo no main process | Draft | 1 | 2026-07-23 | 15.885.171 | 5.142.314 |
 | SPEC-0034 | Desktop: gerência visual de memória na janela — listar os fatos memorizados e esquecer um fato pela interface gráfica, equivalente GUI de `atlas memory list` e `atlas forget` | Done | 1 | 2026-07-23 | 12.161.400 | 2.904.770 |
-| SPEC-0035 | Desktop: saída de voz (TTS) — falar a resposta do chat pela Web Speech API do Chromium | Draft | 1 | 2026-07-24 | 1.773.670 | 476.655 |
+| SPEC-0035 | Desktop: saída de voz (TTS) — falar a resposta do chat pela Web Speech API do Chromium | Done | 1 | 2026-07-25 | 13.737.831 | 3.104.433 |
 
 ## Detalhamento por fase
 
@@ -86,9 +86,9 @@ Fase = qual agente fez o trabalho. **Criação/Decisão** é o que roda no **fio
 | SPEC-0030 | 989.067 | 673.326 | 367.030 | 1.541.200 | 431.151 | 1.517.378 | 0 |
 | SPEC-0031 | 1.310.887 | 0 | 587.597 | 2.476.361 | 438.578 | 1.001.791 | 0 |
 | SPEC-0032 | 955.939 | 1.915.544 | 742.647 | 904.190 | 300.577 | 726.457 | 0 |
-| SPEC-0033 | 995.927 | 1.444.749 | 645.460 | 813.919 | 291.228 | 633.931 | 0 |
+| SPEC-0033 | 995.927 | 1.761.849 | 645.460 | 813.919 | 291.228 | 633.931 | 0 |
 | SPEC-0034 | 641.877 | 0 | 464.152 | 557.521 | 268.552 | 972.668 | 0 |
-| SPEC-0035 | 476.655 | 0 | 0 | 0 | 0 | 0 | 0 |
+| SPEC-0035 | 985.655 | 0 | 313.758 | 569.278 | 269.068 | 966.674 | 0 |
 
 ## Eficiência de processo (overhead ÷ implementação)
 
@@ -116,12 +116,13 @@ Razão entre o custo de **processo** (todas as fases exceto Implementação — 
 | SPEC-0030 | 1.541.200 | 3.977.952 | 2.6× |
 | SPEC-0031 | 2.476.361 | 3.338.853 | 1.3× |
 | SPEC-0032 | 904.190 | 4.641.164 | 5.1× |
-| SPEC-0033 | 813.919 | 4.011.295 | 4.9× |
+| SPEC-0033 | 813.919 | 4.328.395 | 5.3× |
 | SPEC-0034 | 557.521 | 2.347.249 | 4.2× |
+| SPEC-0035 | 569.278 | 2.535.155 | 4.5× |
 
 ## Como estimar antes de começar uma SPEC nova
 
-- SPECs concluídas (`Done`) até agora: 31. Custo médio: **8.941.233 tokens efetivos**. Faixa observada: 2.904.770 – 35.026.030 tokens efetivos.
+- SPECs concluídas (`Done`) até agora: 32. Custo médio: **8.758.833 tokens efetivos**. Faixa observada: 2.904.770 – 35.026.030 tokens efetivos.
 
 - Compare a SPEC que você está prestes a começar com as mais parecidas em tamanho na tabela acima (número de itens em "Escopo"/"Critérios de Aceitação", quantidade de "Arquivos Esperados"). Uma SPEC do porte de uma linha já concluída tende a custar perto do que ela custou.
 - Se o consumo já acumulado na sessão atual (rode o relatório detalhado, `.claude/usage-report.md`) mais a estimativa da próxima SPEC passar perto do seu limite de janela, prefira parar num ponto de commit limpo e retomar na próxima sessão em vez de começar e arriscar cortar a implementação pela metade.

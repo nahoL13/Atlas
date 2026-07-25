@@ -1,5 +1,6 @@
 /**
- * Saída de voz (TTS), item 2.3 do Roadmap — primeira fatia (só saída).
+ * Saída de voz (TTS), item 2.3 do Roadmap — primeira fatia (só saída),
+ * endurecida pela SPEC-0036 para garantir voz 100% local.
  *
  * Módulo puro/injetável, sem import de `electron` nem de globais de
  * navegador (`window`/`SpeechSynthesisUtterance`), no molde de
@@ -8,19 +9,35 @@
  * (`src/renderer/renderer.js`) — a mesma fronteira que isola
  * `dialog.showMessageBox` em `src/main.ts`.
  *
- * Offline por construção: toda a operação passa pelo `synth` injetado (o
- * motor de voz local do SO); este módulo não faz nenhuma chamada de rede
- * (sem `fetch`/`XMLHttpRequest`/import de rede). Vozes de plataforma
- * backed por rede, se existirem, estão fora do controle deste módulo — a
- * garantia aqui é a fronteira do módulo puro, não a pilha de voz do SO
- * inteira.
+ * Offline garantido para a voz efetivamente usada: este módulo filtra as
+ * vozes candidatas para apenas as marcadas pelo padrão da Web Speech API
+ * como locais (`SpeechSynthesisVoice.localService === true`), seleciona
+ * deterministicamente a primeira e a carimba no `UtteranceSpec` para o
+ * renderer vincular explicitamente ao `SpeechSynthesisUtterance` real.
+ * Sem nenhuma voz local disponível, a saída fica indisponível
+ * (`isAvailable() === false`) e `speak` é no-op — nunca há fallback para
+ * uma voz de rede. A garantia depende de o SO/navegador reportar
+ * `localService` corretamente (ver Observações da SPEC-0036); dada essa
+ * ressalva, o módulo nunca faz nenhuma chamada de rede por si.
  */
 
 /**
- * O dado que o renderer converte num `SpeechSynthesisUtterance` real.
+ * Projeção mínima e estrutural de `SpeechSynthesisVoice` de que este módulo
+ * precisa para filtrar vozes locais — nenhum tipo de navegador importado.
+ */
+export interface VoiceInfo {
+  readonly voiceURI: string;
+  readonly name: string;
+  readonly localService: boolean;
+}
+
+/**
+ * O dado que o renderer converte num `SpeechSynthesisUtterance` real,
+ * já com a voz local escolhida vinculada por `voiceURI`.
  */
 export interface UtteranceSpec {
   readonly text: string;
+  readonly voiceURI: string;
 }
 
 /**
@@ -30,7 +47,7 @@ export interface UtteranceSpec {
 export interface SpeechSynthesisPort {
   speak(spec: UtteranceSpec): void;
   cancel(): void;
-  getVoices(): readonly unknown[];
+  getVoices(): readonly VoiceInfo[];
 }
 
 export interface SpeechOutput {
@@ -40,9 +57,30 @@ export interface SpeechOutput {
 }
 
 /**
+ * Seleciona deterministicamente a primeira voz local (ordem de
+ * `getVoices()`), devolvendo seu `voiceURI` — ou `undefined` se não houver
+ * nenhuma voz local. Fail-closed: nunca escolhe uma voz de rede.
+ */
+function selectLocalVoiceURI(synth: SpeechSynthesisPort): string | undefined {
+  const voices = synth.getVoices();
+  const localVoice = voices.find((voice) => voice.localService === true);
+  return localVoice?.voiceURI;
+}
+
+function hasLocalVoice(synth: SpeechSynthesisPort): boolean {
+  try {
+    return selectLocalVoiceURI(synth) !== undefined;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * `createSpeechOutput` decide o que falar, quando não falar, e cancela a
  * fala anterior antes de iniciar a próxima. Fail-safe: qualquer erro do
  * `synth` injetado é capturado e nunca propaga para o fluxo do chat.
+ * Fail-closed: sem voz local disponível, `speak` é no-op — nunca cai numa
+ * voz de rede como alternativa.
  */
 export function createSpeechOutput(deps: { synth: SpeechSynthesisPort }): SpeechOutput {
   const { synth } = deps;
@@ -54,8 +92,12 @@ export function createSpeechOutput(deps: { synth: SpeechSynthesisPort }): Speech
         return;
       }
       try {
+        const voiceURI = selectLocalVoiceURI(synth);
+        if (voiceURI === undefined) {
+          return;
+        }
         synth.cancel();
-        synth.speak({ text: normalized });
+        synth.speak({ text: normalized, voiceURI });
       } catch {
         // fail-safe: nunca propaga para o fluxo do chat
       }
@@ -70,11 +112,7 @@ export function createSpeechOutput(deps: { synth: SpeechSynthesisPort }): Speech
     },
 
     isAvailable(): boolean {
-      try {
-        return synth.getVoices().length > 0;
-      } catch {
-        return false;
-      }
+      return hasLocalVoice(synth);
     },
   };
 }

@@ -53,6 +53,24 @@ A ausência de atrito também é informação.
 
 # Registro
 
+## [SPEC-0036](specs/SPEC-0036-desktop-tts-local-voice-only.md) — Desktop: TTS 100% offline garantido — restringir a vozes locais (2026-07-24)
+
+**Descobrimos que...**
+
+`SpeechSynthesisVoice.localService` já é o sinal-padrão da Web Speech API para distinguir voz sintetizada no dispositivo (`true`) de voz processada por serviço remoto (`false`) — endurecer a garantia de "zero rede" da SPEC-0035 não exigiu heurística nova nem dependência nova, só filtrar por esse campo já exposto pelo Chromium e vincular explicitamente a voz escolhida (`utterance.voice`) em vez de deixar o navegador escolher a voz padrão. A mudança tocou as três mesmas camadas da SPEC-0035 (módulo puro, teste, glue do renderer) e nada além delas — a fronteira Core/renderer definida desde a SPEC-0031 absorveu mais uma vez uma exigência de segurança sem tocar `@atlas/contracts`/`@atlas/core`.
+
+**A arquitetura ajudou porque...**
+
+O molde de porta estrutural local (`SpeechSynthesisPort`/`UtteranceSpec`, sem tipo de navegador importado) já isolava exatamente o ponto de extensão certo: alargar `getVoices()` para devolver `VoiceInfo[]` e `UtteranceSpec` para carregar `voiceURI` bastou para levar a decisão de seleção de voz para dentro do módulo puro/testável, mantendo o renderer como glue fino que só resolve o `voiceURI` escolhido para uma voz real. O padrão fail-closed já usado no `confirm-port` (SPEC-0032) e no `verify` de FS (SPEC-0024) se replicou aqui sem fricção: "sem voz local ⇒ não fala" é a mesma postura, só aplicada a um novo tipo de recurso.
+
+**A arquitetura atrapalhou porque...**
+
+Confirma-se, pela 2ª vez seguida (já registrado na entrada da SPEC-0035), o atrito estrutural da duplicação deliberada `speech-output.ts` ↔ `renderer.js`: como `renderer.js` é `<script>` clássico sem bundler (ADR-0019) e não pode `import` o módulo TS em runtime, a lógica de seleção de voz local (`selectLocalVoiceURI`) precisou ser escrita duas vezes, com o mesmo risco de deriva já sinalizado — desta vez o próprio endurecimento é a prova de que a duplicação pode ficar defasada silenciosamente se uma fatia futura mudar `speech-output.ts` sem lembrar do espelho em `renderer.js` (o comentário-referência ajuda, mas não é verificado por teste).
+
+**Precisamos mudar...**
+
+Nada de estrutural nesta SPEC — a recorrência da duplicação renderer↔módulo já está registrada e encaminhada (nenhum ADR novo justificado só por isso, dado que introduzir bundler para `apps/desktop` seria decisão de stack fora do escopo desta fatia). Encaminhamento: se uma 3ª fatia de voz repetir esse atrito (ex.: STT), reavaliar nesse momento se o custo acumulado de duplicação já justifica um ADR de bundler/build para `apps/desktop` — não antes disso.
+
 ## [SPEC-0035](specs/SPEC-0035-desktop-voice-output-tts.md) — Desktop: saída de voz (TTS) — falar a resposta do chat (2026-07-24)
 
 **Descobrimos que...**

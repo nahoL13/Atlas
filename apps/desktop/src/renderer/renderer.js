@@ -44,9 +44,10 @@ document.getElementById('ask-form').addEventListener('submit', (event) => {
 // (reply/steps/learned); um turno por vez (entrada desabilitada em voo).
 let chatSession = null;
 
-// Saída de voz (TTS, item 2.3): adapter local sobre a Web Speech API do
-// Chromium (glue de navegador, não testada em unidade — não coberta pelo
-// Vitest, que roda sem sessão gráfica/DOM).
+// Saída de voz (TTS, item 2.3), endurecida pela SPEC-0036 para garantir voz
+// 100% local: adapter local sobre a Web Speech API do Chromium (glue de
+// navegador, não testado em unidade — não coberto pelo Vitest, que roda sem
+// sessão gráfica/DOM).
 //
 // Nota de arquitetura: `renderer.js` é um `<script>` clássico carregado por
 // `window.loadFile` (sem `type="module"`, sem bundler — ADR-0019), não pode
@@ -54,21 +55,50 @@ let chatSession = null;
 // pelo Vitest, via o mesmo hook `tsx` usado pelo main process). Por isso a
 // função abaixo replica deliberadamente, em JS puro, o mesmo algoritmo
 // testado em `tests/speech-output.test.ts` (`createSpeechOutput`):
-// normaliza o texto, no-op em vazio, cancela a fala anterior antes de
-// iniciar a próxima, fail-safe (nunca lança), `isAvailable` via
-// `getVoices().length > 0`. Qualquer mudança de comportamento deve ser
-// espelhada nos dois lugares.
+// normaliza o texto, no-op em vazio, filtra vozes para só `localService ===
+// true`, seleciona deterministicamente a primeira, cancela a fala anterior
+// antes de iniciar a próxima, fail-safe (nunca lança), `isAvailable` sse
+// existir ≥1 voz local. Sem voz local ⇒ no-op, jamais fallback para voz de
+// rede. Qualquer mudança de comportamento deve ser espelhada nos dois
+// lugares.
 const synth = {
   speak(spec) {
-    window.speechSynthesis.speak(new SpeechSynthesisUtterance(spec.text));
+    const voices = window.speechSynthesis.getVoices();
+    const voice = voices.find(
+      (candidate) => candidate.voiceURI === spec.voiceURI && candidate.localService === true,
+    );
+    if (voice === undefined) {
+      // Voz local sumiu entre a seleção e a fala: fail-closed, não fala
+      // (jamais fallback para a voz padrão/de rede do Chromium).
+      return;
+    }
+    const utterance = new SpeechSynthesisUtterance(spec.text);
+    utterance.voice = voice;
+    window.speechSynthesis.speak(utterance);
   },
   cancel() {
     window.speechSynthesis.cancel();
   },
   getVoices() {
-    return window.speechSynthesis === undefined ? [] : window.speechSynthesis.getVoices();
+    if (window.speechSynthesis === undefined) {
+      return [];
+    }
+    return window.speechSynthesis.getVoices().map((voice) => ({
+      voiceURI: voice.voiceURI,
+      name: voice.name,
+      localService: voice.localService,
+    }));
   },
 };
+
+// Seleciona deterministicamente a primeira voz local (ordem de
+// `getVoices()`) — espelha `selectLocalVoiceURI` de `speech-output.ts`,
+// verificado em `tests/speech-output.test.ts`.
+function selectLocalVoiceURI(synth) {
+  const voices = synth.getVoices();
+  const localVoice = voices.find((voice) => voice.localService === true);
+  return localVoice === undefined ? undefined : localVoice.voiceURI;
+}
 
 function createSpeechOutputGlue({ synth }) {
   return {
@@ -78,8 +108,13 @@ function createSpeechOutputGlue({ synth }) {
         return;
       }
       try {
+        const voiceURI = selectLocalVoiceURI(synth);
+        if (voiceURI === undefined) {
+          // Sem voz local disponível: fail-closed, nunca fala por voz de rede.
+          return;
+        }
         synth.cancel();
-        synth.speak({ text: normalized });
+        synth.speak({ text: normalized, voiceURI });
       } catch {
         // fail-safe: nunca propaga para o fluxo do chat
       }
@@ -93,7 +128,7 @@ function createSpeechOutputGlue({ synth }) {
     },
     isAvailable() {
       try {
-        return synth.getVoices().length > 0;
+        return selectLocalVoiceURI(synth) !== undefined;
       } catch {
         return false;
       }
