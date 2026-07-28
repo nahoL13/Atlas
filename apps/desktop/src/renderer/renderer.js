@@ -1,4 +1,4 @@
-window.atlas.getStatus().then((snapshot) => {
+function renderStatus(snapshot) {
   const el = document.getElementById('status');
   el.textContent = [
     `Atlas: ${snapshot.state}`,
@@ -8,6 +8,70 @@ window.atlas.getStatus().then((snapshot) => {
     `readRoots: ${snapshot.readRoots.join(', ')}`,
     `writeRoots: ${snapshot.writeRoots.length > 0 ? snapshot.writeRoots.join(', ') : '(nenhuma)'}`,
   ].join('\n');
+}
+
+function loadStatus() {
+  return window.atlas.getStatus().then((snapshot) => {
+    renderStatus(snapshot);
+    return snapshot;
+  });
+}
+
+// Seletor de Persona em runtime (item 2.4 / SPEC-0037): o usuário sempre vê
+// qual Persona está ativa (seletor marcado + painel de status). O seletor
+// entra na mesma serialização de turno que a entrada/botão de enviar (fica
+// desabilitado enquanto um turno de chat está em voo, reabilitado no
+// `finally`).
+const personaSelect = document.getElementById('persona-select');
+const personaErrorEl = document.getElementById('persona-error');
+
+function markActivePersona(personaId) {
+  personaSelect.value = personaId;
+}
+
+function loadPersonaOptions(activePersonaId) {
+  return window.atlas.persona.list().then((options) => {
+    personaSelect.textContent = '';
+    for (const option of options) {
+      const optionEl = document.createElement('option');
+      optionEl.value = option.id;
+      optionEl.textContent = option.name;
+      personaSelect.appendChild(optionEl);
+    }
+    markActivePersona(activePersonaId);
+  });
+}
+
+personaSelect.addEventListener('change', () => {
+  const previousPersonaId = personaSelect.dataset.activePersonaId;
+  const chosenId = personaSelect.value;
+  personaErrorEl.textContent = '';
+  window.atlas.persona
+    .select(chosenId)
+    .then(() => {
+      document.getElementById('chat-transcript').textContent = '';
+      appendTranscriptLine(`Persona alterada para ${chosenId} — nova conversa iniciada`);
+      return window.atlas.chat.open().then((session) => {
+        chatSession = session;
+      });
+    })
+    .then(() => loadStatus())
+    .then((snapshot) => {
+      personaSelect.dataset.activePersonaId = snapshot.persona.id;
+    })
+    .catch((error) => {
+      // Rejeição (id inválido ou turno em voo): transcript e conversa
+      // corrente ficam intactos; o seletor volta a mostrar a Persona ativa.
+      personaErrorEl.textContent = `⚠️ ${error.message ?? error}`;
+      if (previousPersonaId !== undefined) {
+        markActivePersona(previousPersonaId);
+      }
+    });
+});
+
+loadStatus().then((snapshot) => {
+  personaSelect.dataset.activePersonaId = snapshot.persona.id;
+  return loadPersonaOptions(snapshot.persona.id);
 });
 
 // Round-trip `ask` de tiro único (stateless — o Core sobe e desliga a cada
@@ -218,6 +282,10 @@ document.getElementById('chat-form').addEventListener('submit', (event) => {
   const sendButton = document.getElementById('chat-send');
   inputEl.disabled = true;
   sendButton.disabled = true;
+  // O seletor de Persona entra na mesma serialização de turno (SPEC-0037,
+  // Decisão D9): desabilitado enquanto o turno está em voo, reabilitado no
+  // `finally` — camada de UX que complementa a recusa garantida no bridge.
+  personaSelect.disabled = true;
   window.atlas.chat
     .send(chatSession, input)
     .then((snapshot) => {
@@ -230,6 +298,7 @@ document.getElementById('chat-form').addEventListener('submit', (event) => {
     .finally(() => {
       inputEl.disabled = false;
       sendButton.disabled = false;
+      personaSelect.disabled = false;
       inputEl.focus();
     });
 });

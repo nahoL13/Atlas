@@ -12,4 +12,8 @@ contextBridge.exposeInMainWorld('atlas', {
     list: () => ipcRenderer.invoke('atlas:memory:list'),
     forget: (id) => ipcRenderer.invoke('atlas:memory:forget', id),
   },
+  persona: {
+    list: () => ipcRenderer.invoke('atlas:persona:list'),
+    select: (id) => ipcRenderer.invoke('atlas:persona:select', id),
+  },
 });

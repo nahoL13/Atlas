@@ -116,3 +116,11 @@ export { defaultConfig } from './config/defaults.js';
 export { loadConfig } from './config/load-config.js';
 export { createLifecycle } from './lifecycle/lifecycle.js';
 export type { Lifecycle, LifecycleHooks } from './lifecycle/lifecycle.js';
+
+// Re-export de catálogo (SPEC-0037, Decisão D4): superfície de leitura de
+// catálogo/config inerte, no molde de `loadConfig`/`defaultConfig` acima —
+// é a porta pela qual `apps/*` leem o catálogo de Personas continuando a
+// importar implementação só de `@atlas/core` (ADR-0003 / Regra de
+// Dependência 11). Aditivo: nenhum wiring novo, nenhuma mudança em
+// `createAtlas`.
+export { createPersonaService, PERSONA_IDS } from '@atlas/persona';

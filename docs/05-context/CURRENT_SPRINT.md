@@ -2,7 +2,7 @@
 
 > **Project Atlas — Estado do Trabalho Atual**
 
-Atualizado em: 2026-07-24 (SPEC-0036)
+Atualizado em: 2026-07-28 (SPEC-0037)
 
 ---
 
@@ -48,5 +48,6 @@ Objetivo: plataforma mínima operável + primeira interface executável (CLI) + 
 | [SPEC-0034](../implementation/specs/SPEC-0034-desktop-visual-memory-management.md) | Desktop: gerência visual de memória — listar e esquecer fatos (`resolveMemorySnapshot`/`forgetFact`, stateless, `MemoryService.list`/`forget`), equivalente GUI de `atlas memory list`/`atlas forget`; primeira linha do item 2.4, troca de Persona em runtime e permissões por GUI seguem futuras | Done |
 | [SPEC-0035](../implementation/specs/SPEC-0035-desktop-voice-output-tts.md) | Desktop: saída de voz (TTS) — botão "🔊 Ouvir" por resposta do chat (`speech-output.ts`/`createSpeechOutput`, via `window.speechSynthesis`), primeira fatia do item 2.3; STT/wake word adiados a ADR novo (Escalação E1) | Done |
 | [SPEC-0036](../implementation/specs/SPEC-0036-desktop-tts-local-voice-only.md) | Desktop: TTS 100% offline garantido — restringir a saída de voz a vozes locais do SO (`localService === true`, `voiceURI` vinculado ao enunciado, fail-closed sem voz local); endurece a fatia da SPEC-0035, mesmo item 2.3 | Done |
+| [SPEC-0037](../implementation/specs/SPEC-0037-desktop-runtime-persona-switch.md) | Desktop: seleção e troca de Persona em runtime pela interface gráfica (`listPersonas`/`selectPersona`, re-export de catálogo em `@atlas/core`, ADR-0003 preservado); segunda das três linhas do item 2.4, troca encerra sessões de chat vivas | Done |
 
 Detalhes de retomada: `docs/05-context/NEXT_CONTEXT.md`.
