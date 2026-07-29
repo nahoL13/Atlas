@@ -1,19 +1,80 @@
 import { isAbsolute } from 'node:path';
-import { createAtlas, createPersonaService } from '@atlas/core';
+import {
+  createAtlas,
+  createFilePersonaStorage,
+  createPersonaService,
+  loadConfig,
+  personaStoragePath,
+  PERSONA_IDS,
+  resolveDataDir,
+} from '@atlas/core';
+import type { PersonaStorage } from '@atlas/core';
 import type {
   ActionRequest,
   AtlasConfigOverride,
   AtlasPlatform,
+  Persona,
+  PersonaInput,
   PersonaService,
   SessionId,
 } from '@atlas/contracts';
 import { formatSteps } from './steps-view.js';
 import type { StepLine } from './steps-view.js';
 import type { GrantConfirmPort } from './permission-grant-dialog.js';
+import type { PersonaDeleteConfirmPort } from './persona-delete-dialog.js';
 
 export interface PersonaOption {
   readonly id: string;
   readonly name: string;
+  /** `true` só para as Personas embutidas (`jarvis`/`neutral`), imutáveis e somente-leitura na GUI. */
+  readonly builtin: boolean;
+}
+
+/**
+ * Espelho GUI dos 8 campos de `Persona` (+ `id`/`voiceURI?`/`builtin`) —
+ * para preencher o formulário de edição (`describePersona`). Local a este
+ * app (mesma regra de `PersonaOption`/`StatusSnapshot`): promoção a
+ * `@atlas/contracts` só com um 2º consumidor real.
+ */
+export interface PersonaDetail {
+  readonly id: string;
+  readonly name: string;
+  readonly tone: string;
+  readonly formality: string;
+  readonly language: string;
+  readonly style: string;
+  readonly communicationRules: readonly string[];
+  readonly voice: string;
+  readonly emotion: string;
+  readonly voiceURI?: string;
+  readonly builtin: boolean;
+}
+
+export interface PersonaMutation {
+  readonly persona: PersonaDetail;
+  readonly closedSessions: readonly SessionId[];
+}
+
+/** Ponto de injeção comum às seis funções de Persona (SPEC-0039). */
+interface PersonaDeps {
+  readonly personaService?: PersonaService;
+  readonly configOverride?: AtlasConfigOverride;
+}
+
+function toPersonaDetail(persona: Persona): PersonaDetail {
+  return {
+    id: persona.id,
+    name: persona.name,
+    tone: persona.tone,
+    formality: persona.formality,
+    language: persona.language,
+    style: persona.style,
+    communicationRules: [...persona.communicationRules],
+    voice: persona.voice,
+    emotion: persona.emotion,
+    ...(persona.voiceURI !== undefined ? { voiceURI: persona.voiceURI } : {}),
+    builtin: PERSONA_IDS.includes(persona.id),
+  };
 }
 
 export interface PersonaSelection {
@@ -79,20 +140,61 @@ function hasInFlightOperation(): boolean {
 }
 
 /**
+ * Deriva o `PersonaStorage` de arquivo do config **efetivo** da chamada
+ * (SPEC-0039, Decisão D17/D13, correções A1 + B1): via `resolveDataDir`,
+ * **nunca** via `loadConfig` — achar o arquivo de Personas depende só do
+ * `dataDir`, nunca de a Persona ativa ser conhecida/válida. Único lugar de
+ * `apps/desktop` que compõe essa cadeia; a derivação do nome do arquivo em
+ * si vive só em `personaStoragePath` (`@atlas/core`) — nunca reinventada
+ * aqui.
+ */
+function personaStorageFor(configOverride: AtlasConfigOverride = {}): PersonaStorage {
+  return createFilePersonaStorage(
+    personaStoragePath(resolveDataDir(withSelections(configOverride))),
+  );
+}
+
+/**
+ * Default de `deps.personaService` de todas as seis funções de Persona
+ * (Decisão D6/D12): um `PersonaService` construído sobre o file storage do
+ * config efetivo — sem subir o Core, sem lifecycle.
+ */
+function defaultPersonaService(configOverride: AtlasConfigOverride = {}): PersonaService {
+  return createPersonaService({ storage: personaStorageFor(configOverride) });
+}
+
+/**
+ * Persona **efetiva** (SPEC-0039, correção A5/D15): a selecionada em
+ * memória (`selectedPersonaId()`) ou, na ausência dela, a resolvida do
+ * config — passando o catálogo do `personaService` recebido (correção B1)
+ * para que uma Persona custom em `config.persona` seja **resolvida**, não
+ * rejeitada. Usada pelas guardas de `updatePersona`/`deletePersona` — nunca
+ * a seleção em memória isolada, que ficaria acidentalmente correta só
+ * enquanto nenhuma outra fatia honrar `ATLAS_PERSONA`/persistir a seleção.
+ */
+function activePersonaId(
+  configOverride: AtlasConfigOverride,
+  personaService: PersonaService,
+): string {
+  return (
+    selectedPersona ??
+    loadConfig(withSelections(configOverride), { personaIds: personaService.list() }).persona
+  );
+}
+
+/**
  * Catálogo de Personas para exibição/seleção (equivalente GUI do que a CLI
  * resolveria por `--persona`): síncrono, **sem** subir o Core — consulta
- * `PersonaService.list()`/`get(id)` e devolve pares `{ id, name }` planos,
- * serializáveis por IPC. `personaService` é injetável para teste; o default
- * vem do re-export de catálogo de `@atlas/core` (Decisão D4), nunca de
- * `@atlas/persona` diretamente.
+ * `PersonaService.list()`/`get(id)` e devolve trios `{ id, name, builtin }`
+ * planos, serializáveis por IPC. `personaService` é injetável para teste; o
+ * default vem de `defaultPersonaService` (sobre o storage de arquivo do
+ * config efetivo).
  */
-export function listPersonas(
-  deps: { personaService?: PersonaService } = {},
-): readonly PersonaOption[] {
-  const personaService = deps.personaService ?? createPersonaService();
+export function listPersonas(deps: PersonaDeps = {}): readonly PersonaOption[] {
+  const personaService = deps.personaService ?? defaultPersonaService(deps.configOverride);
   return personaService.list().map((id) => {
     const persona = personaService.get(id);
-    return { id: persona.id, name: persona.name };
+    return { id: persona.id, name: persona.name, builtin: PERSONA_IDS.includes(id) };
   });
 }
 
@@ -105,11 +207,8 @@ export function listPersonas(
  * janela falando com identidade superada, Artigo 2). Qualquer recusa não
  * altera a seleção nem encerra nada.
  */
-export async function selectPersona(
-  id: string,
-  deps: { personaService?: PersonaService } = {},
-): Promise<PersonaSelection> {
-  const personaService = deps.personaService ?? createPersonaService();
+export async function selectPersona(id: string, deps: PersonaDeps = {}): Promise<PersonaSelection> {
+  const personaService = deps.personaService ?? defaultPersonaService(deps.configOverride);
   if (!personaService.has(id)) {
     throw new Error(`Persona desconhecida: ${id}`);
   }
@@ -124,6 +223,103 @@ export async function selectPersona(
     await closeChatSession(session);
   }
   return { personaId: id, closedSessions };
+}
+
+/** Default fail-closed: sem `confirmDelete` injetado, nenhuma Persona é apagada. */
+const fallbackPersonaDeleteConfirm: PersonaDeleteConfirmPort = {
+  request: () => Promise.resolve(false),
+};
+
+/**
+ * Preenche o formulário de edição: síncrono, sem subir o Core.
+ */
+export function describePersona(id: string, deps: PersonaDeps = {}): PersonaDetail {
+  const personaService = deps.personaService ?? defaultPersonaService(deps.configOverride);
+  return toPersonaDetail(personaService.get(id));
+}
+
+/**
+ * Cria uma Persona custom (Decisão D6): não seleciona a Persona criada, não
+ * encerra sessão alguma — só grava e devolve o `PersonaDetail`.
+ */
+export async function createPersona(
+  input: PersonaInput,
+  deps: PersonaDeps = {},
+): Promise<PersonaDetail> {
+  const personaService = deps.personaService ?? defaultPersonaService(deps.configOverride);
+  return toPersonaDetail(personaService.create(input));
+}
+
+/**
+ * Edita uma Persona custom (Decisão D9/D15): recusa `id` embutido; se `id`
+ * for a Persona **efetivamente ativa**, recusa havendo operação em voo e,
+ * ao aplicar, encerra todas as sessões de chat vivas (devolvidas em
+ * `closedSessions`); caso contrário aplica sem encerrar nada.
+ */
+export async function updatePersona(
+  id: string,
+  input: PersonaInput,
+  deps: PersonaDeps = {},
+): Promise<PersonaMutation> {
+  const configOverride = deps.configOverride ?? {};
+  const personaService = deps.personaService ?? defaultPersonaService(configOverride);
+
+  if (PERSONA_IDS.includes(id)) {
+    throw new Error(`Não é possível editar uma Persona embutida: ${id}`);
+  }
+
+  const active = activePersonaId(configOverride, personaService);
+  if (id === active) {
+    if (hasInFlightOperation()) {
+      throw new Error('Não é possível editar a Persona ativa: há uma operação em andamento.');
+    }
+    const persona = personaService.update(id, input);
+    const closedSessions: SessionId[] = [];
+    for (const session of [...chatSessions.keys()]) {
+      closedSessions.push(session);
+      await closeChatSession(session);
+    }
+    return { persona: toPersonaDetail(persona), closedSessions };
+  }
+
+  const persona = personaService.update(id, input);
+  return { persona: toPersonaDetail(persona), closedSessions: [] };
+}
+
+/**
+ * Apaga uma Persona custom (Decisão D14, Artigo 8): recusa `id` embutido,
+ * recusa a Persona **efetivamente ativa**, e exige consentimento explícito
+ * via `PersonaDeleteConfirmPort` (default fail-closed) — consultado
+ * **depois** das validações, para o usuário nunca ser perguntado sobre algo
+ * que seria recusado de qualquer forma.
+ */
+export async function deletePersona(
+  id: string,
+  deps: PersonaDeps & { confirmDelete?: PersonaDeleteConfirmPort } = {},
+): Promise<void> {
+  const configOverride = deps.configOverride ?? {};
+  const personaService = deps.personaService ?? defaultPersonaService(configOverride);
+
+  if (PERSONA_IDS.includes(id)) {
+    throw new Error(`Não é possível apagar uma Persona embutida: ${id}`);
+  }
+  if (!personaService.has(id)) {
+    throw new Error(`Persona desconhecida: ${id}`);
+  }
+
+  const active = activePersonaId(configOverride, personaService);
+  if (id === active) {
+    throw new Error('Não é possível apagar a Persona ativa: troque de Persona antes.');
+  }
+
+  const confirmDelete = deps.confirmDelete ?? fallbackPersonaDeleteConfirm;
+  const persona = personaService.get(id);
+  const granted = await confirmDelete.request({ id: persona.id, name: persona.name });
+  if (!granted) {
+    throw new Error('Remoção da Persona recusada.');
+  }
+
+  personaService.delete(id);
 }
 
 /** Leitura do estado de módulo: `undefined` enquanto o usuário não trocou. */
@@ -276,7 +472,7 @@ export interface StatusSnapshot {
   readonly state: string;
   readonly logLevel: string;
   readonly dataDir: string;
-  readonly persona: { readonly id: string; readonly name: string };
+  readonly persona: { readonly id: string; readonly name: string; readonly voiceURI?: string };
   readonly readRoots: readonly string[];
   readonly writeRoots: readonly string[];
 }
@@ -286,18 +482,30 @@ export interface StatusSnapshot {
  * plataforma via `createAtlas`, lê `state`/`config`/`persona`, desliga e
  * devolve um objeto plano serializável por IPC. Não mantém a plataforma
  * viva entre chamadas nesta fatia.
+ *
+ * Injeta `personaStorage: personaStorageFor(configOverride)` (SPEC-0039,
+ * Decisão D3/D13) — derivado do **mesmo** `configOverride` que alimenta
+ * `withSelections`, para que o Core e o CRUD de Persona nunca apontem para
+ * arquivos diferentes.
  */
 export async function resolveStatusSnapshot(
   configOverride: AtlasConfigOverride = {},
 ): Promise<StatusSnapshot> {
-  const atlas = await createAtlas({ config: withSelections(configOverride) });
+  const atlas = await createAtlas(
+    { config: withSelections(configOverride) },
+    { personaStorage: personaStorageFor(configOverride) },
+  );
   try {
     const { state, config, persona } = atlas;
     return {
       state,
       logLevel: config.logLevel,
       dataDir: config.dataDir,
-      persona: { id: persona.id, name: persona.name },
+      persona: {
+        id: persona.id,
+        name: persona.name,
+        ...(persona.voiceURI !== undefined ? { voiceURI: persona.voiceURI } : {}),
+      },
       readRoots: [...config.permissions.readRoots],
       writeRoots: [...config.permissions.writeRoots],
     };
@@ -348,7 +556,10 @@ export async function resolveAskSnapshot(
   const { confirm = fallbackConfirm, configOverride = {} } = deps;
   inFlightOperations += 1;
   try {
-    const atlas = await createAtlas({ config: withSelections(configOverride) }, { confirm });
+    const atlas = await createAtlas(
+      { config: withSelections(configOverride) },
+      { confirm, personaStorage: personaStorageFor(configOverride) },
+    );
     try {
       const result = await atlas.cognitive.ask(objective);
       const learned: string[] = [];
@@ -419,7 +630,10 @@ export async function openChatSession(
   const { confirm = fallbackConfirm, configOverride = {} } = deps;
   inFlightOperations += 1;
   try {
-    const atlas = await createAtlas({ config: withSelections(configOverride) }, { confirm });
+    const atlas = await createAtlas(
+      { config: withSelections(configOverride) },
+      { confirm, personaStorage: personaStorageFor(configOverride) },
+    );
     const session = atlas.context.openSession(atlas.cognitive.startConversation());
     chatSessions.set(session, { atlas });
     return session;
@@ -497,7 +711,10 @@ export async function resolveMemorySnapshot(
   deps: { configOverride?: AtlasConfigOverride } = {},
 ): Promise<readonly FactSnapshot[]> {
   const { configOverride = {} } = deps;
-  const atlas = await createAtlas({ config: withSelections(configOverride) });
+  const atlas = await createAtlas(
+    { config: withSelections(configOverride) },
+    { personaStorage: personaStorageFor(configOverride) },
+  );
   try {
     return atlas.memory.list().map((fact) => ({
       id: fact.id,
@@ -524,7 +741,10 @@ export async function forgetFact(
   deps: { configOverride?: AtlasConfigOverride } = {},
 ): Promise<boolean> {
   const { configOverride = {} } = deps;
-  const atlas = await createAtlas({ config: withSelections(configOverride) });
+  const atlas = await createAtlas(
+    { config: withSelections(configOverride) },
+    { personaStorage: personaStorageFor(configOverride) },
+  );
   try {
     return await atlas.memory.forget(id);
   } finally {

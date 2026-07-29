@@ -13,7 +13,7 @@ export type {
 } from './model.js';
 export type { AskResult, CognitiveCore, Conversation, ConversationTurn } from './cognitive.js';
 export type { ContextService, SessionId } from './context.js';
-export type { Persona, PersonaService } from './persona.js';
+export type { Persona, PersonaInput, PersonaService } from './persona.js';
 export type { Fact, MemoryService, DedupeReport, DedupeGroup, MemoryCategory } from './memory.js';
 export type {
   Skill,

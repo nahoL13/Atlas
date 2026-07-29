@@ -148,4 +148,74 @@ describe('createSpeechOutput', () => {
     const output = createSpeechOutput({ synth });
     expect(() => output.cancel()).not.toThrow();
   });
+
+  describe('preferredVoiceURI (ADR-0020(b), SPEC-0039)', () => {
+    it('com preferredVoiceURI apontando para uma voz local existente, speak emite essa voz mesmo não sendo a primeira', () => {
+      const synth = fakeSynth({ getVoices: vi.fn(() => [LOCAL_VOICE_1, LOCAL_VOICE_2]) });
+      const output = createSpeechOutput({ synth, preferredVoiceURI: () => 'local-2' });
+      output.speak('olá');
+      expect(synth.speak).toHaveBeenCalledWith({ text: 'olá', voiceURI: 'local-2' });
+    });
+
+    it('preferredVoiceURI ausente cai na primeira voz local', () => {
+      const synth = fakeSynth({ getVoices: vi.fn(() => [LOCAL_VOICE_1, LOCAL_VOICE_2]) });
+      const output = createSpeechOutput({ synth });
+      output.speak('olá');
+      expect(synth.speak).toHaveBeenCalledWith({ text: 'olá', voiceURI: 'local-1' });
+    });
+
+    it('preferredVoiceURI retornando undefined cai na primeira voz local', () => {
+      const synth = fakeSynth({ getVoices: vi.fn(() => [LOCAL_VOICE_1, LOCAL_VOICE_2]) });
+      const output = createSpeechOutput({ synth, preferredVoiceURI: () => undefined });
+      output.speak('olá');
+      expect(synth.speak).toHaveBeenCalledWith({ text: 'olá', voiceURI: 'local-1' });
+    });
+
+    it('preferredVoiceURI apontando para voz inexistente cai na primeira voz local', () => {
+      const synth = fakeSynth({ getVoices: vi.fn(() => [LOCAL_VOICE_1, LOCAL_VOICE_2]) });
+      const output = createSpeechOutput({ synth, preferredVoiceURI: () => 'nao-existe' });
+      output.speak('olá');
+      expect(synth.speak).toHaveBeenCalledWith({ text: 'olá', voiceURI: 'local-1' });
+    });
+
+    it('preferredVoiceURI apontando para voz com localService === false cai na primeira voz local', () => {
+      const synth = fakeSynth({ getVoices: vi.fn(() => [NETWORK_VOICE, LOCAL_VOICE_1]) });
+      const output = createSpeechOutput({ synth, preferredVoiceURI: () => 'network-1' });
+      output.speak('olá');
+      expect(synth.speak).toHaveBeenCalledWith({ text: 'olá', voiceURI: 'local-1' });
+    });
+
+    it('sem nenhuma voz local, speak é no-op e isAvailable é false mesmo com preferredVoiceURI definido', () => {
+      const synth = fakeSynth({ getVoices: vi.fn(() => [NETWORK_VOICE]) });
+      const output = createSpeechOutput({ synth, preferredVoiceURI: () => 'network-1' });
+      output.speak('olá');
+      expect(synth.speak).not.toHaveBeenCalled();
+      expect(output.isAvailable()).toBe(false);
+    });
+
+    it('preferredVoiceURI que lança é tratado como ausente (fail-safe), cai na primeira voz local', () => {
+      const synth = fakeSynth({ getVoices: vi.fn(() => [LOCAL_VOICE_1]) });
+      const output = createSpeechOutput({
+        synth,
+        preferredVoiceURI: () => {
+          throw new Error('boom');
+        },
+      });
+      expect(() => output.speak('olá')).not.toThrow();
+      expect(synth.speak).toHaveBeenCalledWith({ text: 'olá', voiceURI: 'local-1' });
+    });
+
+    it('o provider é amostrado a cada speak: dois speak com valores diferentes usam vozes diferentes, sem recriar o objeto', () => {
+      const synth = fakeSynth({ getVoices: vi.fn(() => [LOCAL_VOICE_1, LOCAL_VOICE_2]) });
+      let current = 'local-1';
+      const output = createSpeechOutput({ synth, preferredVoiceURI: () => current });
+
+      output.speak('primeiro');
+      expect(synth.speak).toHaveBeenLastCalledWith({ text: 'primeiro', voiceURI: 'local-1' });
+
+      current = 'local-2';
+      output.speak('segundo');
+      expect(synth.speak).toHaveBeenLastCalledWith({ text: 'segundo', voiceURI: 'local-2' });
+    });
+  });
 });

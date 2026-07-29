@@ -57,6 +57,32 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ persona: 'batman' })).toThrow(InvalidConfigError);
   });
 
+  describe('options.personaIds (SPEC-0039, Decisão D5)', () => {
+    it('sem o 2º parâmetro, rejeita persona custom com a mesma mensagem de hoje', () => {
+      let withoutOptionMessage: string | undefined;
+      try {
+        loadConfig({ persona: 'qualquer-custom' });
+      } catch (e) {
+        withoutOptionMessage = (e as InvalidConfigError).message;
+      }
+      expect(withoutOptionMessage).toContain('persona deve ser um de');
+      expect(withoutOptionMessage).toContain('jarvis');
+      expect(withoutOptionMessage).toContain('neutral');
+    });
+
+    it('loadConfig({ persona: "x" }, { personaIds: [..., "x"] }) aceita', () => {
+      expect(loadConfig({ persona: 'x' }, { personaIds: ['jarvis', 'neutral', 'x'] }).persona).toBe(
+        'x',
+      );
+    });
+
+    it('loadConfig({ persona: "y" }, { personaIds: [...] sem "y" }) rejeita', () => {
+      expect(() =>
+        loadConfig({ persona: 'y' }, { personaIds: ['jarvis', 'neutral', 'x'] }),
+      ).toThrow(InvalidConfigError);
+    });
+  });
+
   it('memory.path default termina em .atlas/memory.json', () => {
     expect(loadConfig().memory.path).toMatch(/[/\\]\.atlas[/\\]memory\.json$/);
   });

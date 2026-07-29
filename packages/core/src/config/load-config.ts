@@ -8,10 +8,20 @@ import {
 } from '@atlas/contracts';
 import { PERSONA_IDS } from '@atlas/persona';
 import { defaultConfig } from './defaults.js';
+import { DATA_DIR_ISSUE, isValidDataDir, mergeDataDir } from './data-dir.js';
 
 const PROVIDERS: readonly ProviderName[] = ['fake', 'local', 'remote'];
 
-export function loadConfig(override: AtlasConfigOverride = {}): AtlasConfig {
+/**
+ * `options.personaIds` (aditivo, SPEC-0039/ADR-0020, Decisão D5): conjunto
+ * de ids válidos para o campo `persona`, vindo do catálogo já carregado do
+ * Persona Service (embutidas + custom). Ausente ⇒ valida contra
+ * `PERSONA_IDS` (só embutidas), exatamente como antes desta SPEC.
+ */
+export function loadConfig(
+  override: AtlasConfigOverride = {},
+  options: { readonly personaIds?: readonly string[] } = {},
+): AtlasConfig {
   const defaults = defaultConfig();
   const model: ModelGatewayConfig = { ...defaults.model, ...override.model };
   const memory = { path: override.memory?.path ?? defaults.memory.path };
@@ -19,9 +29,10 @@ export function loadConfig(override: AtlasConfigOverride = {}): AtlasConfig {
     readRoots: override.permissions?.readRoots ?? defaults.permissions.readRoots,
     writeRoots: override.permissions?.writeRoots ?? defaults.permissions.writeRoots,
   };
+  const personaIds = options.personaIds ?? PERSONA_IDS;
   const merged: AtlasConfig = {
     logLevel: override.logLevel ?? defaults.logLevel,
-    dataDir: override.dataDir ?? defaults.dataDir,
+    dataDir: mergeDataDir(override),
     persona: override.persona ?? defaults.persona,
     memory,
     permissions,
@@ -36,13 +47,13 @@ export function loadConfig(override: AtlasConfigOverride = {}): AtlasConfig {
     );
   }
 
-  if (typeof merged.dataDir !== 'string' || merged.dataDir.trim() === '') {
-    issues.push('dataDir deve ser uma string não vazia');
+  if (!isValidDataDir(merged.dataDir)) {
+    issues.push(DATA_DIR_ISSUE);
   }
 
-  if (!PERSONA_IDS.includes(merged.persona)) {
+  if (!personaIds.includes(merged.persona)) {
     issues.push(
-      `persona deve ser um de: ${PERSONA_IDS.join(', ')} (recebido: ${String(merged.persona)})`,
+      `persona deve ser um de: ${personaIds.join(', ')} (recebido: ${String(merged.persona)})`,
     );
   }
 

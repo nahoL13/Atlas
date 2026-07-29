@@ -15,6 +15,10 @@ contextBridge.exposeInMainWorld('atlas', {
   persona: {
     list: () => ipcRenderer.invoke('atlas:persona:list'),
     select: (id) => ipcRenderer.invoke('atlas:persona:select', id),
+    describe: (id) => ipcRenderer.invoke('atlas:persona:describe', id),
+    create: (input) => ipcRenderer.invoke('atlas:persona:create', input),
+    update: (id, input) => ipcRenderer.invoke('atlas:persona:update', id, input),
+    delete: (id) => ipcRenderer.invoke('atlas:persona:delete', id),
   },
   permissions: {
     select: (roots) => ipcRenderer.invoke('atlas:permissions:select', roots),

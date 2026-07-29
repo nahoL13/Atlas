@@ -1,8 +1,9 @@
+import { join } from 'node:path';
 import type { AtlasConfigOverride, AtlasPlatform } from '@atlas/contracts';
 import { createModelGateway } from '@atlas/model-gateway';
 import { createCognitiveCore } from '@atlas/cognitive';
 import { createContextService } from '@atlas/context';
-import { createPersonaService } from '@atlas/persona';
+import { createPersonaService, type PersonaStorage } from '@atlas/persona';
 import { createFileMemoryStorage, createMemoryService, type MemoryStorage } from '@atlas/memory';
 import { createPermissionService } from '@atlas/permissions';
 import { createRuntime, nodeReadlineConfirmPort, type ConfirmPort } from '@atlas/runtime';
@@ -37,6 +38,14 @@ export interface CreateAtlasOptions {
 export interface CreateAtlasDeps {
   fetch?: typeof fetch;
   memoryStorage?: MemoryStorage;
+  /**
+   * Porta de storage do Persona Service (ADR-0020(a)), molde exato de
+   * `memoryStorage?`. **Sem** ela, `createPersonaService` sobe sem storage
+   * — comportamento idêntico ao de hoje, byte a byte, inclusive
+   * `apps/cli` (que não a injeta nesta fatia): nenhum arquivo de Personas
+   * é lido ou criado.
+   */
+  personaStorage?: PersonaStorage;
   fsRead?: FsReadPort;
   fsWrite?: FsWritePort;
   git?: GitReadPort;
@@ -47,8 +56,14 @@ export async function createAtlas(
   options: CreateAtlasOptions = {},
   deps: CreateAtlasDeps = {},
 ): Promise<AtlasPlatform> {
-  const config = loadConfig(options.config);
-  const personaService = createPersonaService();
+  // O Persona Service é composto ANTES do loadConfig (ADR-0020/D5): o
+  // catálogo de ids válidos (embutidas + custom, quando `personaStorage`
+  // foi injetado) alimenta a validação do campo `persona`, para que uma
+  // Persona custom em `config.persona` seja resolvida, não rejeitada.
+  const personaService = createPersonaService(
+    deps.personaStorage !== undefined ? { storage: deps.personaStorage } : {},
+  );
+  const config = loadConfig(options.config, { personaIds: personaService.list() });
   const persona = personaService.get(config.persona);
   const storage = deps.memoryStorage ?? createFileMemoryStorage(config.memory.path);
   const memory = await createMemoryService({ storage });
@@ -114,13 +129,30 @@ export async function createAtlas(
 
 export { defaultConfig } from './config/defaults.js';
 export { loadConfig } from './config/load-config.js';
+export { resolveDataDir } from './config/data-dir.js';
 export { createLifecycle } from './lifecycle/lifecycle.js';
 export type { Lifecycle, LifecycleHooks } from './lifecycle/lifecycle.js';
 
-// Re-export de catálogo (SPEC-0037, Decisão D4): superfície de leitura de
-// catálogo/config inerte, no molde de `loadConfig`/`defaultConfig` acima —
-// é a porta pela qual `apps/*` leem o catálogo de Personas continuando a
+// Re-export de catálogo (SPEC-0037, Decisão D4; alargado pela SPEC-0039,
+// Decisão D12): superfície de leitura de catálogo/config inerte + a
+// composição do PersonaService sobre a porta de storage do ADR-0020, no
+// molde de `loadConfig`/`defaultConfig` acima — é a porta pela qual
+// `apps/*` leem o catálogo de Personas e compõem o storage continuando a
 // importar implementação só de `@atlas/core` (ADR-0003 / Regra de
 // Dependência 11). Aditivo: nenhum wiring novo, nenhuma mudança em
 // `createAtlas`.
-export { createPersonaService, PERSONA_IDS } from '@atlas/persona';
+export { createPersonaService, createFilePersonaStorage, PERSONA_IDS } from '@atlas/persona';
+export type { PersonaStorage } from '@atlas/persona';
+
+/**
+ * Único derivador do caminho do arquivo de Personas (SPEC-0039, Decisão
+ * D13/D4): função pura, sem IO, que devolve `<dataDir>/personas.json`.
+ * Recebe o `dataDir` já resolvido pelo chamador (hoje: `apps/desktop`, via
+ * `resolveDataDir(...)`; `createAtlas` em si não a consome — nenhum
+ * storage default é composto dentro do Core, ADR-0020), para nunca
+ * divergir do config efetivo daquela chamada. Nenhum
+ * `join(..., 'personas.json')` deve existir fora deste módulo.
+ */
+export function personaStoragePath(dataDir: string): string {
+  return join(dataDir, 'personas.json');
+}

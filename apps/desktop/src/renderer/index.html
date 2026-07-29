@@ -11,6 +11,32 @@
     <select id="persona-select"></select>
     <span id="persona-error"></span>
     <hr />
+    <h2>Personas</h2>
+    <ul id="persona-list"></ul>
+    <button id="persona-new" type="button">Nova Persona</button>
+    <form id="persona-form" hidden>
+      <input id="persona-form-id" type="hidden" />
+      <label>Nome: <input id="persona-name" type="text" /></label>
+      <label>Tom: <input id="persona-tone" type="text" /></label>
+      <label>Formalidade: <input id="persona-formality" type="text" /></label>
+      <label>Idioma: <input id="persona-language" type="text" /></label>
+      <label>Estilo: <input id="persona-style" type="text" /></label>
+      <label
+        >Regras de comunicação (uma por linha):
+        <textarea id="persona-communication-rules"></textarea>
+      </label>
+      <label>Voz (descrição): <input id="persona-voice" type="text" /></label>
+      <label>Emoção: <input id="persona-emotion" type="text" /></label>
+      <label
+        >Voz do sistema:
+        <select id="persona-voice-uri"></select>
+      </label>
+      <button id="persona-test-voice" type="button">Testar voz</button>
+      <button id="persona-form-save" type="submit">Salvar</button>
+      <button id="persona-form-cancel" type="button">Cancelar</button>
+    </form>
+    <span id="persona-form-error"></span>
+    <hr />
     <form id="ask-form">
       <input id="objective" type="text" placeholder="Digite um objetivo" />
       <button type="submit">Perguntar</button>

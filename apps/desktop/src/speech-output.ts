@@ -67,6 +67,39 @@ function selectLocalVoiceURI(synth: SpeechSynthesisPort): string | undefined {
   return localVoice?.voiceURI;
 }
 
+/**
+ * Resolve a voz a usar (ADR-0020(b), SPEC-0039, Decisão D8): entre as vozes
+ * `localService === true`, prefere a de `voiceURI` igual ao devolvido pelo
+ * `preferredVoiceURI` provider — amostrado a cada `speak` (não fixado no
+ * construtor), para que trocar/editar a Persona ativa mude a voz sem
+ * recriar este objeto (molde do `memoryPrompt` da SPEC-0021). Não havendo
+ * preferência (ausente, provider lançando, ou apontando para uma voz
+ * inexistente/não-local), cai na primeira voz local — comportamento
+ * idêntico ao da SPEC-0036. Nunca escolhe uma voz de rede, em nenhuma das
+ * duas camadas.
+ */
+function selectVoiceURI(
+  synth: SpeechSynthesisPort,
+  preferredVoiceURI?: () => string | undefined,
+): string | undefined {
+  const voices = synth.getVoices();
+  let preferred: string | undefined;
+  try {
+    preferred = preferredVoiceURI?.();
+  } catch {
+    preferred = undefined;
+  }
+  if (preferred !== undefined) {
+    const match = voices.find(
+      (voice) => voice.voiceURI === preferred && voice.localService === true,
+    );
+    if (match !== undefined) {
+      return match.voiceURI;
+    }
+  }
+  return voices.find((voice) => voice.localService === true)?.voiceURI;
+}
+
 function hasLocalVoice(synth: SpeechSynthesisPort): boolean {
   try {
     return selectLocalVoiceURI(synth) !== undefined;
@@ -82,8 +115,16 @@ function hasLocalVoice(synth: SpeechSynthesisPort): boolean {
  * Fail-closed: sem voz local disponível, `speak` é no-op — nunca cai numa
  * voz de rede como alternativa.
  */
-export function createSpeechOutput(deps: { synth: SpeechSynthesisPort }): SpeechOutput {
-  const { synth } = deps;
+export function createSpeechOutput(deps: {
+  synth: SpeechSynthesisPort;
+  /**
+   * Provider síncrono da voz preferida (ADR-0020(b), Decisão D8),
+   * amostrado a cada `speak` — não fixado no construtor. Ausente ou
+   * lançando é tratado como preferência ausente (fail-safe, nunca propaga).
+   */
+  preferredVoiceURI?: () => string | undefined;
+}): SpeechOutput {
+  const { synth, preferredVoiceURI } = deps;
 
   return {
     speak(text: string): void {
@@ -92,7 +133,7 @@ export function createSpeechOutput(deps: { synth: SpeechSynthesisPort }): Speech
         return;
       }
       try {
-        const voiceURI = selectLocalVoiceURI(synth);
+        const voiceURI = selectVoiceURI(synth, preferredVoiceURI);
         if (voiceURI === undefined) {
           return;
         }

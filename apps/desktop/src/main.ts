@@ -3,6 +3,9 @@ import { dirname, join } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import {
   closeChatSession,
+  createPersona,
+  deletePersona,
+  describePersona,
   forgetFact,
   listPersonas,
   openChatSession,
@@ -12,11 +15,13 @@ import {
   selectPermissionRoots,
   selectPersona,
   sendChatTurn,
+  updatePersona,
 } from './core-bridge.js';
-import type { SessionId } from '@atlas/contracts';
+import type { SessionId, PersonaInput } from '@atlas/contracts';
 import type { PermissionRoots } from './core-bridge.js';
 import { createDialogConfirmPort } from './confirm-port.js';
 import { createGrantConfirmDialog } from './permission-grant-dialog.js';
+import { createPersonaDeleteDialog } from './persona-delete-dialog.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -31,6 +36,13 @@ const confirm = createDialogConfirmPort({
 // diálogo dedicado, distinto do `confirm` de ação pontual acima — mesma
 // razão de `dialog.showMessageBox` só existir no main process.
 const confirmGrant = createGrantConfirmDialog({
+  showMessageBox: (options) => dialog.showMessageBox(options),
+});
+
+// PersonaDeleteConfirmPort de consentimento de remoção de Persona
+// (SPEC-0039, Decisão D14): diálogo dedicado, distinto dos dois acima —
+// mesma razão de `dialog.showMessageBox` só existir no main process.
+const confirmDelete = createPersonaDeleteDialog({
   showMessageBox: (options) => dialog.showMessageBox(options),
 });
 
@@ -67,6 +79,22 @@ ipcMain.handle('atlas:persona:select', async (_event, id: string) => {
   }
   return selection;
 });
+
+ipcMain.handle('atlas:persona:describe', (_event, id: string) => describePersona(id));
+ipcMain.handle('atlas:persona:create', (_event, input: PersonaInput) => createPersona(input));
+ipcMain.handle('atlas:persona:update', async (_event, id: string, input: PersonaInput) => {
+  const mutation = await updatePersona(id, input);
+  // Mesmo tratamento do handler de 'atlas:persona:select': nenhuma sessão
+  // encerrada por `updatePersona` deve ser reencerrada no teardown de
+  // fechamento da app.
+  for (const session of mutation.closedSessions) {
+    openChatSessionIds.delete(session);
+  }
+  return mutation;
+});
+ipcMain.handle('atlas:persona:delete', (_event, id: string) =>
+  deletePersona(id, { confirmDelete }),
+);
 
 ipcMain.handle('atlas:permissions:select', async (_event, roots: PermissionRoots) => {
   const selection = await selectPermissionRoots(roots, { confirmGrant });

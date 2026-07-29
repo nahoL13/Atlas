@@ -40,7 +40,17 @@ function refreshPermissionsPanelState() {
     .forEach((button) => {
       button.disabled = disabled;
     });
+  // O painel de Persona (SPEC-0039) entra na MESMA serialização de turno —
+  // desabilitado enquanto houver um turno de chat/ask em voo.
+  refreshPersonaPanelState();
 }
+
+// Placeholder até a definição real mais abaixo (o painel de Persona é
+// declarado depois, junto do restante do CRUD) — evita depender de ordem
+// textual entre os dois blocos; reatribuída antes de qualquer chamada real
+// (o carregamento do `<script>` é síncrono, então a atribuição abaixo já
+// ocorreu quando o primeiro evento do usuário dispara).
+let refreshPersonaPanelState = () => {};
 
 // Seletor de Persona em runtime (item 2.4 / SPEC-0037): o usuário sempre vê
 // qual Persona está ativa (seletor marcado + painel de status). O seletor
@@ -98,6 +108,17 @@ loadStatus().then((snapshot) => {
   personaSelect.dataset.activePersonaId = snapshot.persona.id;
   return loadPersonaOptions(snapshot.persona.id);
 });
+
+// Recarrega o seletor de topo + o painel de gerência (lista com
+// Editar/Apagar) a partir do estado real — usado depois de toda mutação de
+// Persona (criar/editar/apagar/trocar), nunca deixando as duas listas
+// divergentes.
+function refreshPersonaSurfaces() {
+  return loadStatus().then((snapshot) => {
+    personaSelect.dataset.activePersonaId = snapshot.persona.id;
+    return Promise.all([loadPersonaOptions(snapshot.persona.id), loadPersonaList()]);
+  });
+}
 
 // Round-trip `ask` de tiro único (stateless — o Core sobe e desliga a cada
 // chamada). O traço de `steps` chega já formatado (`StepLine[]`, dado
@@ -254,8 +275,207 @@ if (window.speechSynthesis !== undefined) {
     for (const button of pendingSpeakButtons) {
       refreshSpeakButton(button);
     }
+    populatePersonaVoiceSelect();
   });
 }
+
+// Autoria de Persona pela GUI (SPEC-0039, item 2.4 estendido): formulário
+// com os 8 campos + escolha de voz real do sistema, lista de Personas
+// custom com Editar/Apagar, Personas embutidas somente-leitura. Todo o
+// painel entra na mesma serialização de turno do chat/`ask` (chamada por
+// `refreshPermissionsPanelState`, que já invoca `refreshPersonaPanelState`).
+const personaForm = document.getElementById('persona-form');
+const personaFormError = document.getElementById('persona-form-error');
+const personaVoiceSelect = document.getElementById('persona-voice-uri');
+const personaTestVoiceButton = document.getElementById('persona-test-voice');
+
+// `<select>` de vozes locais do formulário (correção A2): populado a partir
+// do MESMO `synth` do glue de TTS, reavaliado no evento `voiceschanged`
+// (listener reusado acima) — não só uma vez no carregamento, pelo mesmo
+// quirk do Chromium já tratado para o botão "Ouvir". Preserva a opção
+// selecionada quando ela ainda existir na lista nova.
+function populatePersonaVoiceSelect() {
+  const previousValue = personaVoiceSelect.value;
+  const localVoices = synth.getVoices().filter((voice) => voice.localService === true);
+
+  personaVoiceSelect.textContent = '';
+  const noneOption = document.createElement('option');
+  noneOption.value = '';
+  noneOption.textContent = 'Nenhuma (voz padrão)';
+  personaVoiceSelect.appendChild(noneOption);
+  for (const voice of localVoices) {
+    const optionEl = document.createElement('option');
+    optionEl.value = voice.voiceURI;
+    optionEl.textContent = voice.name;
+    personaVoiceSelect.appendChild(optionEl);
+  }
+  if ([...personaVoiceSelect.options].some((option) => option.value === previousValue)) {
+    personaVoiceSelect.value = previousValue;
+  }
+
+  personaTestVoiceButton.disabled = localVoices.length === 0;
+  personaTestVoiceButton.title = localVoices.length === 0 ? 'voz indisponível neste sistema' : '';
+}
+
+personaTestVoiceButton.addEventListener('click', () => {
+  const voiceURI = personaVoiceSelect.value;
+  if (voiceURI === '') {
+    return;
+  }
+  try {
+    synth.speak({ text: 'Este é um teste de voz.', voiceURI });
+  } catch {
+    // fail-safe: nunca propaga
+  }
+});
+
+function openPersonaForm(detail) {
+  personaFormError.textContent = '';
+  document.getElementById('persona-form-id').value = detail ? detail.id : '';
+  document.getElementById('persona-name').value = detail ? detail.name : '';
+  document.getElementById('persona-tone').value = detail ? detail.tone : '';
+  document.getElementById('persona-formality').value = detail ? detail.formality : '';
+  document.getElementById('persona-language').value = detail ? detail.language : '';
+  document.getElementById('persona-style').value = detail ? detail.style : '';
+  document.getElementById('persona-communication-rules').value = detail
+    ? detail.communicationRules.join('\n')
+    : '';
+  document.getElementById('persona-voice').value = detail ? detail.voice : '';
+  document.getElementById('persona-emotion').value = detail ? detail.emotion : '';
+  populatePersonaVoiceSelect();
+  personaVoiceSelect.value = (detail && detail.voiceURI) || '';
+  personaForm.hidden = false;
+}
+
+document.getElementById('persona-new').addEventListener('click', () => {
+  openPersonaForm(null);
+});
+
+document.getElementById('persona-form-cancel').addEventListener('click', () => {
+  personaForm.hidden = true;
+});
+
+function readPersonaFormInput() {
+  const rulesRaw = document.getElementById('persona-communication-rules').value;
+  const communicationRules = rulesRaw
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '');
+  const voiceURIValue = personaVoiceSelect.value;
+  return {
+    name: document.getElementById('persona-name').value,
+    tone: document.getElementById('persona-tone').value,
+    formality: document.getElementById('persona-formality').value,
+    language: document.getElementById('persona-language').value,
+    style: document.getElementById('persona-style').value,
+    communicationRules,
+    voice: document.getElementById('persona-voice').value,
+    emotion: document.getElementById('persona-emotion').value,
+    ...(voiceURIValue !== '' ? { voiceURI: voiceURIValue } : {}),
+  };
+}
+
+personaForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const id = document.getElementById('persona-form-id').value;
+  const input = readPersonaFormInput();
+  personaFormError.textContent = '';
+  const action =
+    id === '' ? window.atlas.persona.create(input) : window.atlas.persona.update(id, input);
+
+  Promise.resolve(action)
+    .then((result) => {
+      personaForm.hidden = true;
+      const closedSessions = (result && result.closedSessions) || [];
+      if (closedSessions.length > 0) {
+        // Sucesso de update na Persona ATIVA (D9): nenhum Core sobrevive à
+        // edição sob identidade superada — a sessão corrente já foi
+        // encerrada pelo bridge; o renderer limpa o transcript, avisa e
+        // reabre a conversa.
+        document.getElementById('chat-transcript').textContent = '';
+        appendTranscriptLine('Persona atualizada — nova conversa iniciada');
+        return window.atlas.chat.open().then((session) => {
+          chatSession = session;
+        });
+      }
+      return undefined;
+    })
+    .then(() => refreshPersonaSurfaces())
+    .catch((error) => {
+      // Recusa: transcript e conversa corrente ficam intactos; a lista
+      // recarrega do estado real (nunca divergente).
+      personaFormError.textContent = `⚠️ ${error.message ?? error}`;
+      return refreshPersonaSurfaces();
+    });
+});
+
+function openPersonaFormForEdit(id) {
+  window.atlas.persona.describe(id).then((detail) => {
+    openPersonaForm(detail);
+  });
+}
+
+function handleDeletePersona(id) {
+  personaFormError.textContent = '';
+  window.atlas.persona
+    .delete(id)
+    .then(() => refreshPersonaSurfaces())
+    .catch((error) => {
+      // Recusa (embutida/inexistente/ativa/consentimento negado): aviso de
+      // erro, listas recarregadas do estado real (a Persona continua lá
+      // quando a remoção não foi confirmada).
+      personaFormError.textContent = `⚠️ ${error.message ?? error}`;
+      return refreshPersonaSurfaces();
+    });
+}
+
+function renderPersonaList(options) {
+  const listEl = document.getElementById('persona-list');
+  listEl.textContent = '';
+  for (const option of options) {
+    const item = document.createElement('li');
+    const label = document.createElement('span');
+    label.textContent = `${option.name} (${option.id})${option.builtin ? ' — embutida' : ''}`;
+    item.appendChild(label);
+    if (!option.builtin) {
+      const editButton = document.createElement('button');
+      editButton.type = 'button';
+      editButton.textContent = 'Editar';
+      editButton.addEventListener('click', () => openPersonaFormForEdit(option.id));
+      const deleteButton = document.createElement('button');
+      deleteButton.type = 'button';
+      deleteButton.textContent = 'Apagar';
+      deleteButton.addEventListener('click', () => handleDeletePersona(option.id));
+      item.appendChild(editButton);
+      item.appendChild(deleteButton);
+    }
+    listEl.appendChild(item);
+  }
+  refreshPersonaPanelState();
+}
+
+function loadPersonaList() {
+  return window.atlas.persona.list().then(renderPersonaList);
+}
+
+// Substitui o placeholder declarado junto de `refreshPermissionsPanelState`
+// — o painel inteiro (lista + botões + formulário) entra na mesma
+// serialização de turno de chat/`ask`.
+refreshPersonaPanelState = function refreshPersonaPanelStateImpl() {
+  const disabled = chatTurnInFlight || askInFlight;
+  document.getElementById('persona-new').disabled = disabled;
+  document.querySelectorAll('#persona-list button').forEach((button) => {
+    button.disabled = disabled;
+  });
+  for (const id of ['persona-form-save', 'persona-form-cancel']) {
+    document.getElementById(id).disabled = disabled;
+  }
+};
+
+// Popula a voz do formulário assim que as vozes do SO chegarem (mesmo se o
+// formulário ainda estiver oculto) e carrega a lista de Personas.
+populatePersonaVoiceSelect();
+loadPersonaList();
 
 function appendTranscriptLine(text) {
   const transcript = document.getElementById('chat-transcript');

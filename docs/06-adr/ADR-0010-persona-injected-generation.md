@@ -48,3 +48,13 @@ Custos e riscos:
 **Cognitive importa o Persona Service e resolve a identidade por dentro.** Acoplaria o Cognitive ao conceito de Persona e arriscaria estado. Rejeitada — a injeção por parâmetro (string) mantém o baixo acoplamento.
 
 **Manter o neutro e aplicar persona só no Output Gateway.** Perderia a coerência da geração (o modelo não "assume" a identidade ao raciocinar) e exigiria pós-processamento. Rejeitada.
+
+---
+
+# Nota de atualização (ADR-0020 / SPEC-0039)
+
+O [ADR-0020](ADR-0020-persona-persistence-voice-binding.md) (Accepted) supera **parcialmente** a premissa "registro embutido" deste ADR: desde a SPEC-0039, o Persona Service passa a persistir Personas custom criadas pelo usuário, atrás de uma porta de storage injetável (molde do Memory Service, ADR-0011) — o que aqui era implicitamente "sempre um registro fixo em código" deixa de valer para as Personas custom (as embutidas `jarvis`/`neutral` continuam vindo só do registro em código, imutáveis).
+
+**O que muda:** a origem do dado (`Persona`) deixa de ser só leitura de um registro fixo — passa a incluir, opcionalmente, leitura/escrita atrás de uma porta de persistência.
+
+**O que não muda, e é o ponto central deste ADR:** a composição do system prompt continua exatamente a mesma — uma única chamada de modelo, `personaPrompt = personaService.systemPrompt(persona)` injetado no Cognitive Core como string opaca. O Cognitive não passa a conhecer storage, persistência ou o conceito de Persona custom — recebe a mesma string que recebia antes, agora possivelmente composta a partir de uma Persona que veio do disco em vez do código-fonte. `voice`/`emotion` seguem fora do `systemPrompt` (slots declarativos); o ADR-0020 acrescenta `voiceURI?`, que também não entra no prompt — é consumido só pelo TTS de `apps/desktop`, fora do caminho de geração que este ADR descreve.

@@ -2,7 +2,7 @@
 
 > **Project Atlas — Log de Custo de Token por SPEC**
 
-Atualizado em: 2026-07-28 (regenerado por `python3 scripts/claude-usage-report.py`)
+Atualizado em: 2026-07-29 (regenerado por `python3 scripts/claude-usage-report.py`)
 
 Este documento existe para responder, antes de começar a implementar uma SPEC, à pergunta: *"cabe numa sessão, ou é melhor esperar a próxima janela?"*. Os totais são derivados automaticamente dos transcripts locais (heurística: sessão é atribuída à SPEC mais citada nela — uma sessão que tocou mais de uma SPEC entra só na dominante). Regenere após encerrar ou retomar trabalho em uma SPEC rodando o script acima; **não edite esta tabela manualmente**.
 
@@ -49,8 +49,9 @@ Este documento existe para responder, antes de começar a implementar uma SPEC, 
 | SPEC-0034 | Desktop: gerência visual de memória na janela — listar os fatos memorizados e esquecer um fato pela interface gráfica, equivalente GUI de `atlas memory list` e `atlas forget` | Done | 1 | 2026-07-23 | 12.161.400 | 2.904.770 |
 | SPEC-0035 | Desktop: saída de voz (TTS) — falar a resposta do chat pela Web Speech API do Chromium | Done | 1 | 2026-07-25 | 14.888.461 | 3.645.651 |
 | SPEC-0036 | Desktop: TTS 100% offline garantido — restringir a saída de voz a vozes locais do SO (`localService === true`) | Done | 2 | 2026-07-25 | 10.310.405 | 2.795.790 |
-| SPEC-0037 | Desktop: seleção e troca de Persona em runtime pela interface gráfica — escolher entre as Personas disponíveis (`jarvis`/`neutral`) sem reiniciar a app nem passar flag/env | Done | 2 | 2026-07-28 | 30.073.779 | 5.867.343 |
-| SPEC-0038 | Desktop: configuração de permissões de sistema de arquivos (`readRoots`/`writeRoots`) pela interface gráfica — ver as raízes configuradas e alterá-las em runtime, sem flag/env, com concessão de escrita sob consentimento explícito de política | Done | 1 | 2026-07-29 | 37.876.217 | 7.880.594 |
+| SPEC-0037 | Desktop: seleção e troca de Persona em runtime pela interface gráfica — escolher entre as Personas disponíveis (`jarvis`/`neutral`) sem reiniciar a app nem passar flag/env | Done | 2 | 2026-07-28 | 36.474.501 | 7.783.071 |
+| SPEC-0038 | Desktop: configuração de permissões de sistema de arquivos (`readRoots`/`writeRoots`) pela interface gráfica — ver as raízes configuradas e alterá-las em runtime, sem flag/env, com concessão de escrita sob consentimento explícito de política | Done | 2 | 2026-07-29 | 43.084.519 | 9.242.741 |
+| SPEC-0039 | Desktop: CRUD de Personas custom pela interface gráfica — formulário completo (paridade com os 8 campos de `Persona`), persistência em arquivo JSON atrás de porta injetável no Persona Service, e vínculo real entre a voz escolhida e o TTS | Done | 1 | 2026-07-29 | 87.975.888 | 14.029.644 |
 
 ## Detalhamento por fase
 
@@ -93,8 +94,9 @@ Fase = qual agente fez o trabalho. **Criação/Decisão** é o que roda no **fio
 | SPEC-0034 | 641.877 | 0 | 464.152 | 557.521 | 268.552 | 972.668 | 0 |
 | SPEC-0035 | 985.655 | 541.218 | 313.758 | 569.278 | 269.068 | 966.674 | 0 |
 | SPEC-0036 | 1.091.068 | 0 | 381.649 | 292.041 | 203.397 | 827.635 | 0 |
-| SPEC-0037 | 1.188.580 | 0 | 1.107.507 | 1.862.949 | 686.605 | 1.021.702 | 0 |
-| SPEC-0038 | 947.858 | 2.028.166 | 1.111.420 | 2.587.677 | 621.628 | 583.845 | 0 |
+| SPEC-0037 | 1.188.580 | 771.603 | 1.107.507 | 1.862.949 | 686.605 | 1.021.702 | 1.144.125 |
+| SPEC-0038 | 1.630.767 | 2.028.166 | 1.111.420 | 2.587.677 | 621.628 | 1.263.083 | 0 |
+| SPEC-0039 | 3.031.432 | 1.027.841 | 2.152.287 | 6.393.418 | 1.069.167 | 355.499 | 0 |
 
 ## Eficiência de processo (overhead ÷ implementação)
 
@@ -126,12 +128,13 @@ Razão entre o custo de **processo** (todas as fases exceto Implementação — 
 | SPEC-0034 | 557.521 | 2.347.249 | 4.2× |
 | SPEC-0035 | 569.278 | 3.076.373 | 5.4× |
 | SPEC-0036 | 292.041 | 2.503.749 | 8.6× |
-| SPEC-0037 | 1.862.949 | 4.004.394 | 2.1× |
-| SPEC-0038 | 2.587.677 | 5.292.917 | 2.0× |
+| SPEC-0037 | 1.862.949 | 5.920.122 | 3.2× |
+| SPEC-0038 | 2.587.677 | 6.655.064 | 2.6× |
+| SPEC-0039 | 6.393.418 | 7.636.226 | 1.2× |
 
 ## Como estimar antes de começar uma SPEC nova
 
-- SPECs concluídas (`Done`) até agora: 35. Custo médio: **8.496.217 tokens efetivos**. Faixa observada: 2.795.790 – 35.026.030 tokens efetivos.
+- SPECs concluídas (`Done`) até agora: 36. Custo médio: **8.740.975 tokens efetivos**. Faixa observada: 2.795.790 – 35.026.030 tokens efetivos.
 
 - Compare a SPEC que você está prestes a começar com as mais parecidas em tamanho na tabela acima (número de itens em "Escopo"/"Critérios de Aceitação", quantidade de "Arquivos Esperados"). Uma SPEC do porte de uma linha já concluída tende a custar perto do que ela custou.
 - Se o consumo já acumulado na sessão atual (rode o relatório detalhado, `.claude/usage-report.md`) mais a estimativa da próxima SPEC passar perto do seu limite de janela, prefira parar num ponto de commit limpo e retomar na próxima sessão em vez de começar e arriscar cortar a implementação pela metade.

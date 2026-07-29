@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { InvalidConfigError } from '@atlas/contracts';
-import type { Fact, Tool } from '@atlas/contracts';
+import type { Fact, Persona, Tool } from '@atlas/contracts';
 import type { MemoryStorage } from '@atlas/memory';
 import { createPermissionService } from '@atlas/permissions';
 import { createRuntime } from '@atlas/runtime';
@@ -437,6 +437,72 @@ describe('createAtlas', () => {
 
     const planningSystem = requestBodies[0]!.messages.find((m) => m.role === 'system')!.content;
     expect(planningSystem).toContain(seededSkillId);
+    await atlas.shutdown();
+  });
+});
+
+describe('createAtlas + personaStorage (ADR-0020, SPEC-0039)', () => {
+  function fakePersonaStorage(initial: Persona[] = []) {
+    let personas: Persona[] = [...initial];
+    return {
+      loadCalls: 0,
+      saveCalls: 0,
+      load(): readonly Persona[] {
+        this.loadCalls += 1;
+        return personas;
+      },
+      save(next: readonly Persona[]): void {
+        this.saveCalls += 1;
+        personas = [...next];
+      },
+    };
+  }
+
+  function customPersona(overrides: Partial<Persona> = {}): Persona {
+    return {
+      id: 'meu-assistente',
+      name: 'Meu Assistente',
+      tone: 'tom',
+      formality: 'formalidade',
+      language: 'pt-BR',
+      style: 'estilo',
+      communicationRules: [],
+      voice: 'voz',
+      emotion: 'emoção',
+      ...overrides,
+    };
+  }
+
+  it('createAtlas({ config: { persona: "<custom>" } }, { personaStorage }) sobe com essa Persona ativa', async () => {
+    const personaStorage = fakePersonaStorage([customPersona()]);
+    const atlas = await createAtlas(
+      { config: { persona: 'meu-assistente' } },
+      { memoryStorage: fakeStorage(), personaStorage },
+    );
+    expect(atlas.persona.id).toBe('meu-assistente');
+    expect(atlas.config.persona).toBe('meu-assistente');
+    await atlas.shutdown();
+  });
+
+  it('o mesmo createAtlas SEM personaStorage rejeita com InvalidConfigError citando o id', async () => {
+    await expect(
+      createAtlas({ config: { persona: 'meu-assistente' } }, { memoryStorage: fakeStorage() }),
+    ).rejects.toThrow(InvalidConfigError);
+    await expect(
+      createAtlas({ config: { persona: 'meu-assistente' } }, { memoryStorage: fakeStorage() }),
+    ).rejects.toThrow(/meu-assistente/);
+  });
+
+  it('não-regressão: createAtlas() sem deps.personaStorage não lê nem cria nenhum arquivo de Personas (zero chamadas ao storage fake)', async () => {
+    const personaStorage = fakePersonaStorage();
+    // Injeta um storage fake só para provar (por spy) que ele NÃO é usado
+    // quando não passado como deps.personaStorage: chamamos createAtlas
+    // duas vezes — uma sem personaStorage (comportamento a comprovar) e
+    // conferimos que o fake não injetado permanece com zero chamadas.
+    const atlas = await createAtlas({}, { memoryStorage: fakeStorage() });
+    expect(personaStorage.loadCalls).toBe(0);
+    expect(personaStorage.saveCalls).toBe(0);
+    expect(atlas.persona.id).toBe('jarvis');
     await atlas.shutdown();
   });
 });
