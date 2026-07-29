@@ -13,8 +13,33 @@ function renderStatus(snapshot) {
 function loadStatus() {
   return window.atlas.getStatus().then((snapshot) => {
     renderStatus(snapshot);
+    renderPermissionLists(snapshot.readRoots, snapshot.writeRoots);
     return snapshot;
   });
+}
+
+// Serialização compartilhada do painel de permissões (item 2.4 / SPEC-0038):
+// desabilitado enquanto houver um turno de chat OU um `ask` em voo — os dois
+// gestos que o renderer sabe quando disparou.
+let chatTurnInFlight = false;
+let askInFlight = false;
+
+function refreshPermissionsPanelState() {
+  const disabled = chatTurnInFlight || askInFlight;
+  for (const id of [
+    'read-root-input',
+    'read-root-add',
+    'write-root-input',
+    'write-root-add',
+    'permissions-apply',
+  ]) {
+    document.getElementById(id).disabled = disabled;
+  }
+  document
+    .querySelectorAll('#read-roots-list button, #write-roots-list button')
+    .forEach((button) => {
+      button.disabled = disabled;
+    });
 }
 
 // Seletor de Persona em runtime (item 2.4 / SPEC-0037): o usuário sempre vê
@@ -85,21 +110,29 @@ document.getElementById('ask-form').addEventListener('submit', (event) => {
   }
   const resultEl = document.getElementById('ask-result');
   resultEl.textContent = 'Perguntando…';
-  window.atlas.ask(objective).then((snapshot) => {
-    const lines = [];
-    for (const step of snapshot.steps) {
-      const marker = step.denialKind !== undefined ? ` [${step.denialKind}]` : '';
-      lines.push(`🔧 ${step.tool} → ${step.outcome}${marker}`);
-    }
-    if (lines.length > 0) {
-      lines.push('');
-    }
-    lines.push(snapshot.text);
-    for (const fact of snapshot.learned) {
-      lines.push(`💡 lembrado: ${fact}`);
-    }
-    resultEl.textContent = lines.join('\n');
-  });
+  askInFlight = true;
+  refreshPermissionsPanelState();
+  window.atlas
+    .ask(objective)
+    .then((snapshot) => {
+      const lines = [];
+      for (const step of snapshot.steps) {
+        const marker = step.denialKind !== undefined ? ` [${step.denialKind}]` : '';
+        lines.push(`🔧 ${step.tool} → ${step.outcome}${marker}`);
+      }
+      if (lines.length > 0) {
+        lines.push('');
+      }
+      lines.push(snapshot.text);
+      for (const fact of snapshot.learned) {
+        lines.push(`💡 lembrado: ${fact}`);
+      }
+      resultEl.textContent = lines.join('\n');
+    })
+    .finally(() => {
+      askInFlight = false;
+      refreshPermissionsPanelState();
+    });
 });
 
 // Chat visual multi-turno (item 2.2): o Core é mantido vivo no main process
@@ -286,6 +319,10 @@ document.getElementById('chat-form').addEventListener('submit', (event) => {
   // Decisão D9): desabilitado enquanto o turno está em voo, reabilitado no
   // `finally` — camada de UX que complementa a recusa garantida no bridge.
   personaSelect.disabled = true;
+  // O painel de permissões entra na mesma serialização (SPEC-0038): também
+  // desabilitado durante um turno de chat, além de um `ask` em voo.
+  chatTurnInFlight = true;
+  refreshPermissionsPanelState();
   window.atlas.chat
     .send(chatSession, input)
     .then((snapshot) => {
@@ -299,6 +336,8 @@ document.getElementById('chat-form').addEventListener('submit', (event) => {
       inputEl.disabled = false;
       sendButton.disabled = false;
       personaSelect.disabled = false;
+      chatTurnInFlight = false;
+      refreshPermissionsPanelState();
       inputEl.focus();
     });
 });
@@ -339,3 +378,104 @@ document.getElementById('memory-refresh').addEventListener('click', () => {
 });
 
 loadMemoryList();
+
+// Painel de permissões (item 2.4 / SPEC-0038, terceira e última linha):
+// mostra as raízes CONFIGURADAS em vigor (as que o `getStatus()` já
+// consumido reporta — não o que está digitado nas listas), permite
+// acrescentar/remover raízes de leitura/escrita e aplica a mudança inteira
+// de uma vez (substituição, nunca merge — mesma semântica das flags da
+// CLI). `pendingReadRoots`/`pendingWriteRoots` são o rascunho local do
+// renderer; só viram a política de verdade ao clicar em "Aplicar".
+let pendingReadRoots = [];
+let pendingWriteRoots = [];
+
+function paintRootsList(listEl, roots, onRemove) {
+  listEl.textContent = '';
+  roots.forEach((root, index) => {
+    const item = document.createElement('li');
+    const label = document.createElement('span');
+    label.textContent = root;
+    const removeButton = document.createElement('button');
+    removeButton.type = 'button';
+    removeButton.textContent = 'Remover';
+    removeButton.addEventListener('click', () => {
+      onRemove(index);
+    });
+    item.appendChild(label);
+    item.appendChild(removeButton);
+    listEl.appendChild(item);
+  });
+  refreshPermissionsPanelState();
+}
+
+function paintReadRootsList() {
+  paintRootsList(document.getElementById('read-roots-list'), pendingReadRoots, (index) => {
+    pendingReadRoots.splice(index, 1);
+    paintReadRootsList();
+  });
+}
+
+function paintWriteRootsList() {
+  paintRootsList(document.getElementById('write-roots-list'), pendingWriteRoots, (index) => {
+    pendingWriteRoots.splice(index, 1);
+    paintWriteRootsList();
+  });
+}
+
+// Chamada por `loadStatus()` toda vez que o status é (re)carregado — depois
+// de uma aplicação bem-sucedida e também depois de uma recusa, para que as
+// listas nunca fiquem divergentes da configuração real (o usuário nunca vê
+// uma lista que não corresponde ao que o Core recebeu).
+function renderPermissionLists(readRoots, writeRoots) {
+  pendingReadRoots = [...readRoots];
+  pendingWriteRoots = [...writeRoots];
+  paintReadRootsList();
+  paintWriteRootsList();
+}
+
+document.getElementById('read-root-add').addEventListener('click', () => {
+  const input = document.getElementById('read-root-input');
+  const value = input.value.trim();
+  if (value === '') {
+    return;
+  }
+  pendingReadRoots.push(value);
+  input.value = '';
+  paintReadRootsList();
+});
+
+document.getElementById('write-root-add').addEventListener('click', () => {
+  const input = document.getElementById('write-root-input');
+  const value = input.value.trim();
+  if (value === '') {
+    return;
+  }
+  pendingWriteRoots.push(value);
+  input.value = '';
+  paintWriteRootsList();
+});
+
+document.getElementById('permissions-apply').addEventListener('click', () => {
+  const errorEl = document.getElementById('permissions-error');
+  errorEl.textContent = '';
+  window.atlas.permissions
+    .select({ readRoots: [...pendingReadRoots], writeRoots: [...pendingWriteRoots] })
+    .then(() => {
+      // Sucesso: nenhum Core sobrevive à aplicação sob política superada
+      // (D7) — a sessão de chat corrente já foi encerrada pelo bridge;
+      // o renderer limpa o transcript, avisa e reabre a conversa.
+      document.getElementById('chat-transcript').textContent = '';
+      appendTranscriptLine('Permissões alteradas — nova conversa iniciada');
+      return window.atlas.chat.open().then((session) => {
+        chatSession = session;
+      });
+    })
+    .then(() => loadStatus())
+    .catch((error) => {
+      // Rejeição (caminho inválido, operação em voo, concessão não
+      // confirmada): transcript e conversa corrente ficam intactos; as
+      // listas recarregam a partir do status real (nunca divergentes).
+      errorEl.textContent = `⚠️ ${error.message ?? error}`;
+      return loadStatus();
+    });
+});

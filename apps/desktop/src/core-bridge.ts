@@ -1,3 +1,4 @@
+import { isAbsolute } from 'node:path';
 import { createAtlas, createPersonaService } from '@atlas/core';
 import type {
   ActionRequest,
@@ -8,6 +9,7 @@ import type {
 } from '@atlas/contracts';
 import { formatSteps } from './steps-view.js';
 import type { StepLine } from './steps-view.js';
+import type { GrantConfirmPort } from './permission-grant-dialog.js';
 
 export interface PersonaOption {
   readonly id: string;
@@ -16,6 +18,20 @@ export interface PersonaOption {
 
 export interface PersonaSelection {
   readonly personaId: string;
+  readonly closedSessions: readonly SessionId[];
+}
+
+/**
+ * Raízes de permissão de sistema de arquivos (SPEC-0038): tipos planos,
+ * serializáveis por IPC, locais a este app — nunca promovidos a
+ * `@atlas/contracts` sem um 2º consumidor real.
+ */
+export interface PermissionRoots {
+  readonly readRoots: readonly string[];
+  readonly writeRoots: readonly string[];
+}
+
+export interface PermissionRootsSelection extends PermissionRoots {
   readonly closedSessions: readonly SessionId[];
 }
 
@@ -35,6 +51,32 @@ let selectedPersona: string | undefined;
  * daquele turno.
  */
 const busySessions = new Set<SessionId>();
+
+/**
+ * Seleção de permissões em runtime (SPEC-0038, Decisão D2): estado de módulo
+ * do `core-bridge`, mesmo molde da seleção de Persona — aplicada como
+ * `config.permissions` em cada `createAtlas` subsequente. Não é persistida —
+ * some ao fechar a app, voltando às raízes resolvidas por
+ * `flags > env > defaults` (ADR-0006).
+ */
+let selectedPermissions: PermissionRoots | undefined;
+
+/**
+ * Rastreio generalizado de operação em voo (SPEC-0038, Decisão D10):
+ * contador de operações que sobem um Core **fora** do `Map` de sessões de
+ * chat vivas — hoje `resolveAskSnapshot` e o intervalo de abertura de
+ * `openChatSession` (correção A6 do gate: entre o `createAtlas` e o
+ * registro em `chatSessions`, a sessão nova ainda não está no `busySessions`
+ * nem em `chatSessions`, então precisa do próprio rastreio). Cada operação
+ * incrementa antes do primeiro `await` e decrementa em `finally`.
+ * `selectPermissionRoots` recusa a aplicação enquanto este contador ou
+ * `busySessions` forem não-vazios/positivos.
+ */
+let inFlightOperations = 0;
+
+function hasInFlightOperation(): boolean {
+  return busySessions.size > 0 || inFlightOperations > 0;
+}
 
 /**
  * Catálogo de Personas para exibição/seleção (equivalente GUI do que a CLI
@@ -90,21 +132,144 @@ export function selectedPersonaId(): string | undefined {
 }
 
 /**
- * Aplica a seleção corrente ao `AtlasConfigOverride` de toda função que sobe
- * o Core — precedência: `configOverride.persona` explícito do chamador
- * **vence** a seleção corrente (Decisão D7).
+ * Aplica as seleções correntes (Persona + permissões) ao `AtlasConfigOverride`
+ * de toda função que sobe o Core — precedência: o valor explícito do
+ * chamador **vence** a seleção corrente, campo a campo, e `permissions` é
+ * tratado como **bloco completo** (a seleção nunca é mesclada dentro de um
+ * `configOverride.permissions` parcial do chamador — SPEC-0038, Decisão D3;
+ * mesmo precedente da D7 da SPEC-0037 para Persona).
  */
-function withPersonaSelection(configOverride: AtlasConfigOverride): AtlasConfigOverride {
-  if (configOverride.persona !== undefined || selectedPersona === undefined) {
-    return configOverride;
+function withSelections(configOverride: AtlasConfigOverride): AtlasConfigOverride {
+  let result = configOverride;
+  if (result.persona === undefined && selectedPersona !== undefined) {
+    result = { ...result, persona: selectedPersona };
   }
-  return { ...configOverride, persona: selectedPersona };
+  if (result.permissions === undefined && selectedPermissions !== undefined) {
+    result = { ...result, permissions: selectedPermissions };
+  }
+  return result;
 }
 
-/** Reset explícito do estado de módulo — uso exclusivo dos testes (isolamento entre casos). */
-export function __resetPersonaStateForTests(): void {
+/**
+ * Reset explícito do estado de módulo do bridge — uso exclusivo dos testes
+ * (isolamento entre casos): Persona selecionada, permissões selecionadas e
+ * os dois rastreios de operação em voo (`busySessions`/`inFlightOperations`).
+ */
+export function __resetBridgeStateForTests(): void {
   selectedPersona = undefined;
+  selectedPermissions = undefined;
   busySessions.clear();
+  inFlightOperations = 0;
+}
+
+/**
+ * Normaliza uma lista de raízes (SPEC-0038, Escopo/D5): `trim` de cada
+ * entrada, descarte de vazias, deduplicação preservando a ordem de chegada
+ * — mesmo tratamento que `filterNonEmpty` dá às flags na CLI.
+ */
+function normalizeRoots(roots: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const raw of roots) {
+    const trimmed = raw.trim();
+    if (trimmed === '' || seen.has(trimmed)) {
+      continue;
+    }
+    seen.add(trimmed);
+    result.push(trimmed);
+  }
+  return result;
+}
+
+/** Default fail-closed: sem `confirmGrant` injetado, nenhuma raiz de escrita nova é concedida. */
+const fallbackGrantConfirm: GrantConfirmPort = {
+  request: () => Promise.resolve(false),
+};
+
+/**
+ * Configura as raízes de permissão de sistema de arquivos em runtime
+ * (SPEC-0038) — nesta ordem, fail-closed (qualquer recusa deixa tudo
+ * exatamente como estava):
+ *
+ * 1. normaliza (trim/descarte de vazias/dedup preservando ordem);
+ * 2. valida estruturalmente: `readRoots` não pode ficar vazia; todo caminho
+ *    (leitura ou escrita) precisa ser absoluto (D5) — nunca resolvido contra
+ *    o `cwd` do processo;
+ * 3. recusa se houver qualquer operação em voo (turno de chat ou operação
+ *    que sobe Core fora do `Map` de sessões — D10);
+ * 4. para cada raiz de escrita **nova** (D6), pede consentimento via
+ *    `confirmGrant` — porta dedicada à concessão de política (D11), distinta
+ *    do `ConfirmPort` de ação pontual do Runtime; qualquer recusa (ou
+ *    ausência de `confirmGrant`, default fail-closed) aborta tudo;
+ * 5. **rechecagem da operação em voo** (correção A7 do gate): como o passo 4
+ *    pode esperar o usuário indefinidamente, a checagem do passo 3 é
+ *    refeita imediatamente antes de aplicar — uma operação iniciada durante
+ *    o diálogo de consentimento também aborta a aplicação, sem efeito
+ *    parcial;
+ * 6. registra a seleção no estado de módulo e encerra todas as sessões de
+ *    chat vivas (nenhum Core sobrevive à aplicação sob política superada —
+ *    D7/D10), devolvendo-as em `closedSessions`.
+ */
+export async function selectPermissionRoots(
+  request: PermissionRoots,
+  deps: { confirmGrant?: GrantConfirmPort } = {},
+): Promise<PermissionRootsSelection> {
+  const readRoots = normalizeRoots(request.readRoots);
+  const writeRoots = normalizeRoots(request.writeRoots);
+
+  if (readRoots.length === 0) {
+    throw new Error('É necessário ao menos uma raiz de leitura.');
+  }
+  for (const candidate of [...readRoots, ...writeRoots]) {
+    if (!isAbsolute(candidate)) {
+      throw new Error(`Caminho de permissão precisa ser absoluto: ${candidate}`);
+    }
+  }
+
+  if (hasInFlightOperation()) {
+    throw new Error(
+      'Não é possível alterar permissões: há uma operação em andamento (turno de chat ou ask).',
+    );
+  }
+
+  const confirmGrant = deps.confirmGrant ?? fallbackGrantConfirm;
+  const currentWriteRoots = new Set(selectedPermissions?.writeRoots ?? []);
+  for (const candidate of writeRoots) {
+    if (currentWriteRoots.has(candidate)) {
+      continue;
+    }
+    const granted = await confirmGrant.request({
+      path: candidate,
+      scope: 'subtree',
+      duration: 'session',
+    });
+    if (!granted) {
+      throw new Error(`Concessão de permissão de escrita recusada para: ${candidate}`);
+    }
+  }
+
+  // Correção A7 (gate): o passo acima pode aguardar o usuário
+  // indefinidamente — refaz a checagem de operação em voo imediatamente
+  // antes de aplicar, para que um `ask`/turno iniciado durante o diálogo de
+  // consentimento também bloqueie a aplicação (tudo-ou-nada, D8).
+  if (hasInFlightOperation()) {
+    throw new Error(
+      'Não é possível alterar permissões: há uma operação em andamento (turno de chat ou ask).',
+    );
+  }
+
+  selectedPermissions = { readRoots, writeRoots };
+  const closedSessions: SessionId[] = [];
+  for (const session of [...chatSessions.keys()]) {
+    closedSessions.push(session);
+    await closeChatSession(session);
+  }
+  return { readRoots, writeRoots, closedSessions };
+}
+
+/** Leitura do estado de módulo: `undefined` enquanto o usuário não configurou nada. */
+export function selectedPermissionRoots(): PermissionRoots | undefined {
+  return selectedPermissions;
 }
 
 export interface StatusSnapshot {
@@ -125,7 +290,7 @@ export interface StatusSnapshot {
 export async function resolveStatusSnapshot(
   configOverride: AtlasConfigOverride = {},
 ): Promise<StatusSnapshot> {
-  const atlas = await createAtlas({ config: withPersonaSelection(configOverride) });
+  const atlas = await createAtlas({ config: withSelections(configOverride) });
   try {
     const { state, config, persona } = atlas;
     return {
@@ -168,29 +333,41 @@ const fallbackConfirm: ConfirmPort = {
  * `runAsk` — nunca gravação silenciosa), desliga (`finally`) e devolve um
  * `AskSnapshot` plano serializável por IPC. Não mantém a plataforma nem uma
  * `Conversation` viva entre chamadas (isso é 2.2).
+ *
+ * Entra no rastreio generalizado de operação em voo (SPEC-0038, D10): marca
+ * `inFlightOperations` **antes do primeiro `await`** e desmarca em
+ * `finally`, ao lado do `busySessions` que `sendChatTurn` já alimenta — é o
+ * que permite `selectPermissionRoots` recusar a aplicação de uma política
+ * nova enquanto este `ask` ainda estiver rodando, sem alterar o resultado
+ * nem o fluxo do `ask` em si.
  */
 export async function resolveAskSnapshot(
   objective: string,
   deps: { confirm?: ConfirmPort; configOverride?: AtlasConfigOverride } = {},
 ): Promise<AskSnapshot> {
   const { confirm = fallbackConfirm, configOverride = {} } = deps;
-  const atlas = await createAtlas({ config: withPersonaSelection(configOverride) }, { confirm });
+  inFlightOperations += 1;
   try {
-    const result = await atlas.cognitive.ask(objective);
-    const learned: string[] = [];
-    for (const fact of result.learned ?? []) {
-      const { created } = await atlas.memory.remember(fact, 'learned');
-      if (created) {
-        learned.push(fact);
+    const atlas = await createAtlas({ config: withSelections(configOverride) }, { confirm });
+    try {
+      const result = await atlas.cognitive.ask(objective);
+      const learned: string[] = [];
+      for (const fact of result.learned ?? []) {
+        const { created } = await atlas.memory.remember(fact, 'learned');
+        if (created) {
+          learned.push(fact);
+        }
       }
+      return {
+        text: result.text,
+        steps: formatSteps(result.steps),
+        learned,
+      };
+    } finally {
+      await atlas.shutdown();
     }
-    return {
-      text: result.text,
-      steps: formatSteps(result.steps),
-      learned,
-    };
   } finally {
-    await atlas.shutdown();
+    inFlightOperations -= 1;
   }
 }
 
@@ -227,15 +404,28 @@ function mustGetChatSession(session: SessionId): ChatSessionEntry {
  * `SessionId` devolvida pelo Context. A plataforma permanece viva até
  * `closeChatSession` — diferente de `resolveAskSnapshot`, que sobe e
  * desliga por chamada.
+ *
+ * Entra no rastreio generalizado de operação em voo (SPEC-0038, correção A6
+ * do gate): entre o `createAtlas` e o registro em `chatSessions` a sessão
+ * nova ainda não está no `busySessions` nem no `Map` de sessões vivas — sem
+ * marcar aqui, `selectPermissionRoots` poderia aplicar uma política nova
+ * bem no meio da abertura, sob um Core que nasceria com a política antiga e
+ * sobreviveria (uma sessão de chat inteira) sem ser rastreado nem
+ * encerrado. Marca antes do primeiro `await` e desmarca em `finally`.
  */
 export async function openChatSession(
   deps: { confirm?: ConfirmPort; configOverride?: AtlasConfigOverride } = {},
 ): Promise<SessionId> {
   const { confirm = fallbackConfirm, configOverride = {} } = deps;
-  const atlas = await createAtlas({ config: withPersonaSelection(configOverride) }, { confirm });
-  const session = atlas.context.openSession(atlas.cognitive.startConversation());
-  chatSessions.set(session, { atlas });
-  return session;
+  inFlightOperations += 1;
+  try {
+    const atlas = await createAtlas({ config: withSelections(configOverride) }, { confirm });
+    const session = atlas.context.openSession(atlas.cognitive.startConversation());
+    chatSessions.set(session, { atlas });
+    return session;
+  } finally {
+    inFlightOperations -= 1;
+  }
 }
 
 /**
@@ -307,7 +497,7 @@ export async function resolveMemorySnapshot(
   deps: { configOverride?: AtlasConfigOverride } = {},
 ): Promise<readonly FactSnapshot[]> {
   const { configOverride = {} } = deps;
-  const atlas = await createAtlas({ config: withPersonaSelection(configOverride) });
+  const atlas = await createAtlas({ config: withSelections(configOverride) });
   try {
     return atlas.memory.list().map((fact) => ({
       id: fact.id,
@@ -334,7 +524,7 @@ export async function forgetFact(
   deps: { configOverride?: AtlasConfigOverride } = {},
 ): Promise<boolean> {
   const { configOverride = {} } = deps;
-  const atlas = await createAtlas({ config: withPersonaSelection(configOverride) });
+  const atlas = await createAtlas({ config: withSelections(configOverride) });
   try {
     return await atlas.memory.forget(id);
   } finally {

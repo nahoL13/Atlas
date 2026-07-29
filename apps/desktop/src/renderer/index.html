@@ -26,6 +26,22 @@
     <h2>Memória</h2>
     <button id="memory-refresh" type="button">Atualizar</button>
     <ul id="memory-list"></ul>
+    <hr />
+    <h2>Permissões</h2>
+    <div>
+      <h3>Leitura</h3>
+      <ul id="read-roots-list"></ul>
+      <input id="read-root-input" type="text" placeholder="/caminho/absoluto" />
+      <button id="read-root-add" type="button">Adicionar</button>
+    </div>
+    <div>
+      <h3>Escrita</h3>
+      <ul id="write-roots-list"></ul>
+      <input id="write-root-input" type="text" placeholder="/caminho/absoluto" />
+      <button id="write-root-add" type="button">Adicionar</button>
+    </div>
+    <button id="permissions-apply" type="button">Aplicar</button>
+    <span id="permissions-error"></span>
     <script src="./renderer.js"></script>
   </body>
 </html>

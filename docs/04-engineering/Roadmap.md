@@ -156,11 +156,11 @@ Já reservado no PRD ("suporte básico à voz") e no `ProjectStructure.md` ("fut
 - Saída por voz (TTS).
 - Ativação por voz (wake word) — candidato, não comprometido.
 
-## 2.4 Persistência e Gerência Local
+## 2.4 Persistência e Gerência Local — **entregue por inteiro** (2026-07-28, SPEC-0038)
 
 - ~~Gerência visual de memória (listar, esquecer fatos pela interface, não só CLI).~~ **entregue** — [SPEC-0034](../implementation/specs/SPEC-0034-desktop-visual-memory-management.md) (listar + esquecer, round-trip stateless pelo `MemoryService`).
-- Seleção/troca de Persona em runtime (hoje só por flag/env na inicialização).
-- Configuração de permissões (`readRoots`/`writeRoots`) por interface gráfica, não só flags.
+- ~~Seleção/troca de Persona em runtime (hoje só por flag/env na inicialização).~~ **entregue** — [SPEC-0037](../implementation/specs/SPEC-0037-desktop-runtime-persona-switch.md) (`listPersonas`/`selectPersona`, troca sem reiniciar a app).
+- ~~Configuração de permissões (`readRoots`/`writeRoots`) por interface gráfica, não só flags.~~ **entregue** — [SPEC-0038](../implementation/specs/SPEC-0038-desktop-permission-roots-gui.md) (`selectPermissionRoots`, consentimento explícito para concessão de escrita, fail-closed).
 
 ## Critério de Conclusão da Fase 2
 

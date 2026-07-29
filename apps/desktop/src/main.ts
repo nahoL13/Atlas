@@ -9,11 +9,14 @@ import {
   resolveAskSnapshot,
   resolveMemorySnapshot,
   resolveStatusSnapshot,
+  selectPermissionRoots,
   selectPersona,
   sendChatTurn,
 } from './core-bridge.js';
 import type { SessionId } from '@atlas/contracts';
+import type { PermissionRoots } from './core-bridge.js';
 import { createDialogConfirmPort } from './confirm-port.js';
+import { createGrantConfirmDialog } from './permission-grant-dialog.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -21,6 +24,13 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // main process — `confirm-port.ts`/`core-bridge.ts` seguem livres de import
 // de Electron (testáveis no Vitest).
 const confirm = createDialogConfirmPort({
+  showMessageBox: (options) => dialog.showMessageBox(options),
+});
+
+// GrantConfirmPort de concessão de política de escrita (SPEC-0038, D11):
+// diálogo dedicado, distinto do `confirm` de ação pontual acima — mesma
+// razão de `dialog.showMessageBox` só existir no main process.
+const confirmGrant = createGrantConfirmDialog({
   showMessageBox: (options) => dialog.showMessageBox(options),
 });
 
@@ -52,6 +62,17 @@ ipcMain.handle('atlas:persona:select', async (_event, id: string) => {
   // Sincroniza o rastreio de teardown desta janela com as sessões que
   // `selectPersona` encerrou (D5): nenhuma delas deve ser reencerrada no
   // desligamento da app.
+  for (const session of selection.closedSessions) {
+    openChatSessionIds.delete(session);
+  }
+  return selection;
+});
+
+ipcMain.handle('atlas:permissions:select', async (_event, roots: PermissionRoots) => {
+  const selection = await selectPermissionRoots(roots, { confirmGrant });
+  // Mesmo tratamento do handler de 'atlas:persona:select': nenhuma sessão
+  // encerrada pela aplicação de permissões deve ser reencerrada no
+  // teardown de fechamento da app.
   for (const session of selection.closedSessions) {
     openChatSessionIds.delete(session);
   }
