@@ -27,5 +27,6 @@ contextBridge.exposeInMainWorld('atlas', {
     voices: () => ipcRenderer.invoke('atlas:tts:voices'),
     speak: (text, voiceURI) => ipcRenderer.invoke('atlas:tts:speak', { text, voiceURI }),
     cancel: () => ipcRenderer.invoke('atlas:tts:cancel'),
+    available: () => ipcRenderer.invoke('atlas:tts:available'),
   },
 });

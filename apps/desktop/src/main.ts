@@ -206,6 +206,10 @@ ipcMain.handle('atlas:tts:speak', (_event, request: { text: string; voiceURI: st
 ipcMain.handle('atlas:tts:cancel', () => {
   piperTts.cancel();
 });
+// SPEC-0041: expõe `PiperTts.isAvailable()` (já existia, nunca exposto ao
+// renderer) — a única condição que governa a política de superfície
+// Piper-only (`isPiperOnlyMode`, `src/speech-output.ts`).
+ipcMain.handle('atlas:tts:available', () => piperTts.isAvailable());
 
 ipcMain.handle('atlas:permissions:select', async (_event, roots: PermissionRoots) => {
   const selection = await selectPermissionRoots(roots, { confirmGrant });

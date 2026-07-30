@@ -229,3 +229,44 @@ export function resolveVoiceBackend(input: ResolveVoiceBackendInput): VoiceBacke
 
   return { backend: 'none' };
 }
+
+/**
+ * Política de superfície Piper-only (SPEC-0041, ADR-0021(c) reafirmado).
+ * Camada **antes** de `resolveVoiceBackend` (Decisão D4) — não uma edição da
+ * cadeia D8 acima, que permanece inteiramente inalterada.
+ */
+
+/**
+ * `true` **sse** `piperAvailable === true` **e** houver ao menos uma voz
+ * Piper no catálogo (Decisão D3) — a única condição que governa toda a
+ * política desta SPEC. `piperAvailable` vem de `PiperTts.isAvailable()`
+ * (arquivo do binário presente + catálogo não vazio; não sonda o binário).
+ */
+export function isPiperOnlyMode(input: {
+  readonly piperAvailable: boolean;
+  readonly piperVoiceURIs: readonly string[];
+}): boolean {
+  return input.piperAvailable === true && input.piperVoiceURIs.length > 0;
+}
+
+/**
+ * Em modo Piper-only, devolve `preferredVoiceURI` só quando ela é um
+ * `piper:<id>`, e `undefined` caso contrário (reverte a precedência de D8 da
+ * SPEC-0040 para uma preferência de voz do SO, Decisão D2). Fora do modo
+ * Piper-only, devolve `preferredVoiceURI` inalterada — o caminho degradado
+ * preserva o comportamento pré-SPEC-0041. Nunca inventa uma `voiceURI`: só
+ * devolve o valor recebido ou `undefined`.
+ */
+export function piperOnlyPreference(input: {
+  readonly preferredVoiceURI: string | undefined;
+  readonly piperAvailable: boolean;
+  readonly piperVoiceURIs: readonly string[];
+}): string | undefined {
+  const { preferredVoiceURI, piperAvailable, piperVoiceURIs } = input;
+  if (!isPiperOnlyMode({ piperAvailable, piperVoiceURIs })) {
+    return preferredVoiceURI;
+  }
+  return preferredVoiceURI !== undefined && isPiperVoiceURI(preferredVoiceURI)
+    ? preferredVoiceURI
+    : undefined;
+}

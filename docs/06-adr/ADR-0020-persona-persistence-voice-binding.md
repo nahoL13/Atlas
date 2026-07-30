@@ -66,3 +66,9 @@ Custos e riscos:
 **Vincular Persona a voz sem fallback (fica muda se a voz específica sumir).** Rejeitada no brainstorming: o usuário preferiu explicitamente degradar para a seleção determinística de hoje a perder áudio de forma pouco óbvia ao trocar de máquina/SO.
 
 **Expor `id` editável no formulário de criação, em vez de slug automático.** Rejeitada: adiciona um campo técnico à GUI sem necessidade — o `id` é um detalhe de implementação para o usuário final, que só precisa nomear a Persona.
+
+---
+
+# Observações
+
+- **Nota-ponteiro (2026-07-29, SPEC-0041 — não altera a Decisão).** A hierarquia de fallback de voz descrita na Decisão (b) — `voiceURI` presente e existente ⇒ usa-a; ausente/inexistente ⇒ cai na seleção determinística — fica **superseded na presença de Piper disponível**, por decisão de produto da [SPEC-0041](../implementation/specs/SPEC-0041-desktop-piper-only-voice-surface.md), ancorada no [ADR-0021(c)](ADR-0021-piper-tts-local-voice-engine.md) ("Piper vira a primeira camada de preferência"). Quem ler esta Decisão isolada deve consultar o ADR-0021 (seção Observações) e a SPEC-0041 para o comportamento vigente — nenhuma linha da Decisão acima foi editada.

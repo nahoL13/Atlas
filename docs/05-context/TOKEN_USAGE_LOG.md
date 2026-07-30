@@ -2,7 +2,7 @@
 
 > **Project Atlas — Log de Custo de Token por SPEC**
 
-Atualizado em: 2026-07-29 (regenerado por `python3 scripts/claude-usage-report.py`)
+Atualizado em: 2026-07-30 (regenerado por `python3 scripts/claude-usage-report.py`)
 
 Este documento existe para responder, antes de começar a implementar uma SPEC, à pergunta: *"cabe numa sessão, ou é melhor esperar a próxima janela?"*. Os totais são derivados automaticamente dos transcripts locais (heurística: sessão é atribuída à SPEC mais citada nela — uma sessão que tocou mais de uma SPEC entra só na dominante). Regenere após encerrar ou retomar trabalho em uma SPEC rodando o script acima; **não edite esta tabela manualmente**.
 
@@ -52,7 +52,8 @@ Este documento existe para responder, antes de começar a implementar uma SPEC, 
 | SPEC-0037 | Desktop: seleção e troca de Persona em runtime pela interface gráfica — escolher entre as Personas disponíveis (`jarvis`/`neutral`) sem reiniciar a app nem passar flag/env | Done | 2 | 2026-07-28 | 36.474.501 | 7.783.071 |
 | SPEC-0038 | Desktop: configuração de permissões de sistema de arquivos (`readRoots`/`writeRoots`) pela interface gráfica — ver as raízes configuradas e alterá-las em runtime, sem flag/env, com concessão de escrita sob consentimento explícito de política | Done | 2 | 2026-07-29 | 43.084.519 | 9.242.741 |
 | SPEC-0039 | Desktop: CRUD de Personas custom pela interface gráfica — formulário completo (paridade com os 8 campos de `Persona`), persistência em arquivo JSON atrás de porta injetável no Persona Service, e vínculo real entre a voz escolhida e o TTS | Done | 2 | 2026-07-29 | 98.554.284 | 16.458.402 |
-| SPEC-0040 | Desktop: integrar o Piper (TTS neural 100% local) como primeira camada de saída de voz — subprocesso de longa duração no main process, catálogo de vozes PT-BR empacotadas, playback por `<audio>` no renderer, e a Web Speech API das SPECs 0035/0036 preservada como fallback fail-closed | Done | 1 | 2026-07-30 | 48.791.231 | 8.558.332 |
+| SPEC-0040 | Desktop: integrar o Piper (TTS neural 100% local) como primeira camada de saída de voz — subprocesso de longa duração no main process, catálogo de vozes PT-BR empacotadas, playback por `<audio>` no renderer, e a Web Speech API das SPECs 0035/0036 preservada como fallback fail-closed | Done | 2 | 2026-07-30 | 77.738.687 | 13.707.050 |
+| SPEC-0041 | Desktop: quando o Piper estiver **disponível** (arquivo do binário presente em disco + ao menos um modelo instalado, conforme `PiperTts.isAvailable()`), a **superfície de escolha e de uso** de voz passa a ser exclusivamente Piper — as vozes nativas do SO deixam de aparecer no `<select>` do formulário de Persona e uma preferência de voz do SO já persistida deixa de ser honrada —, sem remover a Web Speech API, que segue como **rede de segurança interna invisível** (ADR-0021(c)) | Done | 0 | - | 22.986.703 | 5.288.333 |
 
 ## Detalhamento por fase
 
@@ -98,7 +99,8 @@ Fase = qual agente fez o trabalho. **Criação/Decisão** é o que roda no **fio
 | SPEC-0037 | 1.188.580 | 771.603 | 1.107.507 | 1.862.949 | 686.605 | 1.021.702 | 1.144.125 |
 | SPEC-0038 | 1.630.767 | 2.028.166 | 1.111.420 | 2.587.677 | 621.628 | 1.263.083 | 0 |
 | SPEC-0039 | 3.526.489 | 1.698.410 | 2.152.287 | 6.393.418 | 1.069.167 | 1.618.631 | 0 |
-| SPEC-0040 | 1.617.382 | 739.605 | 936.652 | 4.445.652 | 779.727 | 39.314 | 0 |
+| SPEC-0040 | 5.252.542 | 1.211.933 | 936.652 | 4.445.652 | 779.727 | 1.080.544 | 0 |
+| SPEC-0041 | 0 | 879.973 | 1.728.261 | 1.585.278 | 545.015 | 549.806 | 0 |
 
 ## Eficiência de processo (overhead ÷ implementação)
 
@@ -133,11 +135,12 @@ Razão entre o custo de **processo** (todas as fases exceto Implementação — 
 | SPEC-0037 | 1.862.949 | 5.920.122 | 3.2× |
 | SPEC-0038 | 2.587.677 | 6.655.064 | 2.6× |
 | SPEC-0039 | 6.393.418 | 10.064.984 | 1.6× |
-| SPEC-0040 | 4.445.652 | 4.112.680 | 0.9× |
+| SPEC-0040 | 4.445.652 | 9.261.398 | 2.1× |
+| SPEC-0041 | 1.585.278 | 3.703.055 | 2.3× |
 
 ## Como estimar antes de começar uma SPEC nova
 
-- SPECs concluídas (`Done`) até agora: 37. Custo médio: **8.801.681 tokens efetivos**. Faixa observada: 2.795.790 – 35.026.030 tokens efetivos.
+- SPECs concluídas (`Done`) até agora: 38. Custo médio: **8.844.717 tokens efetivos**. Faixa observada: 2.795.790 – 35.026.030 tokens efetivos.
 
 - Compare a SPEC que você está prestes a começar com as mais parecidas em tamanho na tabela acima (número de itens em "Escopo"/"Critérios de Aceitação", quantidade de "Arquivos Esperados"). Uma SPEC do porte de uma linha já concluída tende a custar perto do que ela custou.
 - Se o consumo já acumulado na sessão atual (rode o relatório detalhado, `.claude/usage-report.md`) mais a estimativa da próxima SPEC passar perto do seu limite de janela, prefira parar num ponto de commit limpo e retomar na próxima sessão em vez de começar e arriscar cortar a implementação pela metade.

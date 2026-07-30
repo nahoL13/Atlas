@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { SpeechSynthesisPort, UtteranceSpec, VoiceInfo } from '../src/speech-output.js';
 import { createSpeechOutput } from '../src/speech-output.js';
 import { isPiperVoiceURI, piperModelIdOf, resolveVoiceBackend } from '../src/speech-output.js';
+import { isPiperOnlyMode, piperOnlyPreference } from '../src/speech-output.js';
 
 const LOCAL_VOICE_1: VoiceInfo = { voiceURI: 'local-1', name: 'Local Um', localService: true };
 const LOCAL_VOICE_2: VoiceInfo = { voiceURI: 'local-2', name: 'Local Dois', localService: true };
@@ -428,5 +429,217 @@ describe('resolveVoiceBackend (SPEC-0040, Decisão D8)', () => {
         }),
       ).toEqual({ backend: 'none' });
     });
+  });
+});
+
+describe('isPiperOnlyMode (SPEC-0041, Decisão D3)', () => {
+  it('critério 1: piperAvailable === true + catálogo não vazio ⇒ true', () => {
+    expect(isPiperOnlyMode({ piperAvailable: true, piperVoiceURIs: ['piper:a'] })).toBe(true);
+  });
+
+  it('critério 1: piperAvailable === true + catálogo vazio ⇒ false', () => {
+    expect(isPiperOnlyMode({ piperAvailable: true, piperVoiceURIs: [] })).toBe(false);
+  });
+
+  it('critério 1: catálogo não vazio + piperAvailable === false ⇒ false (arquivo do binário ausente)', () => {
+    expect(isPiperOnlyMode({ piperAvailable: false, piperVoiceURIs: ['piper:a'] })).toBe(false);
+  });
+
+  it('critério 1: piperAvailable === false + catálogo vazio ⇒ false', () => {
+    expect(isPiperOnlyMode({ piperAvailable: false, piperVoiceURIs: [] })).toBe(false);
+  });
+});
+
+describe('piperOnlyPreference (SPEC-0041, Decisão D2/D3)', () => {
+  const PIPER_A = 'piper:pt_BR-faber-medium';
+  const OS_A = 'os-voice-a';
+
+  it('critério 2: em modo Piper-only, preferência Piper existente é devolvida', () => {
+    expect(
+      piperOnlyPreference({
+        preferredVoiceURI: PIPER_A,
+        piperAvailable: true,
+        piperVoiceURIs: [PIPER_A],
+      }),
+    ).toBe(PIPER_A);
+  });
+
+  it('critério 2: em modo Piper-only, preferência de voz do SO ⇒ undefined', () => {
+    expect(
+      piperOnlyPreference({
+        preferredVoiceURI: OS_A,
+        piperAvailable: true,
+        piperVoiceURIs: [PIPER_A],
+      }),
+    ).toBeUndefined();
+  });
+
+  it('critério 2: em modo Piper-only, preferência string vazia ⇒ undefined', () => {
+    expect(
+      piperOnlyPreference({
+        preferredVoiceURI: '',
+        piperAvailable: true,
+        piperVoiceURIs: [PIPER_A],
+      }),
+    ).toBeUndefined();
+  });
+
+  it('critério 2: em modo Piper-only, preferência ausente (undefined) ⇒ undefined', () => {
+    expect(
+      piperOnlyPreference({
+        preferredVoiceURI: undefined,
+        piperAvailable: true,
+        piperVoiceURIs: [PIPER_A],
+      }),
+    ).toBeUndefined();
+  });
+
+  it('critério 3: catálogo Piper vazio, preferência de SO devolvida inalterada', () => {
+    expect(
+      piperOnlyPreference({
+        preferredVoiceURI: OS_A,
+        piperAvailable: true,
+        piperVoiceURIs: [],
+      }),
+    ).toBe(OS_A);
+  });
+
+  it('critério 3: catálogo Piper não vazio + piperAvailable === false, preferência de SO devolvida inalterada', () => {
+    expect(
+      piperOnlyPreference({
+        preferredVoiceURI: OS_A,
+        piperAvailable: false,
+        piperVoiceURIs: [PIPER_A],
+      }),
+    ).toBe(OS_A);
+  });
+
+  it('critério 4: nunca inventa uma voiceURI — devolve exatamente o valor recebido (piperOnlyPreference não valida contra o catálogo, isso é responsabilidade de resolveVoiceBackend)', () => {
+    expect(
+      piperOnlyPreference({
+        preferredVoiceURI: 'piper:nao-instalado',
+        piperAvailable: true,
+        piperVoiceURIs: ['piper:a'],
+      }),
+    ).toBe('piper:nao-instalado');
+  });
+
+  it('critério 4: nunca inventa uma voiceURI — voz do SO em modo Piper-only vira undefined, nunca outro valor', () => {
+    expect(
+      piperOnlyPreference({
+        preferredVoiceURI: OS_A,
+        piperAvailable: true,
+        piperVoiceURIs: [PIPER_A],
+      }),
+    ).toBeUndefined();
+  });
+});
+
+describe('composição piperOnlyPreference → resolveVoiceBackend (SPEC-0041, critério 5)', () => {
+  const PIPER_A = 'piper:pt_BR-faber-medium';
+  const OS_A = 'os-voice-a';
+
+  // `exactOptionalPropertyTypes: true` não aceita `preferredVoiceURI:
+  // undefined` explícito num campo opcional — espalha condicionalmente,
+  // mesma forma que `piperOnlyPreference` (`string | undefined`) devolve.
+  function withPreference(
+    preferredVoiceURI: string | undefined,
+  ): { preferredVoiceURI: string } | Record<string, never> {
+    return preferredVoiceURI !== undefined ? { preferredVoiceURI } : {};
+  }
+
+  it('(a) preferência Piper do catálogo + piperAvailable === true ⇒ piper com a voz preferida', () => {
+    const preferredVoiceURI = piperOnlyPreference({
+      preferredVoiceURI: PIPER_A,
+      piperAvailable: true,
+      piperVoiceURIs: [PIPER_A],
+    });
+    expect(
+      resolveVoiceBackend({
+        ...withPreference(preferredVoiceURI),
+        piperVoiceURIs: [PIPER_A],
+        localVoiceURIs: [OS_A],
+      }),
+    ).toEqual({ backend: 'piper', voiceURI: PIPER_A });
+  });
+
+  it('(b) preferência de voz do SO + piperAvailable === true ⇒ piper com o default Piper (mudança central da SPEC)', () => {
+    const preferredVoiceURI = piperOnlyPreference({
+      preferredVoiceURI: OS_A,
+      piperAvailable: true,
+      piperVoiceURIs: [PIPER_A],
+    });
+    expect(
+      resolveVoiceBackend({
+        ...withPreference(preferredVoiceURI),
+        piperVoiceURIs: [PIPER_A],
+        localVoiceURIs: [OS_A],
+        defaultPiperVoiceURI: PIPER_A,
+      }),
+    ).toEqual({ backend: 'piper', voiceURI: PIPER_A });
+  });
+
+  it('(c) catálogo Piper vazio + preferência de SO existente ⇒ os com a voz preferida', () => {
+    const preferredVoiceURI = piperOnlyPreference({
+      preferredVoiceURI: OS_A,
+      piperAvailable: false,
+      piperVoiceURIs: [],
+    });
+    expect(
+      resolveVoiceBackend({
+        ...withPreference(preferredVoiceURI),
+        piperVoiceURIs: [],
+        localVoiceURIs: [OS_A],
+      }),
+    ).toEqual({ backend: 'os', voiceURI: OS_A });
+  });
+
+  it('(d) sem modo Piper-only nem preferência válida ⇒ os com a 1ª voz local', () => {
+    const preferredVoiceURI = piperOnlyPreference({
+      preferredVoiceURI: undefined,
+      piperAvailable: false,
+      piperVoiceURIs: [],
+    });
+    expect(
+      resolveVoiceBackend({
+        ...withPreference(preferredVoiceURI),
+        piperVoiceURIs: [],
+        localVoiceURIs: [OS_A],
+      }),
+    ).toEqual({ backend: 'os', voiceURI: OS_A });
+  });
+
+  it('(e) sem voz alguma ⇒ none', () => {
+    const preferredVoiceURI = piperOnlyPreference({
+      preferredVoiceURI: undefined,
+      piperAvailable: false,
+      piperVoiceURIs: [],
+    });
+    expect(
+      resolveVoiceBackend({
+        ...withPreference(preferredVoiceURI),
+        piperVoiceURIs: [],
+        localVoiceURIs: [],
+      }),
+    ).toEqual({ backend: 'none' });
+  });
+
+  it('(f) catálogo Piper não vazio + piperAvailable === false, havendo voz local ⇒ os, preferência inalterada, catálogo oferecido vazio (achado A1)', () => {
+    const preferredVoiceURI = piperOnlyPreference({
+      preferredVoiceURI: OS_A,
+      piperAvailable: false,
+      piperVoiceURIs: [PIPER_A],
+    });
+    expect(preferredVoiceURI).toBe(OS_A);
+    // catálogo Piper OFERECIDO é vazio nesta combinação — simulado aqui
+    // passando piperVoiceURIs: [] a resolveVoiceBackend, exatamente como o
+    // renderer faria via `offeredPiperVoices()`.
+    expect(
+      resolveVoiceBackend({
+        ...withPreference(preferredVoiceURI),
+        piperVoiceURIs: [],
+        localVoiceURIs: [OS_A],
+      }),
+    ).toEqual({ backend: 'os', voiceURI: OS_A });
   });
 });
