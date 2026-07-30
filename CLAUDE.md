@@ -17,6 +17,8 @@ Project Atlas: plataforma de IA pessoal organizada como **monólito modular**, o
 
 **Nova sessão ou retomada de trabalho: leia `docs/05-context/NEXT_CONTEXT.md` antes de qualquer coisa.**
 
+**Disciplina de contexto (2026-07-30):** os documentos lidos no arranque de toda sessão e de todo subagent têm teto de tamanho, porque são relidos a cada requisição do agente e dominavam o custo em tokens do pipeline. `NEXT_CONTEXT.md` (~8 KB) responde só "o que fazer agora"; `LESSONS_LEARNED.md` (~25 KB) mantém as últimas 5 SPECs mais um índice de padrões recorrentes; `apps/desktop/CLAUDE.md` (~15 KB) descreve o estado atual do código, não o histórico. O conteúdo anterior está preservado sem edição em `NEXT_CONTEXT-ARCHIVE.md`, `LESSONS_LEARNED-ARCHIVE.md` e `apps/desktop/CLAUDE-ARCHIVE.md` — **arquivos de consulta sob demanda, nunca de arranque**. Ao fechar uma SPEC, o `spec-closer` acrescenta ao vivo e move o excedente para o arquivo; não deixe os vivos crescerem sem poda.
+
 ## Comandos
 
 - `pnpm install` — instala o workspace (Node ≥ 24, pnpm ≥ 11 via corepack)
@@ -77,7 +79,7 @@ Ideia → existe no PRD? → existe módulo responsável? → SPEC → implement
 | Workspace multi-projeto (atlas-core, atlas-desktop...) e dependências entre projetos | `docs/03-architecture/WorkspaceStrategy.md` |
 | Processo oficial de desenvolvimento e SPECs | `docs/04-engineering/DevelopmentGuide.md` |
 | Escrever uma nova SPEC | `docs/implementation/templates/SPEC-TEMPLATE.md` |
-| Concluir uma SPEC; consultar aprendizados de SPECs anteriores | `docs/implementation/LESSONS_LEARNED.md` |
+| Concluir uma SPEC; consultar aprendizados recentes e padrões recorrentes | `docs/implementation/LESSONS_LEARNED.md` (últimas 5 SPECs; anteriores em `LESSONS_LEARNED-ARCHIVE.md`) |
 | Subagents (`spec-drafter`/`spec-implementer`/`spec-validator`), skills, hooks e log de custo de token por SPEC no Claude Code | `docs/04-engineering/ClaudeCodeAutomation.md` |
 | Macro-fases de longo prazo (Núcleo completo → Interface `apps/desktop` → Expansão), sem datas; qual fase uma ideia nova pertence | `docs/04-engineering/Roadmap.md` |
 | Entry point para humanos; ordem de leitura em camadas | `PROJECT.md` |

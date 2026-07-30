@@ -48,11 +48,30 @@ Reconstrua o que foi **de fato** entregue, não o que a SPEC prometia:
 2. **`CLAUDE.md` dos packages tocados**: cada package tem o seu; descreva a
    API nova ou alterada do ponto de vista de quem vai consumi-la.
 
-3. **`docs/05-context/NEXT_CONTEXT.md`**: nova entrada no **topo** de
-   "Estado Imediato", no padrão das existentes — Status com data de
-   fechamento, o que foi entregue (packages, APIs, configs, CLI),
-   o que ficou documentado como fora de escopo. Atualize o campo
-   "Atualizado em" no cabeçalho.
+   **Escreva estado atual, não changelog.** Um `CLAUDE.md` de package é um guia
+   de "como isto funciona hoje e que regras valem", organizado **por assunto**.
+   Não acrescente uma seção nova por SPEC — integre a mudança na seção do
+   assunto que ela toca, e **remova o que ela tornou obsoleto**. Foi a
+   acumulação de uma seção por SPEC que fez `apps/desktop/CLAUDE.md` chegar a
+   49 KB, maior que o `CLAUDE.md` da raiz. Esses arquivos entram no contexto
+   automaticamente quando um agente toca o diretório: mantenha abaixo de ~15 KB.
+
+3. **`docs/05-context/NEXT_CONTEXT.md`** — **teto de ~8 KB, respeite-o.**
+   Este arquivo é relido no arranque de toda sessão e de todo subagent; deixá-lo
+   crescer é o que dominou o custo em tokens do pipeline até 2026-07-30.
+   - "Estado Imediato" mantém **no máximo as 3 últimas SPECs**, em **2–4 linhas
+     cada** — o que mudou e o que isso habilita, não a narrativa do gate nem a
+     lista de achados. Ao adicionar a nova no topo, **remova a quarta**: o
+     detalhe já vive na SPEC e no `PLATFORM_STATE.md`.
+   - Atualize "Próximo Trabalho" **removendo** os candidatos que esta SPEC
+     entregou, em vez de riscá-los com `~~texto~~`. O acumulado de itens
+     riscados é peso morto.
+   - Nunca acrescente recapitulação histórica ("a fundação, a SPEC-X, a
+     SPEC-Y… estão entregues"). Esse é o papel do `PLATFORM_STATE.md`.
+   - Atualize o campo "Atualizado em" no cabeçalho.
+   - Se o arquivo passar de ~8 KB depois da sua edição, **pode mais** antes de
+     seguir. O histórico congelado está em `NEXT_CONTEXT-ARCHIVE.md`, que
+     **não** recebe conteúdo novo.
 
 4. **`docs/05-context/CURRENT_SPRINT.md`**: linha da SPEC na tabela com o
    Status novo (adicione a linha se a SPEC ainda não está lá). Atualize

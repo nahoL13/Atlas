@@ -25,6 +25,17 @@ de marcar a SPEC como `Done`.
    - Lições são **fatos observados**, não opiniões.
    - Novas entradas vão **no topo do Registro**; nunca reescreva entradas
      antigas.
+   - **Rotação obrigatória (2026-07-30):** o Registro vivo mantém as
+     **últimas 5 SPECs**. Depois de escrever a entrada nova no topo, **mova a
+     6ª (a mais antiga do vivo) para o fim da seção "Registro — Arquivo" em
+     `docs/implementation/LESSONS_LEARNED-ARCHIVE.md`**, recortada e colada sem
+     nenhuma edição (a regra "nunca reescreva entradas antigas" continua
+     intacta — o texto é realocado, não alterado). O arquivo vivo é relido no
+     arranque de quase todo subagent; sem a rotação ele volta a dominar o custo
+     em tokens do pipeline.
+   - Se a lição que você registrou repete um padrão já visto em 3+ SPECs,
+     acrescente ou atualize a linha correspondente na seção **"Padrões
+     Recorrentes"** do topo do arquivo vivo — é ela que sobrevive à rotação.
    - Todo item em "Precisamos mudar" precisa de um encaminhamento concreto:
      um ADR novo/atualizado em `docs/06-adr/`, uma atualização de
      documentação, ou uma nova SPEC. Nada pode ficar solto.
