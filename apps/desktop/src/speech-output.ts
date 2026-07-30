@@ -19,7 +19,16 @@
  * uma voz de rede. A garantia depende de o SO/navegador reportar
  * `localService` corretamente (ver Observações da SPEC-0036); dada essa
  * ressalva, o módulo nunca faz nenhuma chamada de rede por si.
+ *
+ * SPEC-0040 (ADR-0021) estendeu este módulo com helpers puros de
+ * **roteamento** — `isPiperVoiceURI`/`piperModelIdOf`/`resolveVoiceBackend`
+ * — que decidem a *origem* da fala (Piper neural local vs. voz do SO), sem
+ * alterar `createSpeechOutput` em nenhum comportamento: no ramo `'os'` do
+ * roteamento, `createSpeechOutput`/`preferredVoiceURI` continua sendo o
+ * resolvedor autoritativo de qual voz do SO usar (Decisão D16).
  */
+
+import { PIPER_VOICE_PREFIX } from './piper-tts.js';
 
 /**
  * Projeção mínima e estrutural de `SpeechSynthesisVoice` de que este módulo
@@ -156,4 +165,67 @@ export function createSpeechOutput(deps: {
       return hasLocalVoice(synth);
     },
   };
+}
+
+/**
+ * Roteamento de voz (SPEC-0040, ADR-0021) — funções puras, sem efeito
+ * colateral, que decidem só a **origem** da fala (Piper neural local vs.
+ * voz do SO), nunca a voz do SO em si (isso continua sendo
+ * `createSpeechOutput`, D16).
+ */
+
+/** Reconhece um `voiceURI` de modelo Piper (`piper:<id>`); qualquer outro valor é voz do SO. */
+export function isPiperVoiceURI(voiceURI: string): boolean {
+  return typeof voiceURI === 'string' && voiceURI.startsWith(PIPER_VOICE_PREFIX);
+}
+
+/** Desmonta o identificador de modelo de um `voiceURI` Piper; `undefined` para voz do SO. */
+export function piperModelIdOf(voiceURI: string): string | undefined {
+  return isPiperVoiceURI(voiceURI) ? voiceURI.slice(PIPER_VOICE_PREFIX.length) : undefined;
+}
+
+export interface ResolveVoiceBackendInput {
+  /** `Persona.voiceURI` ativa — pode ser um `piper:<id>` ou o `voiceURI` de uma voz de SO. */
+  readonly preferredVoiceURI?: string;
+  readonly piperVoiceURIs: readonly string[];
+  readonly localVoiceURIs: readonly string[];
+  /** Default de modelo Piper (Decisão D9), já resolvido pelo chamador. */
+  readonly defaultPiperVoiceURI?: string;
+}
+
+export type VoiceBackendResolution =
+  | { readonly backend: 'piper'; readonly voiceURI: string }
+  | { readonly backend: 'os'; readonly voiceURI: string }
+  | { readonly backend: 'none' };
+
+/**
+ * Cadeia de fallback da Decisão D8, nesta ordem exata: preferida Piper
+ * existente ⇒ `piper`; preferida do SO existente ⇒ `os`; preferida
+ * ausente/inexistente com default Piper disponível ⇒ `piper` (default); sem
+ * Piper nenhum ⇒ `os` (1ª voz local); sem voz alguma ⇒ `none`. Nunca devolve
+ * uma `voiceURI` ausente das listas recebidas — nenhuma voz de rede, nenhum
+ * palpite.
+ */
+export function resolveVoiceBackend(input: ResolveVoiceBackendInput): VoiceBackendResolution {
+  const { preferredVoiceURI, piperVoiceURIs, localVoiceURIs, defaultPiperVoiceURI } = input;
+
+  if (preferredVoiceURI !== undefined) {
+    if (piperVoiceURIs.includes(preferredVoiceURI)) {
+      return { backend: 'piper', voiceURI: preferredVoiceURI };
+    }
+    if (localVoiceURIs.includes(preferredVoiceURI)) {
+      return { backend: 'os', voiceURI: preferredVoiceURI };
+    }
+  }
+
+  if (defaultPiperVoiceURI !== undefined && piperVoiceURIs.includes(defaultPiperVoiceURI)) {
+    return { backend: 'piper', voiceURI: defaultPiperVoiceURI };
+  }
+
+  const firstLocalVoiceURI = localVoiceURIs[0];
+  if (firstLocalVoiceURI !== undefined) {
+    return { backend: 'os', voiceURI: firstLocalVoiceURI };
+  }
+
+  return { backend: 'none' };
 }

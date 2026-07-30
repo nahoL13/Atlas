@@ -1,5 +1,10 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { spawn as nodeSpawn } from 'node:child_process';
+import { access, readFile, readdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { createInterface } from 'node:readline';
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import {
   closeChatSession,
@@ -22,6 +27,8 @@ import type { PermissionRoots } from './core-bridge.js';
 import { createDialogConfirmPort } from './confirm-port.js';
 import { createGrantConfirmDialog } from './permission-grant-dialog.js';
 import { createPersonaDeleteDialog } from './persona-delete-dialog.js';
+import { createPiperTts } from './piper-tts.js';
+import type { PiperFsPort, PiperPaths, SpawnPiper } from './piper-tts.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -44,6 +51,102 @@ const confirmGrant = createGrantConfirmDialog({
 // mesma razão de `dialog.showMessageBox` só existir no main process.
 const confirmDelete = createPersonaDeleteDialog({
   showMessageBox: (options) => dialog.showMessageBox(options),
+});
+
+// Piper (SPEC-0040, ADR-0021): motor de TTS neural local, subprocesso de
+// longa duração só no main process — `piper-tts.ts` nunca importa
+// `electron` nem conhece caminho real algum (portas injetadas aqui).
+
+/** Porta de IO real sobre `node:fs/promises` — sem disco real nos testes de `piper-tts.ts`. */
+function nodePiperFsPort(): PiperFsPort {
+  return {
+    listDir: (dir) => readdir(dir),
+    readText: (path) => readFile(path, 'utf8'),
+    readBytes: async (path) => new Uint8Array(await readFile(path)),
+    remove: (path) => rm(path, { force: true }),
+    exists: async (path) => {
+      try {
+        await access(path);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  };
+}
+
+/**
+ * Sobe o binário Piper sempre por argv array (nunca `shell: true`, D12) —
+ * mesmo padrão de `packages/tools/src/git-port.ts`. `stdin`/`stdout` em modo
+ * texto por linha (D4); `stderr` é drenado e ignorado (nunca sinal de
+ * conclusão nem erro fatal).
+ */
+function nodeSpawnPiper(): SpawnPiper {
+  return (command, args) => {
+    const child = nodeSpawn(command, [...args], { stdio: ['pipe', 'pipe', 'pipe'] });
+    const stdoutListeners: Array<(line: string) => void> = [];
+    const exitListeners: Array<(code: number | null) => void> = [];
+
+    if (child.stdout !== null) {
+      const rl = createInterface({ input: child.stdout });
+      rl.on('line', (line) => {
+        for (const cb of stdoutListeners) cb(line);
+      });
+    }
+    child.stderr?.resume();
+    child.on('exit', (code) => {
+      for (const cb of exitListeners) cb(code);
+    });
+
+    return {
+      writeLine: (line) => {
+        child.stdin?.write(`${line}\n`);
+      },
+      onStdoutLine: (cb) => {
+        stdoutListeners.push(cb);
+      },
+      onExit: (cb) => {
+        exitListeners.push(cb);
+      },
+      kill: () => {
+        child.kill();
+      },
+    };
+  };
+}
+
+/** Nome do binário Piper por plataforma (D4: `piper`/`piper.exe`). */
+function piperBinaryName(): string {
+  return process.platform === 'win32' ? 'piper.exe' : 'piper';
+}
+
+/**
+ * Resolução dos recursos em três níveis (D10): `ATLAS_PIPER_DIR` →
+ * `process.resourcesPath/piper` quando empacotado → `resources/piper` em
+ * desenvolvimento. Nenhum download, em runtime ou não — assets fora do git.
+ */
+function resolvePiperDir(): string {
+  const envDir = process.env['ATLAS_PIPER_DIR'];
+  if (envDir !== undefined && envDir.trim() !== '') {
+    return envDir;
+  }
+  if (app.isPackaged) {
+    return join(process.resourcesPath, 'piper');
+  }
+  return join(__dirname, '..', 'resources', 'piper');
+}
+
+function resolvePiperPaths(): PiperPaths {
+  const dir = resolvePiperDir();
+  return { binary: join(dir, piperBinaryName()), modelsDir: join(dir, 'voices') };
+}
+
+const piperTts = createPiperTts({
+  fs: nodePiperFsPort(),
+  spawn: nodeSpawnPiper(),
+  tmpDir: () => tmpdir(),
+  randomId: () => randomUUID(),
+  paths: resolvePiperPaths(),
 });
 
 function createWindow(): void {
@@ -95,6 +198,14 @@ ipcMain.handle('atlas:persona:update', async (_event, id: string, input: Persona
 ipcMain.handle('atlas:persona:delete', (_event, id: string) =>
   deletePersona(id, { confirmDelete }),
 );
+
+ipcMain.handle('atlas:tts:voices', () => piperTts.listVoices());
+ipcMain.handle('atlas:tts:speak', (_event, request: { text: string; voiceURI: string }) =>
+  piperTts.synthesize(request.text, request.voiceURI),
+);
+ipcMain.handle('atlas:tts:cancel', () => {
+  piperTts.cancel();
+});
 
 ipcMain.handle('atlas:permissions:select', async (_event, roots: PermissionRoots) => {
   const selection = await selectPermissionRoots(roots, { confirmGrant });
@@ -152,7 +263,7 @@ void app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  void closeAllChatSessions().finally(() => {
+  void Promise.all([closeAllChatSessions(), piperTts.shutdown()]).finally(() => {
     if (process.platform !== 'darwin') {
       app.quit();
     }
@@ -161,4 +272,5 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   void closeAllChatSessions();
+  void piperTts.shutdown();
 });

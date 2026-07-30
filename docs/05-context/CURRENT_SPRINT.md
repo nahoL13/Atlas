@@ -2,7 +2,7 @@
 
 > **Project Atlas — Estado do Trabalho Atual**
 
-Atualizado em: 2026-07-29 (SPEC-0039)
+Atualizado em: 2026-07-29 (SPEC-0040)
 
 ---
 
@@ -51,5 +51,6 @@ Objetivo: plataforma mínima operável + primeira interface executável (CLI) + 
 | [SPEC-0037](../implementation/specs/SPEC-0037-desktop-runtime-persona-switch.md) | Desktop: seleção e troca de Persona em runtime pela interface gráfica (`listPersonas`/`selectPersona`, re-export de catálogo em `@atlas/core`, ADR-0003 preservado); segunda das três linhas do item 2.4, troca encerra sessões de chat vivas | Done |
 | [SPEC-0038](../implementation/specs/SPEC-0038-desktop-permission-roots-gui.md) | Desktop: configuração de permissões (`readRoots`/`writeRoots`) pela interface gráfica (`selectPermissionRoots`/`GrantConfirmPort` de concessão, fail-closed, rastreio generalizado de operação em voo); terceira e última linha do item 2.4 — **fecha o item por inteiro** | Done |
 | [SPEC-0039](../implementation/specs/SPEC-0039-desktop-persona-authoring.md) | Desktop: CRUD de Personas custom pela interface gráfica (formulário com os 8 campos de `Persona`, `PersonaStorage` injetável no molde do ADR-0011, `Persona.voiceURI?` vinculado ao TTS com fallback fail-closed); consome o ADR-0020 (novo, Accepted); estende a linha de Persona do item 2.4 (já fechado por inteiro) | Done |
+| [SPEC-0040](../implementation/specs/SPEC-0040-desktop-piper-neural-tts.md) | Desktop: Piper como motor de TTS neural local (`piper-tts.ts`, processo de longa duração, contrato de invocação pinado v1.2.0), `resolveVoiceBackend` com fallback fail-closed para a Web Speech API das SPECs 0035/0036; consome o ADR-0021 (novo, Accepted); continua o item 2.3 Voz (critério 25 pendente de verificação humana) | Done |
 
 Detalhes de retomada: `docs/05-context/NEXT_CONTEXT.md`.

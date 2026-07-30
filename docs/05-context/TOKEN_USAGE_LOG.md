@@ -51,7 +51,8 @@ Este documento existe para responder, antes de começar a implementar uma SPEC, 
 | SPEC-0036 | Desktop: TTS 100% offline garantido — restringir a saída de voz a vozes locais do SO (`localService === true`) | Done | 2 | 2026-07-25 | 10.310.405 | 2.795.790 |
 | SPEC-0037 | Desktop: seleção e troca de Persona em runtime pela interface gráfica — escolher entre as Personas disponíveis (`jarvis`/`neutral`) sem reiniciar a app nem passar flag/env | Done | 2 | 2026-07-28 | 36.474.501 | 7.783.071 |
 | SPEC-0038 | Desktop: configuração de permissões de sistema de arquivos (`readRoots`/`writeRoots`) pela interface gráfica — ver as raízes configuradas e alterá-las em runtime, sem flag/env, com concessão de escrita sob consentimento explícito de política | Done | 2 | 2026-07-29 | 43.084.519 | 9.242.741 |
-| SPEC-0039 | Desktop: CRUD de Personas custom pela interface gráfica — formulário completo (paridade com os 8 campos de `Persona`), persistência em arquivo JSON atrás de porta injetável no Persona Service, e vínculo real entre a voz escolhida e o TTS | Done | 1 | 2026-07-29 | 87.975.888 | 14.029.644 |
+| SPEC-0039 | Desktop: CRUD de Personas custom pela interface gráfica — formulário completo (paridade com os 8 campos de `Persona`), persistência em arquivo JSON atrás de porta injetável no Persona Service, e vínculo real entre a voz escolhida e o TTS | Done | 2 | 2026-07-29 | 98.554.284 | 16.458.402 |
+| SPEC-0040 | Desktop: integrar o Piper (TTS neural 100% local) como primeira camada de saída de voz — subprocesso de longa duração no main process, catálogo de vozes PT-BR empacotadas, playback por `<audio>` no renderer, e a Web Speech API das SPECs 0035/0036 preservada como fallback fail-closed | Done | 1 | 2026-07-30 | 48.791.231 | 8.558.332 |
 
 ## Detalhamento por fase
 
@@ -96,7 +97,8 @@ Fase = qual agente fez o trabalho. **Criação/Decisão** é o que roda no **fio
 | SPEC-0036 | 1.091.068 | 0 | 381.649 | 292.041 | 203.397 | 827.635 | 0 |
 | SPEC-0037 | 1.188.580 | 771.603 | 1.107.507 | 1.862.949 | 686.605 | 1.021.702 | 1.144.125 |
 | SPEC-0038 | 1.630.767 | 2.028.166 | 1.111.420 | 2.587.677 | 621.628 | 1.263.083 | 0 |
-| SPEC-0039 | 3.031.432 | 1.027.841 | 2.152.287 | 6.393.418 | 1.069.167 | 355.499 | 0 |
+| SPEC-0039 | 3.526.489 | 1.698.410 | 2.152.287 | 6.393.418 | 1.069.167 | 1.618.631 | 0 |
+| SPEC-0040 | 1.617.382 | 739.605 | 936.652 | 4.445.652 | 779.727 | 39.314 | 0 |
 
 ## Eficiência de processo (overhead ÷ implementação)
 
@@ -130,11 +132,12 @@ Razão entre o custo de **processo** (todas as fases exceto Implementação — 
 | SPEC-0036 | 292.041 | 2.503.749 | 8.6× |
 | SPEC-0037 | 1.862.949 | 5.920.122 | 3.2× |
 | SPEC-0038 | 2.587.677 | 6.655.064 | 2.6× |
-| SPEC-0039 | 6.393.418 | 7.636.226 | 1.2× |
+| SPEC-0039 | 6.393.418 | 10.064.984 | 1.6× |
+| SPEC-0040 | 4.445.652 | 4.112.680 | 0.9× |
 
 ## Como estimar antes de começar uma SPEC nova
 
-- SPECs concluídas (`Done`) até agora: 36. Custo médio: **8.740.975 tokens efetivos**. Faixa observada: 2.795.790 – 35.026.030 tokens efetivos.
+- SPECs concluídas (`Done`) até agora: 37. Custo médio: **8.801.681 tokens efetivos**. Faixa observada: 2.795.790 – 35.026.030 tokens efetivos.
 
 - Compare a SPEC que você está prestes a começar com as mais parecidas em tamanho na tabela acima (número de itens em "Escopo"/"Critérios de Aceitação", quantidade de "Arquivos Esperados"). Uma SPEC do porte de uma linha já concluída tende a custar perto do que ela custou.
 - Se o consumo já acumulado na sessão atual (rode o relatório detalhado, `.claude/usage-report.md`) mais a estimativa da próxima SPEC passar perto do seu limite de janela, prefira parar num ponto de commit limpo e retomar na próxima sessão em vez de começar e arriscar cortar a implementação pela metade.

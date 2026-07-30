@@ -18,3 +18,8 @@ docs/.obsidian/cache
 # scripts/claude-usage-report.py: relatório pessoal gerado a partir de
 # transcripts locais (~/.claude/projects/...), não é documentação do Atlas
 .claude/usage-report.md
+
+# Piper (SPEC-0040, ADR-0021): binário + modelos de voz não são versionados
+# (Decisão D10) — só o contrato de layout (README.md) fica no git.
+apps/desktop/resources/piper/*
+!apps/desktop/resources/piper/README.md

@@ -23,4 +23,9 @@ contextBridge.exposeInMainWorld('atlas', {
   permissions: {
     select: (roots) => ipcRenderer.invoke('atlas:permissions:select', roots),
   },
+  tts: {
+    voices: () => ipcRenderer.invoke('atlas:tts:voices'),
+    speak: (text, voiceURI) => ipcRenderer.invoke('atlas:tts:speak', { text, voiceURI }),
+    cancel: () => ipcRenderer.invoke('atlas:tts:cancel'),
+  },
 });

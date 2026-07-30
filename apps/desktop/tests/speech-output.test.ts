@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { SpeechSynthesisPort, UtteranceSpec, VoiceInfo } from '../src/speech-output.js';
 import { createSpeechOutput } from '../src/speech-output.js';
+import { isPiperVoiceURI, piperModelIdOf, resolveVoiceBackend } from '../src/speech-output.js';
 
 const LOCAL_VOICE_1: VoiceInfo = { voiceURI: 'local-1', name: 'Local Um', localService: true };
 const LOCAL_VOICE_2: VoiceInfo = { voiceURI: 'local-2', name: 'Local Dois', localService: true };
@@ -216,6 +217,216 @@ describe('createSpeechOutput', () => {
       current = 'local-2';
       output.speak('segundo');
       expect(synth.speak).toHaveBeenLastCalledWith({ text: 'segundo', voiceURI: 'local-2' });
+    });
+  });
+});
+
+describe('isPiperVoiceURI / piperModelIdOf (SPEC-0040, ADR-0021(d))', () => {
+  it('critério 17: reconhece piper:<id> e desmonta o id', () => {
+    expect(isPiperVoiceURI('piper:pt_BR-faber-medium')).toBe(true);
+    expect(piperModelIdOf('piper:pt_BR-faber-medium')).toBe('pt_BR-faber-medium');
+  });
+
+  it('critério 17: trata qualquer outro valor como voz do SO', () => {
+    expect(isPiperVoiceURI('com.apple.voice.compact.pt-BR.Luciana')).toBe(false);
+    expect(isPiperVoiceURI('')).toBe(false);
+    expect(piperModelIdOf('com.apple.voice.compact.pt-BR.Luciana')).toBeUndefined();
+    expect(piperModelIdOf('')).toBeUndefined();
+  });
+});
+
+describe('resolveVoiceBackend (SPEC-0040, Decisão D8)', () => {
+  const PIPER_A = 'piper:pt_BR-faber-medium';
+  const PIPER_B = 'piper:pt_BR-outro-medium';
+  const OS_A = 'os-voice-a';
+  const OS_B = 'os-voice-b';
+
+  it('critério 18: preferida Piper existente ⇒ piper', () => {
+    expect(
+      resolveVoiceBackend({
+        preferredVoiceURI: PIPER_A,
+        piperVoiceURIs: [PIPER_A, PIPER_B],
+        localVoiceURIs: [OS_A],
+        defaultPiperVoiceURI: PIPER_B,
+      }),
+    ).toEqual({ backend: 'piper', voiceURI: PIPER_A });
+  });
+
+  it('critério 18: preferida do SO existente ⇒ os', () => {
+    expect(
+      resolveVoiceBackend({
+        preferredVoiceURI: OS_A,
+        piperVoiceURIs: [PIPER_A],
+        localVoiceURIs: [OS_A, OS_B],
+        defaultPiperVoiceURI: PIPER_A,
+      }),
+    ).toEqual({ backend: 'os', voiceURI: OS_A });
+  });
+
+  it('critério 18: preferida ausente, com default Piper disponível ⇒ piper (default)', () => {
+    expect(
+      resolveVoiceBackend({
+        piperVoiceURIs: [PIPER_A],
+        localVoiceURIs: [OS_A],
+        defaultPiperVoiceURI: PIPER_A,
+      }),
+    ).toEqual({ backend: 'piper', voiceURI: PIPER_A });
+  });
+
+  it('critério 18: preferida inexistente nas duas listas, com default Piper disponível ⇒ piper (default)', () => {
+    expect(
+      resolveVoiceBackend({
+        preferredVoiceURI: 'nao-existe-em-lugar-nenhum',
+        piperVoiceURIs: [PIPER_A],
+        localVoiceURIs: [OS_A],
+        defaultPiperVoiceURI: PIPER_A,
+      }),
+    ).toEqual({ backend: 'piper', voiceURI: PIPER_A });
+  });
+
+  it('critério 18: sem Piper nenhum (catálogo vazio ou default indisponível) ⇒ os (1ª voz local)', () => {
+    expect(
+      resolveVoiceBackend({
+        piperVoiceURIs: [],
+        localVoiceURIs: [OS_A, OS_B],
+      }),
+    ).toEqual({ backend: 'os', voiceURI: OS_A });
+  });
+
+  it('critério 18: sem voz alguma ⇒ none', () => {
+    expect(
+      resolveVoiceBackend({
+        piperVoiceURIs: [],
+        localVoiceURIs: [],
+      }),
+    ).toEqual({ backend: 'none' });
+  });
+
+  it('critério 19: nunca devolve uma voiceURI ausente das listas recebidas — defaultPiperVoiceURI "fantasma" é ignorado', () => {
+    const result = resolveVoiceBackend({
+      piperVoiceURIs: [],
+      localVoiceURIs: [OS_A],
+      defaultPiperVoiceURI: 'piper:nao-instalado',
+    });
+    expect(result).toEqual({ backend: 'os', voiceURI: OS_A });
+  });
+
+  it('critério 19: preferredVoiceURI "fantasma" nunca é devolvido sem existir em nenhuma lista', () => {
+    const result = resolveVoiceBackend({
+      preferredVoiceURI: 'piper:nao-instalado',
+      piperVoiceURIs: [],
+      localVoiceURIs: [],
+    });
+    expect(result).toEqual({ backend: 'none' });
+  });
+
+  describe('critério 20: concordância com createSpeechOutput no ramo `os` (D16)', () => {
+    // `createSpeechOutput` é a fonte de verdade de QUAL voz do SO falar;
+    // `resolveVoiceBackend` só escolhe a ORIGEM ('piper'/'os'/'none'). Este
+    // bloco prova que, nos três casos relevantes, a `voiceURI` que
+    // `resolveVoiceBackend` devolve no ramo 'os' é IGUAL à `voiceURI` que
+    // `createSpeechOutput` carimba no `UtteranceSpec` entregue ao `synth`
+    // fake, com o mesmo conjunto de vozes e a mesma preferência.
+    const LOCAL_1: VoiceInfo = { voiceURI: 'local-1', name: 'Local Um', localService: true };
+    const LOCAL_2: VoiceInfo = { voiceURI: 'local-2', name: 'Local Dois', localService: true };
+
+    function fakeSynthWith(voices: readonly VoiceInfo[]): SpeechSynthesisPort {
+      let speakSpec: UtteranceSpec | undefined;
+      return {
+        speak: (spec: UtteranceSpec) => {
+          speakSpec = spec;
+        },
+        cancel: vi.fn(),
+        getVoices: () => voices,
+        // Exposição de teste, fora da interface pública, para inspeção.
+        // (armazenado via closure, lido abaixo por referência de objeto)
+        get _lastSpec() {
+          return speakSpec;
+        },
+      } as unknown as SpeechSynthesisPort;
+    }
+
+    it('preferência apontando para voz local existente', () => {
+      const synth = fakeSynthWith([LOCAL_1, LOCAL_2]) as unknown as SpeechSynthesisPort & {
+        _lastSpec?: UtteranceSpec;
+      };
+      const output = createSpeechOutput({ synth, preferredVoiceURI: () => 'local-2' });
+      output.speak('olá');
+
+      const backendResult = resolveVoiceBackend({
+        preferredVoiceURI: 'local-2',
+        piperVoiceURIs: [],
+        localVoiceURIs: [LOCAL_1.voiceURI, LOCAL_2.voiceURI],
+      });
+
+      expect(backendResult).toEqual({ backend: 'os', voiceURI: 'local-2' });
+      expect(synth._lastSpec?.voiceURI).toBe('local-2');
+      expect(backendResult).toMatchObject({ voiceURI: synth._lastSpec?.voiceURI });
+    });
+
+    it('preferência ausente', () => {
+      const synth = fakeSynthWith([LOCAL_1, LOCAL_2]) as unknown as SpeechSynthesisPort & {
+        _lastSpec?: UtteranceSpec;
+      };
+      const output = createSpeechOutput({ synth });
+      output.speak('olá');
+
+      const backendResult = resolveVoiceBackend({
+        piperVoiceURIs: [],
+        localVoiceURIs: [LOCAL_1.voiceURI, LOCAL_2.voiceURI],
+      });
+
+      expect(backendResult).toEqual({ backend: 'os', voiceURI: 'local-1' });
+      expect(synth._lastSpec?.voiceURI).toBe('local-1');
+      expect(backendResult).toMatchObject({ voiceURI: synth._lastSpec?.voiceURI });
+    });
+
+    it('preferência apontando para voz inexistente/não-local', () => {
+      const synth = fakeSynthWith([LOCAL_1, LOCAL_2]) as unknown as SpeechSynthesisPort & {
+        _lastSpec?: UtteranceSpec;
+      };
+      const output = createSpeechOutput({ synth, preferredVoiceURI: () => 'nao-existe' });
+      output.speak('olá');
+
+      const backendResult = resolveVoiceBackend({
+        preferredVoiceURI: 'nao-existe',
+        piperVoiceURIs: [],
+        localVoiceURIs: [LOCAL_1.voiceURI, LOCAL_2.voiceURI],
+      });
+
+      expect(backendResult).toEqual({ backend: 'os', voiceURI: 'local-1' });
+      expect(synth._lastSpec?.voiceURI).toBe('local-1');
+      expect(backendResult).toMatchObject({ voiceURI: synth._lastSpec?.voiceURI });
+    });
+  });
+
+  describe('critério 21: catálogo Piper vazio — mesmo desfecho do comportamento pré-SPEC-0040', () => {
+    it('catálogo Piper vazio + preferência de SO existente ⇒ os com a voz preferida', () => {
+      expect(
+        resolveVoiceBackend({
+          preferredVoiceURI: OS_A,
+          piperVoiceURIs: [],
+          localVoiceURIs: [OS_A, OS_B],
+        }),
+      ).toEqual({ backend: 'os', voiceURI: OS_A });
+    });
+
+    it('catálogo Piper vazio + preferência ausente ⇒ os com a 1ª voz local', () => {
+      expect(
+        resolveVoiceBackend({
+          piperVoiceURIs: [],
+          localVoiceURIs: [OS_A, OS_B],
+        }),
+      ).toEqual({ backend: 'os', voiceURI: OS_A });
+    });
+
+    it('catálogo Piper vazio + nenhuma voz ⇒ none', () => {
+      expect(
+        resolveVoiceBackend({
+          piperVoiceURIs: [],
+          localVoiceURIs: [],
+        }),
+      ).toEqual({ backend: 'none' });
     });
   });
 });
