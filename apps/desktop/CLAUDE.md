@@ -110,14 +110,17 @@ Em `deletePersona`, as validações (embutida/inexistente/ativa) correm **antes*
 - `preferredVoiceURI` é um **provider amostrado a cada `speak`** (molde do `memoryPrompt` da SPEC-0021), não fixado no construtor — trocar de Persona muda a voz sem recriar o objeto.
 - `resolveVoiceBackend(...)` decide só a **origem** (`'piper' | 'os' | 'none'`). Cadeia: voz preferida da Persona → default Piper → 1ª voz local do SO → mudo.
 - `isPiperOnlyMode` / `piperOnlyPreference` — camada **antes** de `resolveVoiceBackend`, que fica intocada.
+- `resolvePersistedVoiceSelection(...)` (SPEC-0043) — classifica uma `Persona.voiceURI` persistida em 4 desfechos exaustivos, composta **sobre** `piperOnlyPreference`: `none` (ausente), `available` (ofertada), `dropped` (descartada por política Piper-only, D6/D12 da SPEC-0041 — substituição anunciada), `retained` (ainda honrada pela política, só não ofertável agora por ambiente — Piper indisponível, modelo ausente, voz do SO desinstalada). Nunca inventa uma `voiceURI`.
 
 ### Modo Piper-only
 
-Com `PiperTts.isAvailable()` verdadeiro **e** catálogo não vazio, o `<select>` de Persona lista **só** vozes Piper, e uma `voiceURI` de SO já persistida deixa de ser honrada (com aviso visível ao editar a Persona). Sem Piper, volta ao modo degradado com as vozes do SO.
+Com `PiperTts.isAvailable()` verdadeiro **e** catálogo não vazio, o `<select>` de Persona lista **só** vozes Piper, e uma `voiceURI` de SO já persistida deixa de ser honrada (com aviso visível ao editar a Persona, desfecho `dropped`). Sem Piper, volta ao modo degradado com as vozes do SO.
 
 **A Web Speech API nunca é removida** (ADR-0021(c)): deixa de ser escolhível, mas segue como rede de segurança interna e invisível em qualquer falha de síntese.
 
 **Residual conhecido, aceito por decisão explícita do usuário:** `isAvailable()` prova presença do **arquivo** do binário + catálogo não vazio, **não** que o binário execute. Binário presente mas inexecutável ⇒ modo Piper-only com "Testar voz" mudo ("🔊 Ouvir" continua falando pelo fallback interno). Nenhuma sonda ativa foi adicionada.
+
+**Preservação de `voiceURI` retida (SPEC-0043):** desfecho `retained` (não ofertável só por ambiente, ainda honrada pela política) aparece no `<select>` como `<option>` extra, selecionada e rotulada "Voz salva (indisponível agora)", aviso ao lado explicando que salvar preserva o valor. "Testar voz" desabilitado sobre ela (nunca ativo-porém-mudo, achado A2 da SPEC-0035).
 
 ### `src/piper-tts.ts` — contrato pinado como dado da SPEC
 
@@ -141,7 +144,7 @@ Paths resolvidos em 3 níveis: `ATLAS_PIPER_DIR` → `process.resourcesPath/pipe
 
 `renderer/renderer.js` é `<script>` clássico carregado por `loadFile`, **sem bundler** (ADR-0019) — não pode `import` os módulos TS do app em runtime (diferente de `confirm-port.ts`/`steps-view.ts`/`piper-tts.ts`, consumidos só pelo main process via `tsx`).
 
-Toda lógica de `speech-output.ts` que o renderer precisa é por isso **replicada em JS puro**, com comentário explícito apontando a duplicação e o teste de referência. **Já são 6 ocorrências** (SPECs 0035/0036/0039/0040/0041).
+Toda lógica de `speech-output.ts` que o renderer precisa é por isso **replicada em JS puro**, com comentário explícito apontando a duplicação e o teste de referência. **Já são 7 ocorrências** (SPECs 0035/0036/0039/0040/0041/0043) — a SPEC-0043 é a 2ª vez que uma dessas duplicações **derivou por acidente** (o glue ficou sem `preferredVoiceURI` desde a SPEC-0035 sem que nenhuma fatia seguinte notasse).
 
 > Para qualquer glue futuro do renderer que precise da lógica de um módulo puro: **replique com comentário explícito, nunca tente importar TS direto.** Risco de deriva conhecido, não coberto por teste automatizado.
 
@@ -169,10 +172,10 @@ O painel de permissões mostra `config.permissions` (o que o `loadConfig` valido
 
 ## Pendência estrutural: smoke visual nunca confirmado
 
-**11 fatias seguidas (SPEC-0031 a 0041) foram fechadas sem confirmação visual real.** O shell de automação não tem WindowServer (`app.whenReady()` nunca resolve; `screencapture` falha por não haver display); desde a SPEC-0040, soma-se a ausência do binário Piper.
+**12 fatias seguidas (SPEC-0031 a 0043) foram fechadas sem confirmação visual real.** O shell de automação não tem WindowServer (`app.whenReady()` nunca resolve; `screencapture` falha por não haver display); desde a SPEC-0040, soma-se a ausência do binário Piper.
 
-A cadeia de carregamento é validada programaticamente (zero erro de módulo, handlers registrados, `whenReady` sem exceção), mas **nada visual/sonoro foi verificado de fato**. Não bloqueia o fechamento documental — mas não conte como verificado. Lista item a item no Critério de Aceitação 25 da SPEC-0040, ampliada pela SPEC-0041.
+A cadeia de carregamento é validada programaticamente (zero erro de módulo, handlers registrados, `whenReady` sem exceção), mas **nada visual/sonoro foi verificado de fato**. Não bloqueia o fechamento documental — mas não conte como verificado. Lista item a item no Critério de Aceitação 25 da SPEC-0040, ampliada pelas SPECs 0041/0043.
 
 ## Candidatos futuros já nomeados
 
-Equivalente de CLI para Persona (`atlas persona create/edit/delete/list/use`) · persistir Persona ativa e política de permissões entre reinícios (exige ADR) · entrada por voz (STT) e wake word (exige ADR + brainstorming humano) · instalador/empacotamento com `extraResources` (Fase 3) · streaming incremental de playback · controle de prosódia · exportar/importar Personas · lock/escrita atômica no arquivo de Personas · seletor nativo de diretório · expor a política resolvida · `BrowserWindow` como pai em `dialog.showMessageBox` (tornaria os diálogos modais e eliminaria a origem da corrida tratada em `selectPermissionRoots`) · `__resetBridgeStateForTests()` fechar sessões vivas no próprio reset, em vez de exigir fecho manual em cada teste (SPEC-0042/D15 — toca `src/`, fora de higiene de teste).
+Equivalente de CLI para Persona (`atlas persona create/edit/delete/list/use`) · persistir Persona ativa e política de permissões entre reinícios (exige ADR) · entrada por voz (STT) e wake word (exige ADR + brainstorming humano) · instalador/empacotamento com `extraResources` (Fase 3) · streaming incremental de playback · controle de prosódia · exportar/importar Personas · lock/escrita atômica no arquivo de Personas · seletor nativo de diretório · expor a política resolvida · `BrowserWindow` como pai em `dialog.showMessageBox` (tornaria os diálogos modais e eliminaria a origem da corrida tratada em `selectPermissionRoots`) · `__resetBridgeStateForTests()` fechar sessões vivas no próprio reset, em vez de exigir fecho manual em cada teste (SPEC-0042/D15 — toca `src/`, fora de higiene de teste) · **cobrir `renderer.js` por teste automatizado** (SPEC-0043 — risco estrutural: 7ª réplica renderer↔módulo, 2ª deriva detectada por acidente; exige mudar a stack do renderer, portanto ADR novo + escalação humana).

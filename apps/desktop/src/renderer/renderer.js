@@ -223,7 +223,33 @@ function selectLocalVoiceURI(synth) {
   return localVoice === undefined ? undefined : localVoice.voiceURI;
 }
 
-function createSpeechOutputGlue({ synth }) {
+// Resíduo (2) da SPEC-0043: espelha `selectVoiceURI` de `speech-output.ts`
+// (verificado em `tests/speech-output.test.ts`, testes de
+// `preferredVoiceURI`) — entre as vozes `localService === true`, prefere a
+// de `voiceURI` igual ao devolvido pelo provider, amostrado a cada `speak`
+// (nunca fixado); sem preferência (ausente, lançando, ou apontando para voz
+// inexistente/não-local), cai na primeira voz local.
+function selectVoiceURI(synth, preferredVoiceURI) {
+  const voices = synth.getVoices();
+  let preferred;
+  try {
+    preferred = preferredVoiceURI === undefined ? undefined : preferredVoiceURI();
+  } catch {
+    preferred = undefined;
+  }
+  if (preferred !== undefined) {
+    const match = voices.find(
+      (voice) => voice.voiceURI === preferred && voice.localService === true,
+    );
+    if (match !== undefined) {
+      return match.voiceURI;
+    }
+  }
+  const localVoice = voices.find((voice) => voice.localService === true);
+  return localVoice === undefined ? undefined : localVoice.voiceURI;
+}
+
+function createSpeechOutputGlue({ synth, preferredVoiceURI }) {
   return {
     speak(text) {
       const normalized = text.trim().replace(/\s+/g, ' ');
@@ -231,7 +257,7 @@ function createSpeechOutputGlue({ synth }) {
         return;
       }
       try {
-        const voiceURI = selectLocalVoiceURI(synth);
+        const voiceURI = selectVoiceURI(synth, preferredVoiceURI);
         if (voiceURI === undefined) {
           // Sem voz local disponível: fail-closed, nunca fala por voz de rede.
           return;
@@ -258,8 +284,6 @@ function createSpeechOutputGlue({ synth }) {
     },
   };
 }
-
-const speechOutput = createSpeechOutputGlue({ synth });
 
 // Roteamento de voz Piper × SO (SPEC-0040, ADR-0021, Decisões D7/D8/D9):
 // replica pura de `isPiperVoiceURI`/`resolveVoiceBackend` de
@@ -300,6 +324,23 @@ function piperOnlyPreference({ preferredVoiceURI, piperAvailable, piperVoiceURIs
     : undefined;
 }
 
+// Resíduo (2) da SPEC-0043 (Decisão D6): restaura ADR-0020(b)/D16 da
+// SPEC-0040 no caminho `'os'` do glue — o MESMO ponto de política de
+// superfície já usado por `currentVoiceBackend` abaixo, sem condição de voz
+// nova. Um `piper:<id>` nunca casa com o `voiceURI` de uma voz do SO (filtro
+// `localService === true` em `selectVoiceURI`), então degrada naturalmente
+// para a 1ª voz local — ADR-0021(c) intacto. Amostrado a cada `speak` (não
+// fixado): trocar/editar a Persona ativa muda a voz sem recriar o glue.
+const speechOutput = createSpeechOutputGlue({
+  synth,
+  preferredVoiceURI: () =>
+    piperOnlyPreference({
+      preferredVoiceURI: activePersonaVoiceURI,
+      piperAvailable,
+      piperVoiceURIs: piperVoices.map((voice) => voice.voiceURI),
+    }),
+});
+
 // Catálogo de vozes Piper efetivamente OFERECIDO ao usuário — vazio em modo
 // degradado (Decisão D8). Único ponto derivado, consumido tanto pelo
 // roteamento quanto pelo `<select>` do formulário de Persona.
@@ -307,6 +348,40 @@ function offeredPiperVoices() {
   return isPiperOnlyMode({ piperAvailable, piperVoiceURIs: piperVoices.map((v) => v.voiceURI) })
     ? piperVoices
     : [];
+}
+
+// Resíduo (1) da SPEC-0043 (Decisões D2-D4): replica pura de
+// `resolvePersistedVoiceSelection` de `speech-output.ts` — 7ª ocorrência do
+// padrão de duplicação deliberada renderer↔módulo (mesma classe das SPECs
+// 0035/0036/0039/0040/0041), versão testada em
+// `tests/speech-output.test.ts`. Classifica em quatro desfechos exaustivos o
+// destino de uma `Persona.voiceURI` persistida, composta SOBRE
+// `piperOnlyPreference` (nunca uma condição paralela): `none` (sem
+// `voiceURI`), `available` (entre as oferecidas), `dropped` (deixou de ser
+// honrada pela política Piper-only — D6/D12 da SPEC-0041, substituição
+// anunciada e desejada), `retained` (continua honrada, só não ofertável por
+// razão ambiental — preservada, nunca apagada em silêncio).
+function resolvePersistedVoiceSelection({
+  persistedVoiceURI,
+  offeredVoiceURIs,
+  piperAvailable,
+  piperVoiceURIs,
+}) {
+  if (persistedVoiceURI === undefined || persistedVoiceURI === '') {
+    return { kind: 'none' };
+  }
+  if (offeredVoiceURIs.includes(persistedVoiceURI)) {
+    return { kind: 'available', voiceURI: persistedVoiceURI };
+  }
+  const stillHonored =
+    piperOnlyPreference({
+      preferredVoiceURI: persistedVoiceURI,
+      piperAvailable,
+      piperVoiceURIs,
+    }) !== undefined;
+  return stillHonored
+    ? { kind: 'retained', voiceURI: persistedVoiceURI }
+    : { kind: 'dropped', voiceURI: persistedVoiceURI };
 }
 
 function resolveVoiceBackend({
@@ -480,24 +555,46 @@ const personaFormError = document.getElementById('persona-form-error');
 const personaVoiceSelect = document.getElementById('persona-voice-uri');
 const personaTestVoiceButton = document.getElementById('persona-test-voice');
 
-// `<select>` de vozes do formulário (SPEC-0041, item 3 do Escopo): em modo
-// Piper-only, só "Nenhuma (voz padrão)" + vozes Piper; em modo degradado, só
-// "Nenhuma (voz padrão)" + vozes locais do SO — nunca as duas origens ao
-// mesmo tempo (D8). Populado a partir do catálogo OFERECIDO
-// (`offeredPiperVoices()`) e do MESMO `synth` do glue de TTS, reavaliado nos
-// dois gatilhos de D17 (`voiceschanged` E a resposta de `atlas:tts:voices`).
-// Rótulo de origem visível (Artigo 7). Preserva a opção selecionada quando
-// ela ainda existir na lista nova.
-function populatePersonaVoiceSelect() {
-  const previousValue = personaVoiceSelect.value;
+// Resíduo (1) da SPEC-0043 (Decisão D2): `voiceURI` persistida que o modo
+// corrente não pode oferecer AGORA por razão ambiental, mas que a política
+// Piper-only ainda honraria (desfecho `retained` de
+// `resolvePersistedVoiceSelection`). `undefined` fora desse caso. Definida
+// por `openPersonaForm`; limpa ao cancelar, ao submeter com sucesso e ao
+// abrir o formulário de Persona nova — nunca vaza de uma Persona para outra.
+let retainedVoiceURI;
+
+// Snapshot único das vozes efetivamente oferecidas pelo modo corrente
+// (Piper OFERECIDO + locais do SO, D8) — usado tanto para popular o
+// `<select>` quanto para `resolvePersistedVoiceSelection` em
+// `openPersonaForm` (SPEC-0043, achado A5): os dois lados leem do MESMO
+// `offeredPiperVoices()` + `synth.getVoices()`, nunca snapshots divergentes.
+function offeredVoiceSelectionSnapshot() {
   const piperOnly = isPiperOnlyMode({
     piperAvailable,
     piperVoiceURIs: piperVoices.map((v) => v.voiceURI),
   });
-  const offered = offeredPiperVoices();
+  const offeredPiper = offeredPiperVoices();
   const localVoices = piperOnly
     ? []
     : synth.getVoices().filter((voice) => voice.localService === true);
+  return { offeredPiper, localVoices };
+}
+
+// `<select>` de vozes do formulário (SPEC-0041, item 3 do Escopo; estendido
+// pela SPEC-0043, resíduo 1): em modo Piper-only, só "Nenhuma (voz padrão)" +
+// vozes Piper; em modo degradado, só "Nenhuma (voz padrão)" + vozes locais
+// do SO — nunca as duas origens ao mesmo tempo (D8). Reavaliado nos dois
+// gatilhos de D17 (`voiceschanged` E a resposta de `atlas:tts:voices`).
+// Rótulo de origem visível (Artigo 7). Preserva a opção selecionada quando
+// ela ainda existir na lista nova. Quando `retainedVoiceURI` está definido e
+// não coincide com nenhuma opção já listada, acrescenta UMA `<option>`
+// extra ao final, ANTES de restaurar `previousValue` e ANTES de
+// `refreshTestVoiceButton()` (D2) — sobrevive às reexecuções disparadas
+// pelos dois gatilhos enquanto o formulário estiver aberto, e não duplica
+// se a `voiceURI` voltar a ser oferecida.
+function populatePersonaVoiceSelect() {
+  const previousValue = personaVoiceSelect.value;
+  const { offeredPiper: offered, localVoices } = offeredVoiceSelectionSnapshot();
 
   personaVoiceSelect.textContent = '';
   const noneOption = document.createElement('option');
@@ -516,17 +613,46 @@ function populatePersonaVoiceSelect() {
     optionEl.textContent = `${voice.name} (SO)`;
     personaVoiceSelect.appendChild(optionEl);
   }
+  if (
+    retainedVoiceURI !== undefined &&
+    ![...personaVoiceSelect.options].some((option) => option.value === retainedVoiceURI)
+  ) {
+    const retainedOption = document.createElement('option');
+    retainedOption.value = retainedVoiceURI;
+    retainedOption.textContent = 'Voz salva (indisponível agora)';
+    personaVoiceSelect.appendChild(retainedOption);
+  }
   if ([...personaVoiceSelect.options].some((option) => option.value === previousValue)) {
     personaVoiceSelect.value = previousValue;
   }
 
-  // Estado de "Testar voz" derivado das opções EFETIVAMENTE oferecidas
-  // (nunca de `piperVoices.length` cru) — nunca habilitado sobre um
-  // catálogo que `isAvailable()` já declarou indisponível.
-  const anyVoice = offered.length > 0 || localVoices.length > 0;
-  personaTestVoiceButton.disabled = !anyVoice;
-  personaTestVoiceButton.title = anyVoice ? '' : 'voz indisponível neste sistema';
+  refreshTestVoiceButton();
 }
+
+// Resíduo (1) da SPEC-0043 (Decisão D7): "Testar voz" habilitado SSE o valor
+// selecionado é uma das vozes EFETIVAMENTE reproduzíveis agora (Piper
+// oferecidas ou locais do SO) — nunca a opção retida, nunca "Nenhuma (voz
+// padrão)". Refina o critério 9 da SPEC-0041 (que olhava só o conjunto de
+// opções oferecidas, não o valor selecionado): com a opção retida existindo,
+// aquele critério deixaria o botão habilitado sobre uma seleção que
+// comprovadamente não soa — o "ativo-porém-mudo" que o achado A2 da
+// SPEC-0035 proíbe.
+function refreshTestVoiceButton() {
+  const selected = personaVoiceSelect.value;
+  const piperURIs = offeredPiperVoices().map((voice) => voice.voiceURI);
+  const localURIs = synth
+    .getVoices()
+    .filter((voice) => voice.localService === true)
+    .map((voice) => voice.voiceURI);
+  const playable =
+    selected !== '' && (piperURIs.includes(selected) || localURIs.includes(selected));
+  personaTestVoiceButton.disabled = !playable;
+  personaTestVoiceButton.title = playable ? '' : 'voz indisponível neste sistema';
+}
+
+personaVoiceSelect.addEventListener('change', () => {
+  refreshTestVoiceButton();
+});
 
 personaTestVoiceButton.addEventListener('click', () => {
   const voiceURI = personaVoiceSelect.value;
@@ -570,28 +696,56 @@ function openPersonaForm(detail) {
     : '';
   document.getElementById('persona-voice').value = detail ? detail.voice : '';
   document.getElementById('persona-emotion').value = detail ? detail.emotion : '';
+
+  // Único `resolvePersistedVoiceSelection` (réplica local, SPEC-0043,
+  // critério 8) deriva TANTO a seleção do `<select>` QUANTO o texto do
+  // aviso — nenhuma condição de voz duplicada em paralelo. `offeredVoiceURIs`
+  // vem do MESMO snapshot que alimenta `<select>` e `currentVoiceBackend`
+  // (achado A5) — nunca uma política divergente entre os dois.
+  const persistedVoiceURI = detail && detail.voiceURI ? detail.voiceURI : undefined;
+  const { offeredPiper, localVoices } = offeredVoiceSelectionSnapshot();
+  const offeredVoiceURIs = [
+    ...offeredPiper.map((voice) => voice.voiceURI),
+    ...localVoices.map((voice) => voice.voiceURI),
+  ];
+  const outcome = resolvePersistedVoiceSelection({
+    persistedVoiceURI,
+    offeredVoiceURIs,
+    piperAvailable,
+    piperVoiceURIs: piperVoices.map((voice) => voice.voiceURI),
+  });
+
+  // D2/D12: `retained` preserva a `voiceURI` como opção selecionável e
+  // selecionada; `dropped`/`none` caem em "Nenhuma (voz padrão)" — nunca
+  // `selectedIndex === -1` (estado ambíguo). Limpo ao abrir a Persona nova
+  // (persistedVoiceURI ausente ⇒ outcome.kind === 'none' ⇒ undefined).
+  retainedVoiceURI = outcome.kind === 'retained' ? outcome.voiceURI : undefined;
   populatePersonaVoiceSelect();
 
-  const persistedVoiceURI = (detail && detail.voiceURI) || '';
-  // D12: `voiceURI` persistida sem `<option>` correspondente (caso central —
-  // voz do SO em modo Piper-only) cai explicitamente em "Nenhuma (voz
-  // padrão)" — nunca `selectedIndex === -1` (estado ambíguo).
-  const hasOption = [...personaVoiceSelect.options].some(
-    (option) => option.value === persistedVoiceURI,
-  );
-  personaVoiceSelect.value = hasOption ? persistedVoiceURI : '';
+  if (outcome.kind === 'available' || outcome.kind === 'retained') {
+    personaVoiceSelect.value = outcome.voiceURI;
+  } else {
+    personaVoiceSelect.value = '';
+  }
 
-  // D6: aviso de voz legada — Persona com `voiceURI` de SO persistida
-  // (não-vazia, não-Piper) em modo Piper-only. Nada é gravado só por abrir
-  // o formulário; o aviso só explica o que o submit fará.
-  const piperOnly = isPiperOnlyMode({
-    piperAvailable,
-    piperVoiceURIs: piperVoices.map((v) => v.voiceURI),
-  });
-  const legacyVoice = persistedVoiceURI !== '' && !isPiperVoiceURI(persistedVoiceURI) && piperOnly;
-  personaVoiceLegacyEl.textContent = legacyVoice
-    ? 'Esta Persona tem uma voz do sistema salva. A fala já está usando a voz Piper padrão; salvar este formulário substituirá o valor salvo.'
-    : '';
+  // Aviso `#persona-voice-legacy` (Artigo 7): dois textos mutuamente
+  // exclusivos, nunca ambos ao mesmo tempo. `dropped` mantém, byte a byte, o
+  // texto já existente da SPEC-0041 (D6) — nenhuma escrita ocorre só por
+  // abrir o formulário; o aviso só explica o que o submit fará.
+  if (outcome.kind === 'dropped') {
+    personaVoiceLegacyEl.textContent =
+      'Esta Persona tem uma voz do sistema salva. A fala já está usando a voz Piper padrão; salvar este formulário substituirá o valor salvo.';
+  } else if (outcome.kind === 'retained') {
+    personaVoiceLegacyEl.textContent =
+      'Esta Persona tem uma voz salva que não está disponível neste momento. Salvar este formulário preserva o valor salvo; escolher outra voz na lista o substitui.';
+  } else {
+    personaVoiceLegacyEl.textContent = '';
+  }
+
+  // Critério 15: `refreshTestVoiceButton()` já rodou dentro de
+  // `populatePersonaVoiceSelect()` acima, mas com o valor do `<select>`
+  // ainda não ajustado ao desfecho — reavalia agora, com a seleção final.
+  refreshTestVoiceButton();
 
   personaForm.hidden = false;
 }
@@ -602,6 +756,8 @@ document.getElementById('persona-new').addEventListener('click', () => {
 
 document.getElementById('persona-form-cancel').addEventListener('click', () => {
   personaForm.hidden = true;
+  // Critério 11: retainedVoiceURI nunca vaza de uma Persona para outra.
+  retainedVoiceURI = undefined;
 });
 
 function readPersonaFormInput() {
@@ -635,6 +791,9 @@ personaForm.addEventListener('submit', (event) => {
   Promise.resolve(action)
     .then((result) => {
       personaForm.hidden = true;
+      // Critério 11: submit com sucesso limpa retainedVoiceURI — nunca vaza
+      // de uma Persona para outra.
+      retainedVoiceURI = undefined;
       const closedSessions = (result && result.closedSessions) || [];
       if (closedSessions.length > 0) {
         // Sucesso de update na Persona ATIVA (D9): nenhum Core sobrevive à

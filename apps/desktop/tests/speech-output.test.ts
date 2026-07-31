@@ -3,6 +3,7 @@ import type { SpeechSynthesisPort, UtteranceSpec, VoiceInfo } from '../src/speec
 import { createSpeechOutput } from '../src/speech-output.js';
 import { isPiperVoiceURI, piperModelIdOf, resolveVoiceBackend } from '../src/speech-output.js';
 import { isPiperOnlyMode, piperOnlyPreference } from '../src/speech-output.js';
+import { resolvePersistedVoiceSelection } from '../src/speech-output.js';
 
 const LOCAL_VOICE_1: VoiceInfo = { voiceURI: 'local-1', name: 'Local Um', localService: true };
 const LOCAL_VOICE_2: VoiceInfo = { voiceURI: 'local-2', name: 'Local Dois', localService: true };
@@ -641,5 +642,251 @@ describe('composição piperOnlyPreference → resolveVoiceBackend (SPEC-0041, c
         localVoiceURIs: [OS_A],
       }),
     ).toEqual({ backend: 'os', voiceURI: OS_A });
+  });
+});
+
+describe('resolvePersistedVoiceSelection (SPEC-0043, Decisões D2-D4)', () => {
+  const PIPER_A = 'piper:pt_BR-faber-medium';
+  const PIPER_B = 'piper:pt_BR-outro-medium';
+  const OS_A = 'os-voice-a';
+  const OS_B = 'os-voice-b';
+
+  it('critério 1: persistedVoiceURI undefined ⇒ none, em modo degradado', () => {
+    expect(
+      resolvePersistedVoiceSelection({
+        persistedVoiceURI: undefined,
+        offeredVoiceURIs: [OS_A],
+        piperAvailable: false,
+        piperVoiceURIs: [],
+      }),
+    ).toEqual({ kind: 'none' });
+  });
+
+  it('critério 1: persistedVoiceURI undefined ⇒ none, em modo Piper-only', () => {
+    expect(
+      resolvePersistedVoiceSelection({
+        persistedVoiceURI: undefined,
+        offeredVoiceURIs: [PIPER_A],
+        piperAvailable: true,
+        piperVoiceURIs: [PIPER_A],
+      }),
+    ).toEqual({ kind: 'none' });
+  });
+
+  it('critério 1: persistedVoiceURI string vazia ⇒ none, em modo degradado', () => {
+    expect(
+      resolvePersistedVoiceSelection({
+        persistedVoiceURI: '',
+        offeredVoiceURIs: [OS_A],
+        piperAvailable: false,
+        piperVoiceURIs: [],
+      }),
+    ).toEqual({ kind: 'none' });
+  });
+
+  it('critério 1: persistedVoiceURI string vazia ⇒ none, em modo Piper-only', () => {
+    expect(
+      resolvePersistedVoiceSelection({
+        persistedVoiceURI: '',
+        offeredVoiceURIs: [PIPER_A],
+        piperAvailable: true,
+        piperVoiceURIs: [PIPER_A],
+      }),
+    ).toEqual({ kind: 'none' });
+  });
+
+  it('critério 2: voz Piper persistida está entre as oferecidas em modo Piper-only ⇒ available', () => {
+    expect(
+      resolvePersistedVoiceSelection({
+        persistedVoiceURI: PIPER_A,
+        offeredVoiceURIs: [PIPER_A, PIPER_B],
+        piperAvailable: true,
+        piperVoiceURIs: [PIPER_A, PIPER_B],
+      }),
+    ).toEqual({ kind: 'available', voiceURI: PIPER_A });
+  });
+
+  it('critério 2: voz do SO persistida está entre as oferecidas em modo degradado ⇒ available', () => {
+    expect(
+      resolvePersistedVoiceSelection({
+        persistedVoiceURI: OS_A,
+        offeredVoiceURIs: [OS_A, OS_B],
+        piperAvailable: false,
+        piperVoiceURIs: [],
+      }),
+    ).toEqual({ kind: 'available', voiceURI: OS_A });
+  });
+
+  it('critério 3 (fronteira dropped × retained): voz do SO persistida + modo Piper-only ⇒ dropped (D6/D12 da SPEC-0041)', () => {
+    expect(
+      resolvePersistedVoiceSelection({
+        persistedVoiceURI: OS_A,
+        offeredVoiceURIs: [PIPER_A],
+        piperAvailable: true,
+        piperVoiceURIs: [PIPER_A],
+      }),
+    ).toEqual({ kind: 'dropped', voiceURI: OS_A });
+  });
+
+  it('critério 4(a) (fronteira dropped × retained): voz Piper persistida + modo degradado ⇒ retained', () => {
+    expect(
+      resolvePersistedVoiceSelection({
+        persistedVoiceURI: PIPER_A,
+        offeredVoiceURIs: [OS_A],
+        piperAvailable: false,
+        piperVoiceURIs: [],
+      }),
+    ).toEqual({ kind: 'retained', voiceURI: PIPER_A });
+  });
+
+  it('critério 4(b): voz Piper persistida + modo Piper-only com esse id ausente do catálogo ⇒ retained', () => {
+    expect(
+      resolvePersistedVoiceSelection({
+        persistedVoiceURI: PIPER_B,
+        offeredVoiceURIs: [PIPER_A],
+        piperAvailable: true,
+        piperVoiceURIs: [PIPER_A],
+      }),
+    ).toEqual({ kind: 'retained', voiceURI: PIPER_B });
+  });
+
+  it('critério 4(c): voz do SO persistida + modo degradado com essa voz desinstalada ⇒ retained', () => {
+    expect(
+      resolvePersistedVoiceSelection({
+        persistedVoiceURI: OS_B,
+        offeredVoiceURIs: [OS_A],
+        piperAvailable: false,
+        piperVoiceURIs: [],
+      }),
+    ).toEqual({ kind: 'retained', voiceURI: OS_B });
+  });
+
+  it('critério 5: nunca inventa uma voiceURI — todo desfecho ≠ none carrega exatamente a string recebida', () => {
+    const cases = [
+      {
+        persistedVoiceURI: PIPER_A,
+        offeredVoiceURIs: [PIPER_A],
+        piperAvailable: true,
+        piperVoiceURIs: [PIPER_A],
+      },
+      {
+        persistedVoiceURI: OS_A,
+        offeredVoiceURIs: [PIPER_A],
+        piperAvailable: true,
+        piperVoiceURIs: [PIPER_A],
+      },
+      {
+        persistedVoiceURI: PIPER_B,
+        offeredVoiceURIs: [PIPER_A],
+        piperAvailable: true,
+        piperVoiceURIs: [PIPER_A],
+      },
+      {
+        persistedVoiceURI: OS_B,
+        offeredVoiceURIs: [OS_A],
+        piperAvailable: false,
+        piperVoiceURIs: [],
+      },
+    ];
+    for (const input of cases) {
+      const result = resolvePersistedVoiceSelection(input);
+      expect(result.kind).not.toBe('none');
+      if (result.kind !== 'none') {
+        expect(result.voiceURI).toBe(input.persistedVoiceURI);
+      }
+    }
+  });
+
+  it('critério 6: os quatro desfechos são mutuamente exclusivos e exaustivos — matriz tabular', () => {
+    const matrix: Array<{
+      persistedVoiceURI: string | undefined;
+      offeredVoiceURIs: readonly string[];
+      piperAvailable: boolean;
+      piperVoiceURIs: readonly string[];
+      expectedKind: 'none' | 'available' | 'retained' | 'dropped';
+    }> = [
+      {
+        persistedVoiceURI: undefined,
+        offeredVoiceURIs: [OS_A],
+        piperAvailable: false,
+        piperVoiceURIs: [],
+        expectedKind: 'none',
+      },
+      {
+        persistedVoiceURI: '',
+        offeredVoiceURIs: [PIPER_A],
+        piperAvailable: true,
+        piperVoiceURIs: [PIPER_A],
+        expectedKind: 'none',
+      },
+      {
+        persistedVoiceURI: PIPER_A,
+        offeredVoiceURIs: [PIPER_A],
+        piperAvailable: true,
+        piperVoiceURIs: [PIPER_A],
+        expectedKind: 'available',
+      },
+      {
+        persistedVoiceURI: OS_A,
+        offeredVoiceURIs: [OS_A],
+        piperAvailable: false,
+        piperVoiceURIs: [],
+        expectedKind: 'available',
+      },
+      {
+        persistedVoiceURI: OS_A,
+        offeredVoiceURIs: [PIPER_A],
+        piperAvailable: true,
+        piperVoiceURIs: [PIPER_A],
+        expectedKind: 'dropped',
+      },
+      {
+        persistedVoiceURI: PIPER_A,
+        offeredVoiceURIs: [OS_A],
+        piperAvailable: false,
+        piperVoiceURIs: [],
+        expectedKind: 'retained',
+      },
+      {
+        persistedVoiceURI: PIPER_B,
+        offeredVoiceURIs: [PIPER_A],
+        piperAvailable: true,
+        piperVoiceURIs: [PIPER_A],
+        expectedKind: 'retained',
+      },
+      {
+        persistedVoiceURI: OS_B,
+        offeredVoiceURIs: [OS_A],
+        piperAvailable: false,
+        piperVoiceURIs: [],
+        expectedKind: 'retained',
+      },
+    ];
+
+    const allKinds: Array<'none' | 'available' | 'retained' | 'dropped'> = [
+      'none',
+      'available',
+      'retained',
+      'dropped',
+    ];
+
+    for (const {
+      persistedVoiceURI,
+      offeredVoiceURIs,
+      piperAvailable,
+      piperVoiceURIs,
+      expectedKind,
+    } of matrix) {
+      const result = resolvePersistedVoiceSelection({
+        persistedVoiceURI,
+        offeredVoiceURIs,
+        piperAvailable,
+        piperVoiceURIs,
+      });
+      expect(result.kind).toBe(expectedKind);
+      // exclusividade/exaustividade: exatamente um kind bate por caso.
+      const matchingKinds = allKinds.filter((kind) => kind === result.kind);
+      expect(matchingKinds).toHaveLength(1);
+    }
   });
 });

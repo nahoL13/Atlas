@@ -2,7 +2,7 @@
 
 > **Project Atlas — Contexto de Retomada para a Próxima Sessão**
 
-Atualizado em: 2026-07-30 (SPEC-0042)
+Atualizado em: 2026-07-31 (SPEC-0043)
 
 Este documento responde a uma pergunta só: **o que fazer agora**. Ele é lido no arranque de toda sessão e de todo subagent, então é mantido curto por design — teto de ~8 KB.
 
@@ -21,11 +21,11 @@ Este documento responde a uma pergunta só: **o que fazer agora**. Ele é lido n
 
 Últimas três fatias (detalhe completo em `PLATFORM_STATE.md` e na SPEC de cada uma):
 
+- **SPEC-0043** `Done` (2026-07-31) — fecha os dois resíduos de voz da SPEC-0041: `voiceURI` persistida não-ofertável por razão ambiental vira `<option>` retida e visível em vez de apagada em silêncio (`resolvePersistedVoiceSelection`, 4 desfechos); `createSpeechOutputGlue` do renderer passa a receber `preferredVoiceURI`, restaurando ADR-0020(b) no caminho `'os'`. Política Piper-only intacta. Diff confinado a `apps/desktop` + nota no ADR-0020.
 - **SPEC-0042** `Done` (2026-07-30) — `apps/desktop/tests/core-bridge.test.ts` (1.432 linhas) quebrado em 7 arquivos por assunto + helper; `"test": "vitest run"` em 13 `package.json`, viabilizando `pnpm --filter <package> test`/`typecheck` (subseção "Verificação escopada" em [ClaudeCodeAutomation.md](../04-engineering/ClaudeCodeAutomation.md)). Corrigiu, por exceção nomeada, um flake pré-existente de vazamento de sessão só exposto sob `--sequence.shuffle`; `__resetBridgeStateForTests()` não fecha sessões vivas (candidato futuro, D15). Zero diff em `src/`; CI inalterada.
 - **SPEC-0041** `Done` (2026-07-30) — superfície de voz Piper-only: com `PiperTts.isAvailable()` verdadeiro, o `<select>` de Persona lista só vozes Piper e uma `voiceURI` de SO persistida deixa de ser honrada. Web Speech API **não** removida — segue como fallback interno invisível (ADR-0021(c) intacto). Diff confinado a `apps/desktop`.
-- **SPEC-0040** `Done` (2026-07-29) — Piper como motor de TTS neural local ([ADR-0021](../06-adr/ADR-0021-piper-tts-local-voice-engine.md)), processo de longa duração no main process, fallback fail-closed. Contrato de invocação pinado como dado da SPEC (Piper v1.2.0).
 
-Suíte atual: **745 testes / 62 arquivos**. `lint`/`typecheck`/`test`/`format:check` verdes.
+Suíte atual: **757 testes / 62 arquivos**. `lint`/`typecheck`/`test`/`format:check` verdes.
 
 ---
 
@@ -37,7 +37,7 @@ Suíte atual: **745 testes / 62 arquivos**. `lint`/`typecheck`/`test`/`format:ch
 
 - **Fase 2, item 2.3-restante — entrada por voz (STT) e wake word.** Único candidato direto restante da Fase 2. **Exige decisão humana + ADR novo antes de qualquer SPEC** (Escalação E1 da SPEC-0035): escolha de motor de reconhecimento, permissão de microfone, possivelmente um módulo Voice Service. **Começar por brainstorming humano, não pelo `spec-drafter`.**
 - **CLI de Persona** (`atlas persona create/edit/delete/list/use`) — equivalente na CLI do CRUD entregue pela SPEC-0039, explicitamente fora do escopo dela. 2º consumidor do re-export de catálogo (ver D4 da SPEC-0037).
-- **Resíduos de voz da SPEC-0041** (não-bloqueantes, registrados nas Observações): apagamento silencioso de uma `voiceURI` Piper persistida no modo degradado; deriva do `createSpeechOutputGlue({ synth })` no renderer sem `preferredVoiceURI` (desde a SPEC-0035).
+- **Cobrir `renderer.js` por teste automatizado** — risco estrutural registrado pelo `architecture-reviewer` no gate da SPEC-0043: 7ª réplica renderer↔módulo do projeto, e a 2ª vez que essa duplicação derivou por acidente (o resíduo (2) da SPEC-0043 ficou sem efeito por 6 fatias sem que nenhum gate mecânico detectasse). Exige decisão de stack (ADR-0019) → ADR novo → escalação humana antes de qualquer SPEC.
 - **Fase 1, itens `candidato`** (não são gates, todos os gates fecharam):
   - **Memória** — retenção/curadoria de fatos aprendidos, relações entre informações, teto por bytes (resíduo da SPEC-0030), `/lembrar` e `/esquecer` ao vivo numa sessão de chat.
   - **Execução/permissão** — troca de ancestral em `delete_file`/`mkdir` (resíduo consciente do ADR-0014); `list_dir` sem fecho atômico (`readdir` não expõe `O_NOFOLLOW`); Windows (`O_NOFOLLOW` é POSIX); `rmdir`/remoção recursiva; flag de auto-aprovação não interativa para `confirm`; dependência de dados entre passos; Task Manager completo (fila/retry/timeout/cancelamento).
@@ -59,7 +59,7 @@ Ponto que o hook não cobre: `scripts/hooks/spec-prompt-nudge.sh` só dispara co
 # Pendências Conhecidas
 
 - **TypeScript pinado em `^5`**: typescript-eslint 8.63 quebra com TS 7.0.2 (`TypeError: Cannot read properties of undefined (reading 'Cjs')` em `typescript-estree`; 7 probes falharam entre 2026-07-10 e 2026-07-14). **Encaminhamento: parar de re-probar por hábito** — vincular a um release do typescript-eslint que declare suporte a TS7.
-- **Smoke visual das fatias desktop pendente de confirmação humana** — 11 fatias seguidas (SPEC-0031 a 0041). O shell de automação não tem WindowServer; a SPEC-0040 acrescentou a ausência do binário Piper. Não bloqueia fechamento documental, mas **nenhuma fatia visual foi confirmada de fato em ambiente gráfico real**. Lista item a item no Critério de Aceitação 25 da SPEC-0040, ampliada pela SPEC-0041.
+- **Smoke visual das fatias desktop pendente de confirmação humana** — 12 fatias seguidas (SPEC-0031 a 0043). O shell de automação não tem WindowServer; a SPEC-0040 acrescentou a ausência do binário Piper. Não bloqueia fechamento documental, mas **nenhuma fatia visual foi confirmada de fato em ambiente gráfico real**. Lista item a item no Critério de Aceitação 25 da SPEC-0040, ampliada pelas SPECs 0041/0043.
 - **Distribuição/empacotamento da CLI**: o `bin` usa shebang `#!/usr/bin/env -S npx tsx`, que atende só dev. Mapeado na Fase 3.
 - **Plugin Manager sem seção de detalhe no ModuleCatalog** — corrigir antes da SPEC que o implementar.
 - **Vizinhas da SPEC-0016 ainda abertas**: proteção de branch/ruleset, matriz multi-OS de Node, campo `packageManager` no `package.json` raiz.

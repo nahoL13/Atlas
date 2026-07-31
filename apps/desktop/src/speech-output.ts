@@ -270,3 +270,56 @@ export function piperOnlyPreference(input: {
     ? preferredVoiceURI
     : undefined;
 }
+
+/**
+ * Resíduos de voz da SPEC-0041 (SPEC-0043, Decisões D2-D4): classifica em
+ * quatro desfechos exaustivos o destino de uma `Persona.voiceURI` persistida
+ * diante das opções que o modo corrente oferece — distinção "política ×
+ * ambiente", composta **sobre** `piperOnlyPreference` (não uma condição
+ * paralela, D3):
+ *
+ * - `none` — nenhuma `voiceURI` persistida (ausente ou string vazia);
+ * - `available` — está entre as oferecidas: seleção normal;
+ * - `dropped` — deixou de ser honrada pela política Piper-only
+ *   (`piperOnlyPreference(...) === undefined`, caso D6/D12 da SPEC-0041:
+ *   voz do SO em modo Piper-only) — substituição anunciada e desejada;
+ * - `retained` — continua honrada pela política, mas não é ofertável por
+ *   razão ambiental (Piper indisponível, modelo Piper ausente do catálogo,
+ *   voz do SO desinstalada) — preservada, nunca apagada em silêncio.
+ *
+ * Nunca inventa uma `voiceURI`: todo desfecho diferente de `none` carrega
+ * exatamente a string recebida.
+ */
+export type PersistedVoiceSelection =
+  | { readonly kind: 'none' }
+  | { readonly kind: 'available'; readonly voiceURI: string }
+  | { readonly kind: 'retained'; readonly voiceURI: string }
+  | { readonly kind: 'dropped'; readonly voiceURI: string };
+
+export function resolvePersistedVoiceSelection(input: {
+  readonly persistedVoiceURI: string | undefined;
+  readonly offeredVoiceURIs: readonly string[];
+  readonly piperAvailable: boolean;
+  readonly piperVoiceURIs: readonly string[];
+}): PersistedVoiceSelection {
+  const { persistedVoiceURI, offeredVoiceURIs, piperAvailable, piperVoiceURIs } = input;
+
+  if (persistedVoiceURI === undefined || persistedVoiceURI === '') {
+    return { kind: 'none' };
+  }
+
+  if (offeredVoiceURIs.includes(persistedVoiceURI)) {
+    return { kind: 'available', voiceURI: persistedVoiceURI };
+  }
+
+  const stillHonored =
+    piperOnlyPreference({
+      preferredVoiceURI: persistedVoiceURI,
+      piperAvailable,
+      piperVoiceURIs,
+    }) !== undefined;
+
+  return stillHonored
+    ? { kind: 'retained', voiceURI: persistedVoiceURI }
+    : { kind: 'dropped', voiceURI: persistedVoiceURI };
+}

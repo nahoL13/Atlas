@@ -2,7 +2,7 @@
 
 > **Project Atlas — Estado do Trabalho Atual**
 
-Atualizado em: 2026-07-30 (SPEC-0042)
+Atualizado em: 2026-07-31 (SPEC-0043)
 
 ---
 
@@ -53,5 +53,7 @@ Objetivo: plataforma mínima operável + primeira interface executável (CLI) + 
 | [SPEC-0039](../implementation/specs/SPEC-0039-desktop-persona-authoring.md) | Desktop: CRUD de Personas custom pela interface gráfica (formulário com os 8 campos de `Persona`, `PersonaStorage` injetável no molde do ADR-0011, `Persona.voiceURI?` vinculado ao TTS com fallback fail-closed); consome o ADR-0020 (novo, Accepted); estende a linha de Persona do item 2.4 (já fechado por inteiro) | Done |
 | [SPEC-0040](../implementation/specs/SPEC-0040-desktop-piper-neural-tts.md) | Desktop: Piper como motor de TTS neural local (`piper-tts.ts`, processo de longa duração, contrato de invocação pinado v1.2.0), `resolveVoiceBackend` com fallback fail-closed para a Web Speech API das SPECs 0035/0036; consome o ADR-0021 (novo, Accepted); continua o item 2.3 Voz (critério 25 pendente de verificação humana) | Done |
 | [SPEC-0041](../implementation/specs/SPEC-0041-desktop-piper-only-voice-surface.md) | Desktop: superfície de voz Piper-only — `<select>` de Persona lista só vozes Piper e a preferência de SO persistida deixa de ser honrada quando `PiperTts.isAvailable()` (via IPC novo) responde `true`; reverte a precedência da SPEC-0040/D8 como política de superfície, fallback fail-closed do ADR-0021(c) intacto; continua o item 2.3 Voz (critério 25 da SPEC-0040 ganha mais cenários) | Done |
+| [SPEC-0042](../implementation/specs/SPEC-0042-test-split-scoped-verification.md) | Quebra do `core-bridge.test.ts` por assunto e verificação escopada por package (`"test": "vitest run"` em 13 packages/apps, `pnpm --filter <pkg> test`/`typecheck`); corrigiu flake pré-existente de vazamento de sessão sob `--sequence.shuffle`; zero diff em `src/` | Done |
+| [SPEC-0043](../implementation/specs/SPEC-0043-desktop-voice-residues.md) | Desktop: fecha os dois resíduos de voz da SPEC-0041 — `voiceURI` persistida não-ofertável por razão ambiental vira `<option>` retida e visível em vez de apagada em silêncio; `createSpeechOutputGlue` do renderer passa a receber `preferredVoiceURI`, restaurando ADR-0020(b) no caminho `'os'`; política Piper-only da SPEC-0041 intacta | Done |
 
 Detalhes de retomada: `docs/05-context/NEXT_CONTEXT.md`.
