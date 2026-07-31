@@ -60,7 +60,7 @@ Handle desconhecido ou já encerrado ⇒ `Error` estruturado, nunca `TypeError`.
 
 Seleção de Persona, seleção de permissões e os rastreios de operação em voo são estado de módulo do `core-bridge`, vivos pela sessão da app. Fechar a app volta a `flags > env > defaults` (ADR-0006). **Nenhum estado persistente novo** (Artigo 11) — exceto o arquivo de Personas custom, que é do Persona Service (ADR-0020).
 
-`__resetBridgeStateForTests()` existe só para isolar casos de teste.
+`__resetBridgeStateForTests()` reseta seleção de Persona e de permissões, mas **não fecha sessões vivas** — todo teste que abrir uma sessão via `openChatSession` precisa fechá-la explicitamente (`closeChatSession`, em `finally`/`try`-`finally`), senão o `SessionId` vaza no `Map` de sessões entre casos. É um flake real, só observável sob `--sequence.shuffle` (achado da SPEC-0042, corrigido no teste que o causava; a lacuna do próprio `reset` segue aberta — D15).
 
 ### `withSelections` e precedência
 
@@ -175,4 +175,4 @@ A cadeia de carregamento é validada programaticamente (zero erro de módulo, ha
 
 ## Candidatos futuros já nomeados
 
-Equivalente de CLI para Persona (`atlas persona create/edit/delete/list/use`) · persistir Persona ativa e política de permissões entre reinícios (exige ADR) · entrada por voz (STT) e wake word (exige ADR + brainstorming humano) · instalador/empacotamento com `extraResources` (Fase 3) · streaming incremental de playback · controle de prosódia · exportar/importar Personas · lock/escrita atômica no arquivo de Personas · seletor nativo de diretório · expor a política resolvida · `BrowserWindow` como pai em `dialog.showMessageBox` (tornaria os diálogos modais e eliminaria a origem da corrida tratada em `selectPermissionRoots`).
+Equivalente de CLI para Persona (`atlas persona create/edit/delete/list/use`) · persistir Persona ativa e política de permissões entre reinícios (exige ADR) · entrada por voz (STT) e wake word (exige ADR + brainstorming humano) · instalador/empacotamento com `extraResources` (Fase 3) · streaming incremental de playback · controle de prosódia · exportar/importar Personas · lock/escrita atômica no arquivo de Personas · seletor nativo de diretório · expor a política resolvida · `BrowserWindow` como pai em `dialog.showMessageBox` (tornaria os diálogos modais e eliminaria a origem da corrida tratada em `selectPermissionRoots`) · `__resetBridgeStateForTests()` fechar sessões vivas no próprio reset, em vez de exigir fecho manual em cada teste (SPEC-0042/D15 — toca `src/`, fora de higiene de teste).

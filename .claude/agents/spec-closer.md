@@ -41,8 +41,12 @@ Ele define o que você faz **antes** de fechar:
 Você assume aqui o papel do `spec-validator`, com a mesma disciplina mecânica.
 Não pule nem suavize — este é o único portão de verificação do ramo micro.
 
-1. Rode, da raiz do repo: `pnpm typecheck`, `pnpm lint`, `pnpm test` (ou
-   `pnpm exec vitest run <caminho>` escopado aos arquivos da SPEC).
+1. Rode, da raiz do repo, **obrigatoriamente os quatro comandos completos**,
+   ao menos uma vez cada, nesta forma exata (a forma escopada —
+   `pnpm --filter <package> test`/`typecheck` — é ferramenta de iteração do
+   `spec-implementer`, não substitui este gate; ver
+   `docs/04-engineering/ClaudeCodeAutomation.md`, "Verificação escopada"):
+   `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm format:check`.
 2. Confira **cada** "Critério de Aceitação" direto no código/repositório (não
    confie só no relatório do implementer) e cada item da "Definition of Done".
 3. Confirme que o diff **não saiu do "Escopo"** da SPEC (`git diff`/`git log`).

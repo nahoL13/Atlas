@@ -51,7 +51,7 @@ A ausência de atrito também é informação.
 
 ---
 
-**Escopo deste arquivo:** o Registro abaixo mantém as **últimas 5 SPECs**. As entradas da SPEC-0036 e anteriores estão em `LESSONS_LEARNED-ARCHIVE.md`, preservadas sem edição (regra 2 intacta — nada é reescrito, só realocado).
+**Escopo deste arquivo:** o Registro abaixo mantém as **últimas 5 SPECs**. As entradas da SPEC-0037 e anteriores estão em `LESSONS_LEARNED-ARCHIVE.md`, preservadas sem edição (regra 2 intacta — nada é reescrito, só realocado).
 
 O corte existe porque este arquivo chegou a 157 KB (~39k tokens) e era relido no arranque de quase todo subagent, dominando o custo em tokens do pipeline. Ao fechar uma SPEC: adicione a entrada nova no topo do Registro e mova a mais antiga das 6 para o arquivo.
 
@@ -72,6 +72,24 @@ Lições que se repetiram em três ou mais SPECs. Este índice existe para sobre
 
 
 # Registro
+
+## [SPEC-0042](specs/SPEC-0042-test-split-scoped-verification.md) — Quebra do `core-bridge.test.ts` por assunto e verificação escopada por package, com flake pré-existente corrigido (2026-07-30)
+
+**Descobrimos que...**
+
+O caso `"updatePersona sobre a Persona ativa recusa com operação em voo…"` (bloco de autoria de Persona) abria sessão via `openChatSession` e nunca a fechava, vazando um `SessionId` no `Map` de sessões vivas do `core-bridge`. O `afterEach` do bloco chamava `__resetBridgeStateForTests()` — mas esse reset cobre seleção de Persona e de permissões, **não** o `Map` de sessões. Sob ordem natural de execução, nenhum caso posterior observava o resíduo; sob `--sequence.shuffle` (CA 8, obrigatório desde o desenho original da SPEC), um caso posterior herdava a sessão vazada e `closedSessions` chegava com 2 ids em vez de 1. Provamos a **pré-existência** rodando o arquivo monolítico original (`git show 0b32ccf:apps/desktop/tests/core-bridge.test.ts`) sob o mesmo shuffle: falha idêntica, mesmo teste. A quebra em sete arquivos não introduziu o defeito — só o tornou observável. Oito SPECs visuais anteriores (0031–0041) não viram.
+
+**A arquitetura ajudou porque...**
+
+A fronteira já desenhada nos oito blocos `describe` de topo (espelhando as famílias que `apps/desktop/CLAUDE.md` documenta em `core-bridge.ts`) tornou a movimentação mecânica e auditável por diff vazio contra o baseline, sem exigir reescrita — condição necessária para a garantia central "cobertura preservada integralmente". O próprio CA 8 (isolamento sob shuffle, decidido por D4 já no desenho original) provou seu valor na prática ao expor o flake antes que ele fosse mascarado silenciosamente em outra sessão. Leituras vinculantes do `architecture-reviewer`, emitidas junto da aprovação da emenda v1.2 em vez de virarem um 3º bounce, resolveram quatro ambiguidades de uma vez: CA 24 pinado no sha `0b32ccf` (em vez de um `HEAD` que se autodestruiria no commit de fechamento), CA 23 reescrito para ser exequível (faltava o import de `closeChatSession`; `session` era `const` dentro do `try`, fora de escopo no `finally`), fecho em `finally` exigindo `.catch` (para não esconder a asserção que de fato falha) e sementes de shuffle registradas para reprodutibilidade.
+
+**A arquitetura atrapalhou porque...**
+
+O gate errou uma premissa e registrou o próprio erro no parecer da 3ª rodada: o `architecture-reviewer` havia circunscrito o risco de flake aos "quatro blocos sem `reset` próprio"; o vazamento apareceu no bloco de autoria de Persona, que **tem** `reset`. Ter um `reset` não basta se ele não cobre todo o estado de módulo — limite de uma análise estática num gate que não executa a suíte.
+
+**Precisamos mudar...**
+
+`__resetBridgeStateForTests()` não fecha sessões vivas — lacuna nomeada por D15 como candidato a fatia futura que toca `src/` (fora desta SPEC, que proibiu explicitamente esse caminho por D14). Encaminhamento: registrada em `apps/desktop/CLAUDE.md` ("Candidatos futuros já nomeados" + qualificação da linha sobre o próprio `__resetBridgeStateForTests()`), para que o próximo teste que abrir uma sessão encontre o aviso sem precisar redescobrir o flake.
 
 ## [SPEC-0041](specs/SPEC-0041-desktop-piper-only-voice-surface.md) — Desktop: superfície de voz Piper-only, revertendo a precedência da SPEC-0040/D8 sem tocar o fallback fail-closed (2026-07-29)
 
@@ -145,25 +163,7 @@ O teste de efeito ponta a ponta no portão (o único jeito de provar que a fatia
 
 Nada de estrutural nesta SPEC — os achados do gate (A1/A2/A6/A7) já foram corrigidos na própria implementação e confirmados pelo `spec-validator`, sem abrir ADR novo. Um encaminhamento explícito, porém, ficou registrado pelo `architecture-reviewer` como candidato de fatia futura (não desta SPEC): passar a `BrowserWindow` como pai em `dialog.showMessageBox` tornaria o diálogo de concessão modal à janela e eliminaria a **origem** da corrida de A7 (hoje mitigada por rechecagem, não pela raiz) — encaminhamento: registrado em `docs/05-context/NEXT_CONTEXT.md` como candidato futuro, sem SPEC própria aberta ainda. Recorrência a observar: se uma 3ª SPEC do desktop precisar do mesmo contorno do provedor `fake`/`local` para testar efeito real de Tools, vale considerar um helper de teste compartilhado em `apps/desktop/tests/` — ainda não justificado com só 2 ocorrências.
 
-## [SPEC-0037](specs/SPEC-0037-desktop-runtime-persona-switch.md) — Desktop: seleção e troca de Persona em runtime pela interface gráfica (2026-07-28)
-
-**Descobrimos que...**
-
-A distinção entre "mapa lógico de uso" (Module Catalog: "Persona Service é utilizado por aplicações clientes") e "regra física de dependência" (ADR-0003 + Regra de Dependência 11 do ProjectStructure) é real e não intercambiável — a 1ª versão desta SPEC citava só o mapa lógico e propunha `apps/desktop` importar `createPersonaService` direto de `@atlas/persona`, instanciando um 2º `PersonaService` fora do composition root. O `architecture-reviewer` vetou isso no gate citando a regra física, não a lógica. A correção (D4) foi um re-export de catálogo em `@atlas/core`, no molde já existente de `loadConfig`/`defaultConfig` — aditivo, sem wiring, diff de `packages/core` em 8 linhas. Descobrimos também, só lendo o código (não a SPEC), que a serialização de turno da SPEC-0033 vivia inteiramente no renderer: um canal IPC novo (`atlas:persona:select`) furava essa garantia sem tocar o bridge, e um turno em voo interrompido pela troca de Persona perderia os `learned` daquele turno (a gravação vem depois do `updateConversation`, que lançaria `ContextError: Sessão desconhecida`) — corrigido com bloqueio em duas camadas (D9): renderer desabilita o seletor, bridge recusa `selectPersona` enquanto houver sessão ocupada.
-
-**A arquitetura ajudou porque...**
-
-O molde de re-export de catálogo (`loadConfig`/`defaultConfig`, já consumido por `apps/cli/tests`) generalizou de imediato para `createPersonaService`/`PERSONA_IDS` sem exigir nenhuma mudança em `@atlas/contracts` nem em `createAtlas`/`AtlasPlatform` — a 6ª fatia visual seguida (SPECs 0031-0037) a confirmar que a fronteira Core/renderer absorve capacidade de produto nova sem tocar packages do Core. O estado de módulo do `core-bridge` (molde do `Map` de sessões da SPEC-0033) deu um ponto único e testável (Vitest sem Electron) para a garantia central "nenhuma sessão viva sobrevive com Persona superada".
-
-**A arquitetura atrapalhou porque...**
-
-O critério de teste originalmente escrito na SPEC ("gateway `fake` instrumentado" para segurar um turno em voo) era inexequível como redigido: `CreateAtlasDeps` não tem slot de `gateway` e o provider `fake` não tem ponto de suspensão. O caminho real precisou usar `configOverride: { model: { provider: 'local' } }` + `globalThis.fetch` controlado por um deferred, e o implementer teve que ler `packages/cognitive/src/cognitive-core.ts` para acertar quantas chamadas de `generate` ocorrem por turno (planejamento + extração de aprendizado condicional). O estado de módulo do `core-bridge` (seleção corrente + sessões ocupadas) também cobrou o custo já previsto na própria SPEC: um teste do describe de Persona deixou uma sessão de chat aberta e contaminou o `closedSessions` do teste seguinte, corrigido fechando em `finally`.
-
-**Precisamos mudar...**
-
-Nada de estrutural nesta SPEC — os dois achados (regra física vs. mapa lógico; critério de teste sem superfície de injeção real) já foram absorvidos na própria implementação, sem abrir ADR novo. Encaminhamento registrado para a **próxima** fatia nomeada pelo usuário nesta sessão (criar Persona pela interface, com personalidade e voz): ela colide com o Artigo 11 (estado persistente novo) e provavelmente com o ADR-0010 (vincular voz a Persona) — cai na escalação obrigatória da Emenda v1.1 e deve começar por brainstorming humano, não pelo `spec-drafter` direto (encaminhamento: registrado em `docs/05-context/NEXT_CONTEXT.md` como próximo trabalho nomeado, decisão de início cabe ao usuário).
-
 
 ---
 
-**Entradas anteriores (SPEC-0036 e mais antigas):** `LESSONS_LEARNED-ARCHIVE.md`.
+**Entradas anteriores (SPEC-0037 e mais antigas):** `LESSONS_LEARNED-ARCHIVE.md`.

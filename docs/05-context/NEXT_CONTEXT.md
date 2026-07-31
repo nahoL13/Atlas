@@ -2,7 +2,7 @@
 
 > **Project Atlas — Contexto de Retomada para a Próxima Sessão**
 
-Atualizado em: 2026-07-30 (SPEC-0041)
+Atualizado em: 2026-07-30 (SPEC-0042)
 
 Este documento responde a uma pergunta só: **o que fazer agora**. Ele é lido no arranque de toda sessão e de todo subagent, então é mantido curto por design — teto de ~8 KB.
 
@@ -21,11 +21,11 @@ Este documento responde a uma pergunta só: **o que fazer agora**. Ele é lido n
 
 Últimas três fatias (detalhe completo em `PLATFORM_STATE.md` e na SPEC de cada uma):
 
+- **SPEC-0042** `Done` (2026-07-30) — `apps/desktop/tests/core-bridge.test.ts` (1.432 linhas) quebrado em 7 arquivos por assunto + helper; `"test": "vitest run"` em 13 `package.json`, viabilizando `pnpm --filter <package> test`/`typecheck` (subseção "Verificação escopada" em [ClaudeCodeAutomation.md](../04-engineering/ClaudeCodeAutomation.md)). Corrigiu, por exceção nomeada, um flake pré-existente de vazamento de sessão só exposto sob `--sequence.shuffle`; `__resetBridgeStateForTests()` não fecha sessões vivas (candidato futuro, D15). Zero diff em `src/`; CI inalterada.
 - **SPEC-0041** `Done` (2026-07-30) — superfície de voz Piper-only: com `PiperTts.isAvailable()` verdadeiro, o `<select>` de Persona lista só vozes Piper e uma `voiceURI` de SO persistida deixa de ser honrada. Web Speech API **não** removida — segue como fallback interno invisível (ADR-0021(c) intacto). Diff confinado a `apps/desktop`.
 - **SPEC-0040** `Done` (2026-07-29) — Piper como motor de TTS neural local ([ADR-0021](../06-adr/ADR-0021-piper-tts-local-voice-engine.md)), processo de longa duração no main process, fallback fail-closed. Contrato de invocação pinado como dado da SPEC (Piper v1.2.0).
-- **SPEC-0039** `Done` (2026-07-29) — CRUD de Personas custom pela GUI ([ADR-0020](../06-adr/ADR-0020-persona-persistence-voice-binding.md)), porta `PersonaStorage` injetável, `Persona.voiceURI?` vinculando Persona ativa ao TTS.
 
-Suíte atual: **745 testes / 56 arquivos**. `lint`/`typecheck`/`test`/`format:check` verdes.
+Suíte atual: **745 testes / 62 arquivos**. `lint`/`typecheck`/`test`/`format:check` verdes.
 
 ---
 

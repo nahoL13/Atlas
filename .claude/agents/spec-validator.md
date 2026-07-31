@@ -21,11 +21,16 @@ Passos:
    especialmente "Critérios de Aceitação", "Estratégia de Testes" e
    "Definition of Done".
 
-2. Rode, a partir da raiz do repositório:
+2. Rode, a partir da raiz do repositório, **obrigatoriamente os quatro
+   comandos completos**, ao menos uma vez cada, nesta forma exata — não os
+   substitua por uma variante escopada (`pnpm --filter <package> test` é
+   ferramenta de iteração do `spec-implementer`, não do seu papel de gate
+   independente; ver `docs/04-engineering/ClaudeCodeAutomation.md`,
+   "Verificação escopada"):
    - `pnpm typecheck`
    - `pnpm lint`
-   - `pnpm test` (ou `pnpm exec vitest run <caminho>` se quiser escopar aos
-     arquivos da SPEC — os packages não têm script `test` próprio)
+   - `pnpm test`
+   - `pnpm format:check`
 
    Reporte falhas com o comando e a saída relevante, não resuma como "passou
    com ressalvas" se algo falhou.

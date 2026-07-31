@@ -31,17 +31,22 @@ Durante a implementação:
 - Escreva os testes descritos em "Estratégia de Testes".
 - Não crie módulos, Skills ou Personas novos, não mova responsabilidades
   entre módulos — isso é decisão arquitetural fora do seu escopo.
-- **Verifique em lotes, não a cada micro-edição.** Rodar testes/lint/typecheck
+- **Verifique em lotes, não a cada micro-edição, e sempre escopado por
+  package durante a iteração.** Rodar testes/lint/typecheck na raiz
   reprocessa todo o contexto acumulado a cada chamada — o custo cresce com o
   tamanho da conversa. Complete um item inteiro do Escopo (código + testes)
-  antes de rodar a suíte daquele item; deixe `pnpm lint` e `pnpm typecheck`
-  para a verificação final, a menos que um erro real exija diagnosticar antes.
+  antes de verificar aquele item, e prefira sempre a forma escopada:
+  `pnpm --filter <package> test`, `pnpm --filter <package> typecheck`,
+  `pnpm exec eslint <caminho>`, `pnpm exec prettier --check <caminho>` (todo
+  package/app com `tests/` tem o script `test` próprio — ver
+  `docs/04-engineering/ClaudeCodeAutomation.md`, "Verificação escopada").
+  Deixe a verificação completa da raiz para o final, a menos que um erro real
+  exija diagnosticar antes.
 
 Ao final:
 
-- Rode a suíte de testes relevante (a partir da raiz, via `pnpm exec vitest
-  run <path>` — os packages não têm script `test` próprio) e `pnpm lint` /
-  `pnpm typecheck`.
+- Rode uma passada completa na raiz: `pnpm typecheck`, `pnpm lint`,
+  `pnpm test`, `pnpm format:check`.
 
 Relatório final (contrato de saída) — máximo **20 linhas**, sem eco de
 código (o código está no disco; referencie `caminho:linha`):

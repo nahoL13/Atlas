@@ -361,6 +361,42 @@ principal)"** e não é isolável — é exatamente por isso que não dava para 
 
 ---
 
+# Verificação escopada
+
+Desde a SPEC-0042, a verificação de rotina durante a **iteração** de uma SPEC
+não precisa rodar o workspace inteiro. Cada um dos 13 packages/apps com
+`tests/` ganhou o script `test` (`"vitest run"`), o que torna `--filter`
+utilizável para os quatro comandos:
+
+- testes: `pnpm --filter <package> test`
+- typecheck: `pnpm --filter <package> typecheck`
+- lint: `pnpm exec eslint <caminho>`
+- formatação: `pnpm exec prettier --check <caminho>`
+
+**Condição de validade da equivalência com a execução da CI (D12).** A
+execução escopada roda **sem config** (o Vitest usa o default quando não
+encontra `vitest.config.ts` no diretório do package) e só é equivalente à
+execução completa da raiz **enquanto `vitest.config.ts` da raiz contiver
+apenas `include`**. Se a config raiz ganhar `setupFiles`, `environment`,
+`coverage`, `pool` ou qualquer outra chave, essa equivalência quebra **em
+silêncio** — a execução escopada deixaria de exercitar o que a raiz exercita,
+sem nenhum sinal de erro — e a convenção acima precisa ser revista antes do
+próximo uso.
+
+**Arquivo fora de qualquer package.** `tests/smoke.test.ts` (raiz do
+workspace) não pertence a nenhum package e por construção **não é alcançado
+por nenhuma execução escopada** — só a execução da raiz o cobre.
+
+**Escopado durante a iteração; uma passada completa na raiz antes de
+declarar concluído.** O `--filter` existe para reduzir o contexto acumulado
+enquanto se trabalha num package. Antes de fechar uma SPEC, `spec-validator`
+e `spec-closer` continuam **obrigados** a rodar, ao menos uma vez, os quatro
+comandos completos na raiz — `pnpm typecheck`, `pnpm lint`, `pnpm test` e
+`pnpm format:check` — que é o que a CI de fato roda. A CI (`.github/workflows/ci.yml`)
+não muda: sempre roda tudo, na raiz.
+
+---
+
 # Como isso muda o dia a dia
 
 Antes desta automação: eu fazia rascunho, implementação e validação de uma

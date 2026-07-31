@@ -51,7 +51,25 @@ A ausência de atrito também é informação.
 
 ---
 
-# Registro — Arquivo (SPEC-0036 e anteriores)
+# Registro — Arquivo (SPEC-0037 e anteriores)
+
+## [SPEC-0037](specs/SPEC-0037-desktop-runtime-persona-switch.md) — Desktop: seleção e troca de Persona em runtime pela interface gráfica (2026-07-28)
+
+**Descobrimos que...**
+
+A distinção entre "mapa lógico de uso" (Module Catalog: "Persona Service é utilizado por aplicações clientes") e "regra física de dependência" (ADR-0003 + Regra de Dependência 11 do ProjectStructure) é real e não intercambiável — a 1ª versão desta SPEC citava só o mapa lógico e propunha `apps/desktop` importar `createPersonaService` direto de `@atlas/persona`, instanciando um 2º `PersonaService` fora do composition root. O `architecture-reviewer` vetou isso no gate citando a regra física, não a lógica. A correção (D4) foi um re-export de catálogo em `@atlas/core`, no molde já existente de `loadConfig`/`defaultConfig` — aditivo, sem wiring, diff de `packages/core` em 8 linhas. Descobrimos também, só lendo o código (não a SPEC), que a serialização de turno da SPEC-0033 vivia inteiramente no renderer: um canal IPC novo (`atlas:persona:select`) furava essa garantia sem tocar o bridge, e um turno em voo interrompido pela troca de Persona perderia os `learned` daquele turno (a gravação vem depois do `updateConversation`, que lançaria `ContextError: Sessão desconhecida`) — corrigido com bloqueio em duas camadas (D9): renderer desabilita o seletor, bridge recusa `selectPersona` enquanto houver sessão ocupada.
+
+**A arquitetura ajudou porque...**
+
+O molde de re-export de catálogo (`loadConfig`/`defaultConfig`, já consumido por `apps/cli/tests`) generalizou de imediato para `createPersonaService`/`PERSONA_IDS` sem exigir nenhuma mudança em `@atlas/contracts` nem em `createAtlas`/`AtlasPlatform` — a 6ª fatia visual seguida (SPECs 0031-0037) a confirmar que a fronteira Core/renderer absorve capacidade de produto nova sem tocar packages do Core. O estado de módulo do `core-bridge` (molde do `Map` de sessões da SPEC-0033) deu um ponto único e testável (Vitest sem Electron) para a garantia central "nenhuma sessão viva sobrevive com Persona superada".
+
+**A arquitetura atrapalhou porque...**
+
+O critério de teste originalmente escrito na SPEC ("gateway `fake` instrumentado" para segurar um turno em voo) era inexequível como redigido: `CreateAtlasDeps` não tem slot de `gateway` e o provider `fake` não tem ponto de suspensão. O caminho real precisou usar `configOverride: { model: { provider: 'local' } }` + `globalThis.fetch` controlado por um deferred, e o implementer teve que ler `packages/cognitive/src/cognitive-core.ts` para acertar quantas chamadas de `generate` ocorrem por turno (planejamento + extração de aprendizado condicional). O estado de módulo do `core-bridge` (seleção corrente + sessões ocupadas) também cobrou o custo já previsto na própria SPEC: um teste do describe de Persona deixou uma sessão de chat aberta e contaminou o `closedSessions` do teste seguinte, corrigido fechando em `finally`.
+
+**Precisamos mudar...**
+
+Nada de estrutural nesta SPEC — os dois achados (regra física vs. mapa lógico; critério de teste sem superfície de injeção real) já foram absorvidos na própria implementação, sem abrir ADR novo. Encaminhamento registrado para a **próxima** fatia nomeada pelo usuário nesta sessão (criar Persona pela interface, com personalidade e voz): ela colide com o Artigo 11 (estado persistente novo) e provavelmente com o ADR-0010 (vincular voz a Persona) — cai na escalação obrigatória da Emenda v1.1 e deve começar por brainstorming humano, não pelo `spec-drafter` direto (encaminhamento: registrado em `docs/05-context/NEXT_CONTEXT.md` como próximo trabalho nomeado, decisão de início cabe ao usuário).
 
 ## [SPEC-0036](specs/SPEC-0036-desktop-tts-local-voice-only.md) — Desktop: TTS 100% offline garantido — restringir a vozes locais (2026-07-24)
 

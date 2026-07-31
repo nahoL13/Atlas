@@ -6,7 +6,8 @@
   "main": "src/main.ts",
   "scripts": {
     "start": "NODE_OPTIONS=--import=tsx electron ./src/main.ts",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
   },
   "dependencies": {
     "@atlas/contracts": "workspace:*",

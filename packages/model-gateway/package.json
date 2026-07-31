@@ -11,7 +11,8 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
-    "smoke": "tsx scripts/smoke.ts"
+    "smoke": "tsx scripts/smoke.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@atlas/contracts": "workspace:*"

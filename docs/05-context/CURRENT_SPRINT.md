@@ -2,7 +2,7 @@
 
 > **Project Atlas — Estado do Trabalho Atual**
 
-Atualizado em: 2026-07-30 (SPEC-0041)
+Atualizado em: 2026-07-30 (SPEC-0042)
 
 ---
 
