@@ -51,7 +51,7 @@ A ausência de atrito também é informação.
 
 ---
 
-**Escopo deste arquivo:** o Registro abaixo mantém as **últimas 5 SPECs**. As entradas da SPEC-0037 e anteriores estão em `LESSONS_LEARNED-ARCHIVE.md`, preservadas sem edição (regra 2 intacta — nada é reescrito, só realocado).
+**Escopo deste arquivo:** o Registro abaixo mantém as **últimas 5 SPECs**. As entradas da SPEC-0039 e anteriores estão em `LESSONS_LEARNED-ARCHIVE.md`, preservadas sem edição (regra 2 intacta — nada é reescrito, só realocado).
 
 O corte existe porque este arquivo chegou a 157 KB (~39k tokens) e era relido no arranque de quase todo subagent, dominando o custo em tokens do pipeline. Ao fechar uma SPEC: adicione a entrada nova no topo do Registro e mova a mais antiga das 6 para o arquivo.
 
@@ -72,6 +72,24 @@ Lições que se repetiram em três ou mais SPECs. Este índice existe para sobre
 
 
 # Registro
+
+## [SPEC-0044](specs/SPEC-0044-cli-persona-crud.md) — CLI: `atlas persona list|show|create|edit|delete`, equivalente de terminal do CRUD de Personas custom da SPEC-0039 (2026-07-31)
+
+**Descobrimos que...**
+
+O 1º veto do `architecture-reviewer` não foi por redesenho — foi por três lacunas de **registro** na própria SPEC, todas na fronteira entre "decisão razoável" e "decisão com custo não declarado", corrigidas na 2ª rodada sem mudar a forma da solução: (1) a D10 (injetar `personaStorage` em todo `createAtlas`) tinha uma contrapartida que o rascunho não nomeava — `createAtlas` nunca tocava `personas.json` antes desta SPEC, e a injeção faz **todo** comando lê-lo no arranque, com o fail-high da SPEC-0039/A6 passando a derrubar `ask`/`chat`/`status` também, não só `atlas persona`; (2) a D8 (`--voice-uri` opaco) justificava a opacidade só com "preserva a interoperabilidade" — verdadeiro para **preservar** uma voz vinda da janela, mas enganoso para **autorar** uma voz pela CLI sob a política Piper-only (SPEC-0041), onde só `piper:<id>` de fato soa; (3) §3 descrevia um contrato inexistente (`list()` devolvendo objetos `Persona`, campo `Persona.builtin`), o que teria levado o implementer a tocar `@atlas/contracts` — proibido pela própria SPEC. O bloco de veto é o que um humano lê para exercer override; decisão sem custo declarado é, na prática, um veto.
+
+**A arquitetura ajudou porque...**
+
+O molde D12 da SPEC-0039 (composição delimitada de `createPersonaService({ storage })` dentro do app, exceção nomeada ao ADR-0003) generalizou sem ajuste nenhum para um 2º consumidor real — o próprio gatilho que o ADR-0007 exige para promover algo a contrato público, e aqui a resposta correta foi a oposta: manter tudo local a `apps/cli`, porque nada precisou subir. O desvio pré-Core dos subcomandos de `persona` (D5) reusou, sem reabrir investigação, a mesma correção já provada pela SPEC-0039/D17 para o deadlock circular B1 — a mesma classe de problema (achar o arquivo não pode depender de a Persona ativa ser válida) apareceu num consumidor novo e a solução já documentada bastou.
+
+**A arquitetura atrapalhou porque...**
+
+Nada de estrutural; o atrito ficou em precisão de registro na própria SPEC — um custo real (D10) e uma justificativa parcial (D8) sobreviveram ao rascunho até o gate, o mesmo tipo de imprecisão textual já visto no 2º veto da SPEC-0041 (B1), mas aqui pego e corrigido na 1ª rodada, sem precisar escalar ao usuário.
+
+**Precisamos mudar...**
+
+O `spec-validator` sinalizou que `packages/persona/tests/persona-storage.test.ts:84` usa `chmod 0o500` para simular `EACCES` na escrita atômica — o que só funciona em processo **não-root**; verdadeiro hoje no runner `ubuntu-latest` do GitHub Actions (usuário `runner`), então não é flake em CI, mas é um pressuposto de ambiente não documentado. Encaminhamento: registrado aqui como nota; se a suíte algum dia rodar localmente como root (container root, sandbox elevado) ou migrar de runner, esse caso precisa de um teste alternativo de falha injetada (fake de `fs`/`rename`, não permissão real do SO).
 
 ## [SPEC-0043](specs/SPEC-0043-desktop-voice-residues.md) — Desktop: fecha os dois resíduos de voz da SPEC-0041 — `voiceURI` retida em vez de apagada em silêncio, e o caminho `'os'` do glue volta a honrar a preferência da Persona (2026-07-31)
 
@@ -145,25 +163,7 @@ Nada de estrutural atrapalhou; o atrito ficou inteiro em mecânica de TypeScript
 
 Dois pontos de resolução de implementação não estavam especificados literalmente nas "Interfaces Necessárias" da SPEC-0040 — a resolução do `defaultPiperVoiceURI` (D9: `pt_BR-faber-medium` se instalado, senão o primeiro por ordem de `id`) e o layout do diretório interno de modelos (`voices/` dentro do diretório Piper) — e precisaram de decisão do `spec-implementer` documentada em código/README em vez de na SPEC. Isoladamente não vale um ADR nem uma SPEC nova; encaminhamento: se um padrão semelhante ("resolução de default não especificada literalmente na SPEC, decidida ad hoc na implementação") se repetir numa próxima SPEC de motor/subprocesso, revisar o template de SPEC (`docs/implementation/templates/SPEC-TEMPLATE.md`) para exigir uma subseção explícita de "defaults e layout interno" nas Interfaces Necessárias.
 
-## [SPEC-0039](specs/SPEC-0039-desktop-persona-authoring.md) — Desktop: CRUD de Personas custom pela interface gráfica, com voz real vinculada (2026-07-29)
-
-**Descobrimos que...**
-
-Corrigir um bloqueante do gate **dentro do mesmo caminho de código** que ele mesmo tocou pode introduzir um bloqueante novo, exatamente o padrão já registrado nas lições das SPECs 0034 e 0038 ("garantia em prosa absoluta tende a estar incompleta"). Aqui a variante foi mais séria: a correção do 1º veto (A1 — derivar o caminho do arquivo de Personas do `configOverride` efetivo, via `loadConfig(withSelections(cfg))`) criou um **deadlock circular** (B1) — `loadConfig` valida `persona` contra `PERSONA_IDS`, e `withSelections` injeta a Persona selecionada no override; assim que o usuário selecionasse **qualquer** Persona custom (o cenário central desta própria SPEC), toda função de Persona do bridge passaria a lançar `InvalidConfigError` antes de qualquer trabalho útil — a app ficaria inutilizável logo depois de a feature ser usada pela primeira vez. Foi o **2º veto consecutivo** do `architecture-reviewer` nesta SPEC (a Emenda v1.1 prevê escalação ao usuário na 2ª reprovação), e a via de correção (extrair `resolveDataDir` sem validar `persona`, D17) foi decidida pelo usuário, não pelo `spec-drafter` sozinho — a primeira vez que esse ramo específico da Emenda v1.1 (escalação por 2º veto, com decisão de arquitetura do usuário no meio do processo de SPEC) foi exercitado neste projeto.
-
-**A arquitetura ajudou porque...**
-
-O molde do Memory Service (ADR-0011) generalizou de novo, quase sem ajuste, para o Persona Service: porta `PersonaStorage` interna ao package (não sobe a `@atlas/contracts`), `createFilePersonaStorage` como adapter default **não injetado** por padrão em `createAtlas`, e a mesma garantia "sem storage, comportamento idêntico a hoje, byte a byte" — provada por teste e confirmada pelo diff vazio de `apps/cli`. A separação `resolveDataDir`/`personaStoragePath` (D17) também deixou um precedente reutilizável: "achar onde um dado mora" e "validar se esse dado é o efetivamente ativo" são preocupações independentes por natureza, e um resolvedor puro que só cobre a primeira evita qualquer futura porta de storage repetir o mesmo ciclo. A guarda por Persona **efetiva** (`selectedPersonaId() ?? config.persona`, não só a seleção em memória) fechou um buraco que só existia "por acidente" hoje — evidência de que testar contra o comportamento futuro nomeado (persistir seleção, honrar `ATLAS_PERSONA`) já registrado nas Observações da SPEC-0037 valeu a pena.
-
-**A arquitetura atrapalhou porque...**
-
-O acoplamento entre "resolver `dataDir`" e "validar `persona`" dentro de um único `loadConfig` não era visível até uma SPEC precisar resolver o primeiro **sem** o segundo — `loadConfig` sempre fez as duas coisas juntas porque nunca havia um consumidor que precisasse só de uma. A correção exigiu extrair uma nova função pura e testar a **equivalência** entre as duas precedências (`resolveDataDir(override) === loadConfig(override).dataDir`) para provar que a extração não introduziu uma segunda fonte de verdade — custo de teste que não existiria se as duas responsabilidades já tivessem nascido separadas.
-
-**Precisamos mudar...**
-
-Nada de estrutural além do que esta própria SPEC já decidiu (D17) e do que este fechamento já propaga: a leitura "o Artigo 11 cobre conhecimento persistente, não configuração de identidade criada explicitamente pelo usuário" (Observação A8 da SPEC) precisa sobreviver além do texto da SPEC — encaminhamento: registrada nesta sessão de fechamento em `docs/05-context/PLATFORM_STATE.md` e em `packages/persona/CLAUDE.md`, para que a próxima SPEC que precise persistir algo não-conhecimento a encontre sem reabrir a discussão. Um segundo encaminhamento, não desta SPEC: se uma 3ª ocorrência do padrão "correção de bloqueante introduz bloqueante novo no mesmo caminho de código" aparecer num gate futuro, vale considerar registrar esse padrão explicitamente no processo do `architecture-reviewer` (`docs/04-engineering/ClaudeCodeAutomation.md`) como um item de checklist — ainda não justificado com só 3 ocorrências (0034, 0038, 0039), mas já é uma recorrência a observar.
-
 
 ---
 
-**Entradas anteriores (SPEC-0038 e mais antigas):** `LESSONS_LEARNED-ARCHIVE.md`.
+**Entradas anteriores (SPEC-0039 e mais antigas):** `LESSONS_LEARNED-ARCHIVE.md`.

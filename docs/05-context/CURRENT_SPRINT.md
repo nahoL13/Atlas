@@ -2,7 +2,7 @@
 
 > **Project Atlas — Estado do Trabalho Atual**
 
-Atualizado em: 2026-07-31 (SPEC-0043)
+Atualizado em: 2026-07-31 (SPEC-0044)
 
 ---
 
@@ -55,5 +55,6 @@ Objetivo: plataforma mínima operável + primeira interface executável (CLI) + 
 | [SPEC-0041](../implementation/specs/SPEC-0041-desktop-piper-only-voice-surface.md) | Desktop: superfície de voz Piper-only — `<select>` de Persona lista só vozes Piper e a preferência de SO persistida deixa de ser honrada quando `PiperTts.isAvailable()` (via IPC novo) responde `true`; reverte a precedência da SPEC-0040/D8 como política de superfície, fallback fail-closed do ADR-0021(c) intacto; continua o item 2.3 Voz (critério 25 da SPEC-0040 ganha mais cenários) | Done |
 | [SPEC-0042](../implementation/specs/SPEC-0042-test-split-scoped-verification.md) | Quebra do `core-bridge.test.ts` por assunto e verificação escopada por package (`"test": "vitest run"` em 13 packages/apps, `pnpm --filter <pkg> test`/`typecheck`); corrigiu flake pré-existente de vazamento de sessão sob `--sequence.shuffle`; zero diff em `src/` | Done |
 | [SPEC-0043](../implementation/specs/SPEC-0043-desktop-voice-residues.md) | Desktop: fecha os dois resíduos de voz da SPEC-0041 — `voiceURI` persistida não-ofertável por razão ambiental vira `<option>` retida e visível em vez de apagada em silêncio; `createSpeechOutputGlue` do renderer passa a receber `preferredVoiceURI`, restaurando ADR-0020(b) no caminho `'os'`; política Piper-only da SPEC-0041 intacta | Done |
+| [SPEC-0044](../implementation/specs/SPEC-0044-cli-persona-crud.md) | CLI: `atlas persona` (`list`/`show`/`create`/`edit`/`delete`) — equivalente de terminal do CRUD de Personas custom da SPEC-0039, sobre o mesmo `personas.json`; `apps/cli` injeta `personaStorage` em `createAtlas`, `--persona <id-custom>` passa a funcionar em todos os comandos; escrita atômica em `@atlas/persona` (`packages/persona/src/storage/persona-storage.ts`) | Done |
 
 Detalhes de retomada: `docs/05-context/NEXT_CONTEXT.md`.

@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -72,5 +72,38 @@ describe('createFilePersonaStorage', () => {
     const storage = createFilePersonaStorage(path);
     storage.save([persona()]);
     expect(createFilePersonaStorage(path).load()).toEqual([persona()]);
+  });
+
+  it('save é atômico: após gravar, nenhum arquivo temporário residual permanece no diretório', () => {
+    const path = join(tmpDir, 'personas.json');
+    const storage = createFilePersonaStorage(path);
+    storage.save([persona()]);
+    expect(readdirSync(tmpDir)).toEqual(['personas.json']);
+  });
+
+  it('falha na escrita atômica lança PersonaError citando o caminho e preserva o arquivo anterior', () => {
+    const path = join(tmpDir, 'personas.json');
+    const storage = createFilePersonaStorage(path);
+    storage.save([persona()]);
+    const before = readFileSync(path, 'utf8');
+
+    // Diretório somente-leitura: a escrita do arquivo temporário falha
+    // (EACCES) antes de alcançar o rename, então o alvo nunca é tocado.
+    chmodSync(tmpDir, 0o500);
+    try {
+      let thrown: unknown;
+      try {
+        storage.save([persona({ id: 'custom-2' })]);
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown).toBeInstanceOf(AtlasError);
+      expect((thrown as AtlasError).message).toContain(path);
+    } finally {
+      chmodSync(tmpDir, 0o700);
+    }
+
+    expect(readFileSync(path, 'utf8')).toBe(before);
+    expect(readdirSync(tmpDir)).toEqual(['personas.json']);
   });
 });

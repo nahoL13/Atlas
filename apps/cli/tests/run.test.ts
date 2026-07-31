@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createFilePersonaStorage, personaStoragePath } from '@atlas/core';
 import { createCliInputGateway } from '../src/gateway/input-gateway.js';
 import type { OutputGateway } from '../src/gateway/output-gateway.js';
 import type { LineReader } from '../src/gateway/line-reader.js';
@@ -690,6 +692,256 @@ describe('run (integração apps → core)', () => {
       );
       expect(code).toBe(0);
       expect(h2.out()).toContain('Nenhum fato memorizado');
+    });
+  });
+
+  describe('persona (SPEC-0044)', () => {
+    async function tmpDataDir(): Promise<string> {
+      return mkdtemp(join(tmpdir(), 'atlas-cli-persona-'));
+    }
+
+    it('round-trip CLI → disco → Core: create, list e status --persona <custom>', async () => {
+      const tmp = await tmpDataDir();
+
+      const hCreate = harness();
+      const codeCreate = await run(
+        ['persona', 'create', 'Terminal Bot', '--tone', 'seco', '--data-dir', tmp],
+        {},
+        hCreate.gateways,
+        '0.1.0',
+      );
+      expect(codeCreate).toBe(0);
+      expect(hCreate.out()).toContain('Persona criada [terminal-bot]: Terminal Bot');
+      expect(existsSync(join(tmp, 'personas.json'))).toBe(true);
+
+      const hList = harness();
+      const codeList = await run(
+        ['persona', 'list', '--data-dir', tmp],
+        {},
+        hList.gateways,
+        '0.1.0',
+      );
+      expect(codeList).toBe(0);
+      expect(hList.out()).toContain('terminal-bot');
+      expect(hList.out()).toContain('Terminal Bot');
+      expect(hList.out()).toContain('custom');
+
+      const hStatus = harness();
+      const codeStatus = await run(
+        ['status', '--persona', 'terminal-bot', '--data-dir', tmp, '--provider', 'fake'],
+        {},
+        hStatus.gateways,
+        '0.1.0',
+      );
+      expect(codeStatus).toBe(0);
+      expect(hStatus.out()).toContain('persona: Terminal Bot (terminal-bot)');
+
+      const tmp2 = await tmpDataDir();
+      const hStatusOther = harness();
+      const codeStatusOther = await run(
+        ['status', '--persona', 'terminal-bot', '--data-dir', tmp2, '--provider', 'fake'],
+        {},
+        hStatusOther.gateways,
+        '0.1.0',
+      );
+      expect(codeStatusOther).toBe(1);
+    });
+
+    it('interoperabilidade GUI↔CLI: um personas.json escrito pelo caminho canônico é lido por atlas persona list', async () => {
+      const tmp = await tmpDataDir();
+      const storage = createFilePersonaStorage(personaStoragePath(tmp));
+      storage.save([
+        {
+          id: 'desktop-bot',
+          name: 'Desktop Bot',
+          tone: '',
+          formality: '',
+          language: '',
+          style: '',
+          communicationRules: [],
+          voice: '',
+          emotion: '',
+        },
+      ]);
+
+      const h = harness();
+      const code = await run(['persona', 'list', '--data-dir', tmp], {}, h.gateways, '0.1.0');
+      expect(code).toBe(0);
+      expect(h.out()).toContain('desktop-bot');
+      expect(h.out()).toContain('Desktop Bot');
+    });
+
+    it('nenhum comando de leitura cria arquivo num dataDir virgem', async () => {
+      const tmp = await tmpDataDir();
+
+      const hStatus = harness();
+      await run(['status', '--data-dir', tmp, '--provider', 'fake'], {}, hStatus.gateways, '0.1.0');
+      const hList = harness();
+      await run(['persona', 'list', '--data-dir', tmp], {}, hList.gateways, '0.1.0');
+
+      expect(existsSync(join(tmp, 'personas.json'))).toBe(false);
+    });
+
+    it('personas.json corrompido derruba persona list/status/ask com código 1, mensagem citando o caminho e sem sobrescrever o arquivo', async () => {
+      const tmp = await tmpDataDir();
+      const path = personaStoragePath(tmp);
+      const corrupted = 'não é json {{{';
+      await writeFile(path, corrupted, 'utf8');
+
+      const hList = harness();
+      const codeList = await run(
+        ['persona', 'list', '--data-dir', tmp],
+        {},
+        hList.gateways,
+        '0.1.0',
+      );
+      expect(codeList).toBe(1);
+      expect(hList.err()).toContain(path);
+      expect(hList.err()).not.toContain('at ');
+
+      const hStatus = harness();
+      const codeStatus = await run(
+        ['status', '--data-dir', tmp, '--provider', 'fake'],
+        {},
+        hStatus.gateways,
+        '0.1.0',
+      );
+      expect(codeStatus).toBe(1);
+      expect(hStatus.err()).toContain(path);
+
+      const hAsk = harness();
+      const codeAsk = await run(
+        ['ask', 'oi', '--data-dir', tmp, '--provider', 'fake'],
+        {},
+        hAsk.gateways,
+        '0.1.0',
+      );
+      expect(codeAsk).toBe(1);
+      expect(hAsk.err()).toContain(path);
+
+      expect(await readFile(path, 'utf8')).toBe(corrupted);
+    });
+
+    it('a mensagem do arquivo corrompido cita a saída de emergência; --data-dir íntegro volta a funcionar', async () => {
+      const tmp = await tmpDataDir();
+      const path = personaStoragePath(tmp);
+      await writeFile(path, 'não é json {{{', 'utf8');
+
+      const hBroken = harness();
+      const codeBroken = await run(
+        ['persona', 'list', '--data-dir', tmp],
+        {},
+        hBroken.gateways,
+        '0.1.0',
+      );
+      expect(codeBroken).toBe(1);
+      expect(hBroken.err()).toContain('--data-dir');
+
+      const tmp2 = await tmpDataDir();
+      const hFixed = harness();
+      const codeFixed = await run(
+        ['persona', 'list', '--data-dir', tmp2],
+        {},
+        hFixed.gateways,
+        '0.1.0',
+      );
+      expect(codeFixed).toBe(0);
+    });
+
+    it('D5: ATLAS_PERSONA apontando para id inexistente não impede persona list/create/delete, mas derruba status', async () => {
+      const tmp = await tmpDataDir();
+      const env = { ATLAS_PERSONA: 'nao-existe' };
+
+      const hList = harness();
+      const codeList = await run(
+        ['persona', 'list', '--data-dir', tmp],
+        env,
+        hList.gateways,
+        '0.1.0',
+      );
+      expect(codeList).toBe(0);
+
+      const hCreate = harness();
+      const codeCreate = await run(
+        ['persona', 'create', 'X', '--data-dir', tmp],
+        env,
+        hCreate.gateways,
+        '0.1.0',
+      );
+      expect(codeCreate).toBe(0);
+
+      const hDelete = harness();
+      const codeDelete = await run(
+        ['persona', 'delete', 'x', '--yes', '--data-dir', tmp],
+        env,
+        hDelete.gateways,
+        '0.1.0',
+      );
+      expect(codeDelete).toBe(0);
+
+      const hStatus = harness();
+      const codeStatus = await run(
+        ['status', '--data-dir', tmp, '--provider', 'fake'],
+        env,
+        hStatus.gateways,
+        '0.1.0',
+      );
+      expect(codeStatus).toBe(1);
+    });
+
+    it('persona delete recusado mantém a Persona; aceito, some da listagem e do arquivo', async () => {
+      const tmp = await tmpDataDir();
+      await run(['persona', 'create', 'X', '--data-dir', tmp], {}, harness().gateways, '0.1.0');
+
+      const hRefused = harness();
+      const codeRefused = await run(
+        ['persona', 'delete', 'x', '--data-dir', tmp],
+        {},
+        hRefused.gateways,
+        '0.1.0',
+        { createLineReader: () => scriptedReader(['n']) },
+      );
+      expect(codeRefused).toBe(1);
+
+      const hListAfterRefusal = harness();
+      await run(['persona', 'list', '--data-dir', tmp], {}, hListAfterRefusal.gateways, '0.1.0');
+      expect(hListAfterRefusal.out()).toContain('x  X  [custom]');
+
+      const hAccepted = harness();
+      const codeAccepted = await run(
+        ['persona', 'delete', 'x', '--data-dir', tmp],
+        {},
+        hAccepted.gateways,
+        '0.1.0',
+        { createLineReader: () => scriptedReader(['s']) },
+      );
+      expect(codeAccepted).toBe(0);
+
+      const hListAfterDelete = harness();
+      await run(['persona', 'list', '--data-dir', tmp], {}, hListAfterDelete.gateways, '0.1.0');
+      expect(hListAfterDelete.out()).not.toContain('x  X  [custom]');
+    });
+
+    it('atlas persona wat sai com código 2 e imprime a ajuda', async () => {
+      const h = harness();
+      const code = await run(['persona', 'wat'], {}, h.gateways, '0.1.0');
+      expect(code).toBe(2);
+      expect(h.err()).toContain('Usage:');
+    });
+
+    it('HELP_TEXT contém as linhas de persona e a política vigente de --voice-uri', async () => {
+      const h = harness();
+      await run(['--help'], {}, h.gateways, '0.1.0');
+      const text = h.out();
+      expect(text).toContain('persona list');
+      expect(text).toContain('persona show');
+      expect(text).toContain('persona create');
+      expect(text).toContain('persona edit');
+      expect(text).toContain('persona delete');
+      expect(text).toContain('(jarvis|neutral|<id custom>)');
+      expect(text).not.toContain('(jarvis|neutral)');
+      expect(text).toContain('piper:<id>');
+      expect(text).toContain('voiceURI de');
     });
   });
 });

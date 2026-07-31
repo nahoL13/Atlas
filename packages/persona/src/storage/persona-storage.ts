@@ -1,5 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { dirname, join } from 'node:path';
 import type { Persona } from '@atlas/contracts';
 import { PersonaError } from '../errors.js';
 
@@ -59,8 +60,28 @@ export function createFilePersonaStorage(path: string): PersonaStorage {
     },
 
     save(personas: readonly Persona[]): void {
-      mkdirSync(dirname(path), { recursive: true });
-      writeFileSync(path, `${JSON.stringify({ personas }, null, 2)}\n`, 'utf8');
+      const dir = dirname(path);
+      mkdirSync(dir, { recursive: true });
+      // Escrita atômica (SPEC-0044/D9): grava num arquivo temporário no
+      // MESMO diretório do alvo (garante mesmo sistema de arquivos, para o
+      // rename ser atômico) e só então substitui o alvo por `renameSync`.
+      // Sob falha em qualquer etapa, o alvo nunca fica parcialmente
+      // escrito — o temporário é removido best-effort, sem mascarar o
+      // erro original.
+      const tmpPath = join(dir, `.personas.json.${randomUUID()}.tmp`);
+      try {
+        writeFileSync(tmpPath, `${JSON.stringify({ personas }, null, 2)}\n`, 'utf8');
+        renameSync(tmpPath, path);
+      } catch (cause) {
+        try {
+          if (existsSync(tmpPath)) {
+            rmSync(tmpPath);
+          }
+        } catch {
+          // best-effort: nunca mascara o erro original de gravação.
+        }
+        throw new PersonaError(`Falha ao gravar o arquivo de Personas em ${path}`, { cause });
+      }
     },
   };
 }

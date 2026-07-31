@@ -385,4 +385,104 @@ describe('CliInputGateway.normalize', () => {
       expect(parsed.factSubject).toBeUndefined();
     });
   });
+
+  describe('persona (SPEC-0044)', () => {
+    it('atlas persona e atlas persona list produzem personaSubcommand: list', () => {
+      expect(gw.normalize(['persona'], {})).toMatchObject({
+        command: 'persona',
+        personaSubcommand: 'list',
+      });
+      expect(gw.normalize(['persona', 'list'], {})).toMatchObject({
+        command: 'persona',
+        personaSubcommand: 'list',
+      });
+    });
+
+    it('subcomando desconhecido lança CliUsageError citando list|show|create|edit|delete', () => {
+      expect(() => gw.normalize(['persona', 'wat'], {})).toThrow(CliUsageError);
+      try {
+        gw.normalize(['persona', 'wat'], {});
+      } catch (cause) {
+        expect((cause as Error).message).toContain('list|show|create|edit|delete');
+      }
+    });
+
+    it('show/edit/delete sem id lançam CliUsageError', () => {
+      expect(() => gw.normalize(['persona', 'show'], {})).toThrow(CliUsageError);
+      expect(() => gw.normalize(['persona', 'edit'], {})).toThrow(CliUsageError);
+      expect(() => gw.normalize(['persona', 'delete'], {})).toThrow(CliUsageError);
+    });
+
+    it('create sem nome (ausente ou em branco) lança CliUsageError', () => {
+      expect(() => gw.normalize(['persona', 'create'], {})).toThrow(CliUsageError);
+      expect(() => gw.normalize(['persona', 'create', '   '], {})).toThrow(CliUsageError);
+    });
+
+    it('persona create "X" --name Y lança CliUsageError', () => {
+      expect(() => gw.normalize(['persona', 'create', 'X', '--name', 'Y'], {})).toThrow(
+        CliUsageError,
+      );
+    });
+
+    it('persona edit x sem nenhuma flag de campo lança CliUsageError', () => {
+      expect(() => gw.normalize(['persona', 'edit', 'x'], {})).toThrow(CliUsageError);
+    });
+
+    it('flags de campo com list/show lançam CliUsageError', () => {
+      expect(() => gw.normalize(['persona', 'list', '--tone', 'x'], {})).toThrow(CliUsageError);
+      expect(() => gw.normalize(['persona', 'show', 'x', '--yes'], {})).toThrow(CliUsageError);
+    });
+
+    it('create com todos os campos produz personaFields com exatamente as chaves informadas', () => {
+      const parsed = gw.normalize(
+        [
+          'persona',
+          'create',
+          'Meu Bot',
+          '--tone',
+          't',
+          '--rule',
+          'a',
+          '--rule',
+          'b',
+          '--voice-uri',
+          'u',
+        ],
+        {},
+      );
+      expect(parsed.personaName).toBe('Meu Bot');
+      expect(parsed.personaFields).toEqual({
+        tone: 't',
+        communicationRules: ['a', 'b'],
+        voiceURI: 'u',
+      });
+    });
+
+    it('--rule "" (só vazio/espaços) produz communicationRules: []; ausência de --rule não cria a chave', () => {
+      const withEmptyRule = gw.normalize(['persona', 'create', 'X', '--rule', '   '], {});
+      expect(withEmptyRule.personaFields).toEqual({ communicationRules: [] });
+
+      const withoutRule = gw.normalize(['persona', 'create', 'X'], {});
+      expect(Object.hasOwn(withoutRule.personaFields ?? {}, 'communicationRules')).toBe(false);
+    });
+
+    it('persona delete x --yes produz personaAssumeYes: true; sem a flag, false', () => {
+      const withYes = gw.normalize(['persona', 'delete', 'x', '--yes'], {});
+      expect(withYes.personaAssumeYes).toBe(true);
+
+      const withoutYes = gw.normalize(['persona', 'delete', 'x'], {});
+      expect(withoutYes.personaAssumeYes).toBe(false);
+    });
+
+    it('persona show <id> produz personaId', () => {
+      const parsed = gw.normalize(['persona', 'show', 'terminal-bot'], {});
+      expect(parsed.personaId).toBe('terminal-bot');
+    });
+
+    it('persona edit <id> --style novo produz personaFields com só o campo informado', () => {
+      const parsed = gw.normalize(['persona', 'edit', 'terminal-bot', '--style', 'novo'], {});
+      expect(parsed.personaId).toBe('terminal-bot');
+      expect(parsed.personaFields).toEqual({ style: 'novo' });
+    });
+  });
 });

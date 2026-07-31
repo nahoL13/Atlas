@@ -7,9 +7,37 @@ import type {
   ProviderName,
 } from '@atlas/contracts';
 
+/**
+ * Espelho local (não sobe a `@atlas/contracts`) dos 8 campos de `Persona`
+ * que o usuário pode informar por flag — parcial e literal: uma chave só
+ * existe se a flag correspondente apareceu na invocação (sem defaults, sem
+ * preenchimento; SPEC-0044, §2/§3-D3). `''`/lista vazia têm significado
+ * próprio (limpar `voiceURI`/`communicationRules`), distinto de ausência.
+ */
+export interface PersonaFieldPatch {
+  readonly name?: string;
+  readonly tone?: string;
+  readonly formality?: string;
+  readonly language?: string;
+  readonly style?: string;
+  readonly voice?: string;
+  readonly emotion?: string;
+  readonly voiceURI?: string;
+  readonly communicationRules?: readonly string[];
+}
+
 export interface ParsedInput {
   command:
-    'status' | 'help' | 'version' | 'ask' | 'chat' | 'remember' | 'forget' | 'memory' | 'skills';
+    | 'status'
+    | 'help'
+    | 'version'
+    | 'ask'
+    | 'chat'
+    | 'remember'
+    | 'forget'
+    | 'memory'
+    | 'skills'
+    | 'persona';
   configOverride: AtlasConfigOverride;
   objective?: string;
   factText?: string;
@@ -22,6 +50,11 @@ export interface ParsedInput {
   listCategory?: 'fact' | 'episode' | 'project';
   skillsSubcommand?: 'list' | 'build';
   capability?: string;
+  personaSubcommand?: 'list' | 'show' | 'create' | 'edit' | 'delete';
+  personaId?: string;
+  personaName?: string;
+  personaFields?: PersonaFieldPatch;
+  personaAssumeYes?: boolean;
 }
 
 export interface InputGateway {
@@ -49,6 +82,16 @@ interface CliValues {
   apply?: boolean | undefined;
   category?: string | undefined;
   subject?: string | undefined;
+  name?: string | undefined;
+  tone?: string | undefined;
+  formality?: string | undefined;
+  language?: string | undefined;
+  style?: string | undefined;
+  voice?: string | undefined;
+  emotion?: string | undefined;
+  'voice-uri'?: string | undefined;
+  rule?: string[] | undefined;
+  yes?: boolean | undefined;
 }
 
 const MEMORY_CATEGORIES = ['fact', 'episode', 'project'] as const;
@@ -203,6 +246,54 @@ function resolveConfigOverride(values: CliValues, env: NodeJS.ProcessEnv): Atlas
   return override;
 }
 
+const PERSONA_SUBCOMMANDS = ['list', 'show', 'create', 'edit', 'delete'] as const;
+type PersonaSubcommand = (typeof PERSONA_SUBCOMMANDS)[number];
+
+function isPersonaSubcommand(value: string): value is PersonaSubcommand {
+  return (PERSONA_SUBCOMMANDS as readonly string[]).includes(value);
+}
+
+/**
+ * Flags de campo da família `persona` (SPEC-0044/§2): `true` se qualquer
+ * uma apareceu na invocação, usado para detectar uso incoerente
+ * (`list`/`show`/`delete` combinadas com flags de campo).
+ */
+function hasAnyPersonaFieldFlag(values: CliValues): boolean {
+  return (
+    values.name !== undefined ||
+    values.tone !== undefined ||
+    values.formality !== undefined ||
+    values.language !== undefined ||
+    values.style !== undefined ||
+    values.voice !== undefined ||
+    values.emotion !== undefined ||
+    values['voice-uri'] !== undefined ||
+    values.rule !== undefined
+  );
+}
+
+/**
+ * Monta o patch **parcial e literal** do que o usuário informou (SPEC-0044,
+ * Decisão D3): cada chave só existe se a flag correspondente apareceu —
+ * sem defaults, sem preenchimento. `--rule` repetível vira
+ * `communicationRules` (substituição, nunca merge), com segmentos
+ * vazios/só-espaço filtrados; `--rule ""` isolado colapsa para `[]`
+ * (chave presente = "limpar", distinto de "não informado").
+ */
+function resolvePersonaFieldPatch(values: CliValues): PersonaFieldPatch {
+  return {
+    ...(values.name !== undefined ? { name: values.name } : {}),
+    ...(values.tone !== undefined ? { tone: values.tone } : {}),
+    ...(values.formality !== undefined ? { formality: values.formality } : {}),
+    ...(values.language !== undefined ? { language: values.language } : {}),
+    ...(values.style !== undefined ? { style: values.style } : {}),
+    ...(values.voice !== undefined ? { voice: values.voice } : {}),
+    ...(values.emotion !== undefined ? { emotion: values.emotion } : {}),
+    ...(values['voice-uri'] !== undefined ? { voiceURI: values['voice-uri'] } : {}),
+    ...(values.rule !== undefined ? { communicationRules: filterNonEmpty(values.rule) } : {}),
+  };
+}
+
 function parseArgvOrThrow(argv: string[]) {
   try {
     return parseArgs({
@@ -224,6 +315,16 @@ function parseArgvOrThrow(argv: string[]) {
         apply: { type: 'boolean' },
         category: { type: 'string' },
         subject: { type: 'string' },
+        name: { type: 'string' },
+        tone: { type: 'string' },
+        formality: { type: 'string' },
+        language: { type: 'string' },
+        style: { type: 'string' },
+        voice: { type: 'string' },
+        emotion: { type: 'string' },
+        'voice-uri': { type: 'string' },
+        rule: { type: 'string', multiple: true },
+        yes: { type: 'boolean' },
       },
     });
   } catch (cause) {
@@ -355,6 +456,117 @@ export function createCliInputGateway(): InputGateway {
           command: 'skills',
           configOverride: resolveConfigOverride(values, env),
           skillsSubcommand: 'list',
+        };
+      }
+
+      if (command === 'persona') {
+        const sub = positionals[1];
+        if (sub !== undefined && !isPersonaSubcommand(sub)) {
+          throw new CliUsageError(
+            `subcomando de persona desconhecido: ${sub} (use: atlas persona list|show|create|edit|delete)`,
+          );
+        }
+        const personaSubcommand: PersonaSubcommand = sub !== undefined ? sub : 'list';
+        const yesUsed = values.yes === true;
+
+        if (personaSubcommand === 'create') {
+          const name = positionals[2];
+          if (name === undefined || name.trim() === '') {
+            throw new CliUsageError(
+              'o comando "persona create" exige um nome: atlas persona create "<nome>"',
+            );
+          }
+          if (values.name !== undefined) {
+            throw new CliUsageError(
+              'o nome de "persona create" é o positional, não --name: atlas persona create "<nome>"',
+            );
+          }
+          if (yesUsed) {
+            throw new CliUsageError('--yes só é válido com "persona delete"');
+          }
+          return {
+            command: 'persona',
+            configOverride: resolveConfigOverride(values, env),
+            personaSubcommand: 'create',
+            personaName: name,
+            personaFields: resolvePersonaFieldPatch(values),
+          };
+        }
+
+        if (personaSubcommand === 'edit') {
+          const id = positionals[2];
+          if (id === undefined || id.trim() === '') {
+            throw new CliUsageError(
+              'o comando "persona edit" exige um id: atlas persona edit <id>',
+            );
+          }
+          if (yesUsed) {
+            throw new CliUsageError('--yes só é válido com "persona delete"');
+          }
+          const personaFields = resolvePersonaFieldPatch(values);
+          if (Object.keys(personaFields).length === 0) {
+            throw new CliUsageError(
+              'nada a alterar: informe ao menos um campo (--name/--tone/--formality/--language/' +
+                '--style/--voice/--emotion/--voice-uri/--rule)',
+            );
+          }
+          return {
+            command: 'persona',
+            configOverride: resolveConfigOverride(values, env),
+            personaSubcommand: 'edit',
+            personaId: id,
+            personaFields,
+          };
+        }
+
+        if (personaSubcommand === 'delete') {
+          const id = positionals[2];
+          if (id === undefined || id.trim() === '') {
+            throw new CliUsageError(
+              'o comando "persona delete" exige um id: atlas persona delete <id>',
+            );
+          }
+          if (hasAnyPersonaFieldFlag(values)) {
+            throw new CliUsageError('flags de campo não são válidas com "persona delete"');
+          }
+          return {
+            command: 'persona',
+            configOverride: resolveConfigOverride(values, env),
+            personaSubcommand: 'delete',
+            personaId: id,
+            personaAssumeYes: yesUsed,
+          };
+        }
+
+        // list | show
+        if (hasAnyPersonaFieldFlag(values)) {
+          throw new CliUsageError(
+            `flags de campo não são válidas com "persona ${personaSubcommand}"`,
+          );
+        }
+        if (yesUsed) {
+          throw new CliUsageError('--yes só é válido com "persona delete"');
+        }
+
+        if (personaSubcommand === 'show') {
+          const id = positionals[2];
+          if (id === undefined || id.trim() === '') {
+            throw new CliUsageError(
+              'o comando "persona show" exige um id: atlas persona show <id>',
+            );
+          }
+          return {
+            command: 'persona',
+            configOverride: resolveConfigOverride(values, env),
+            personaSubcommand: 'show',
+            personaId: id,
+          };
+        }
+
+        return {
+          command: 'persona',
+          configOverride: resolveConfigOverride(values, env),
+          personaSubcommand: 'list',
         };
       }
 

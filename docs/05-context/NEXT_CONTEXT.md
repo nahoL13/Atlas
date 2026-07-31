@@ -2,7 +2,7 @@
 
 > **Project Atlas — Contexto de Retomada para a Próxima Sessão**
 
-Atualizado em: 2026-07-31 (SPEC-0043)
+Atualizado em: 2026-07-31 (SPEC-0044)
 
 Este documento responde a uma pergunta só: **o que fazer agora**. Ele é lido no arranque de toda sessão e de todo subagent, então é mantido curto por design — teto de ~8 KB.
 
@@ -21,11 +21,11 @@ Este documento responde a uma pergunta só: **o que fazer agora**. Ele é lido n
 
 Últimas três fatias (detalhe completo em `PLATFORM_STATE.md` e na SPEC de cada uma):
 
+- **SPEC-0044** `Done` (2026-07-31) — CLI de Persona: `atlas persona list|show|create|edit|delete`, equivalente de terminal do CRUD da SPEC-0039, sobre o mesmo `personas.json` (`apps/cli/src/gateway/persona-composition.ts`); subcomandos não sobem o Core (evita o deadlock B1); todo comando restante injeta `personaStorage` em `createAtlas` (`--persona <id-custom>` passa a funcionar em qualquer comando; custo assumido: arquivo corrompido derruba `status`/`ask`/`chat` também). Escrita atômica em `@atlas/persona`; lost-update entre dois escritores permanece limitação ativa. Diff vazio em todos os demais packages e em `apps/desktop`.
 - **SPEC-0043** `Done` (2026-07-31) — fecha os dois resíduos de voz da SPEC-0041: `voiceURI` persistida não-ofertável por razão ambiental vira `<option>` retida e visível em vez de apagada em silêncio (`resolvePersistedVoiceSelection`, 4 desfechos); `createSpeechOutputGlue` do renderer passa a receber `preferredVoiceURI`, restaurando ADR-0020(b) no caminho `'os'`. Política Piper-only intacta. Diff confinado a `apps/desktop` + nota no ADR-0020.
 - **SPEC-0042** `Done` (2026-07-30) — `apps/desktop/tests/core-bridge.test.ts` (1.432 linhas) quebrado em 7 arquivos por assunto + helper; `"test": "vitest run"` em 13 `package.json`, viabilizando `pnpm --filter <package> test`/`typecheck` (subseção "Verificação escopada" em [ClaudeCodeAutomation.md](../04-engineering/ClaudeCodeAutomation.md)). Corrigiu, por exceção nomeada, um flake pré-existente de vazamento de sessão só exposto sob `--sequence.shuffle`; `__resetBridgeStateForTests()` não fecha sessões vivas (candidato futuro, D15). Zero diff em `src/`; CI inalterada.
-- **SPEC-0041** `Done` (2026-07-30) — superfície de voz Piper-only: com `PiperTts.isAvailable()` verdadeiro, o `<select>` de Persona lista só vozes Piper e uma `voiceURI` de SO persistida deixa de ser honrada. Web Speech API **não** removida — segue como fallback interno invisível (ADR-0021(c) intacto). Diff confinado a `apps/desktop`.
 
-Suíte atual: **757 testes / 62 arquivos**. `lint`/`typecheck`/`test`/`format:check` verdes.
+Suíte atual: **808 testes / 64 arquivos**. `lint`/`typecheck`/`test`/`format:check` verdes.
 
 ---
 
@@ -36,7 +36,6 @@ Suíte atual: **757 testes / 62 arquivos**. `lint`/`typecheck`/`test`/`format:ch
 ## Candidatos abertos
 
 - **Fase 2, item 2.3-restante — entrada por voz (STT) e wake word.** Único candidato direto restante da Fase 2. **Exige decisão humana + ADR novo antes de qualquer SPEC** (Escalação E1 da SPEC-0035): escolha de motor de reconhecimento, permissão de microfone, possivelmente um módulo Voice Service. **Começar por brainstorming humano, não pelo `spec-drafter`.**
-- **CLI de Persona** (`atlas persona create/edit/delete/list/use`) — equivalente na CLI do CRUD entregue pela SPEC-0039, explicitamente fora do escopo dela. 2º consumidor do re-export de catálogo (ver D4 da SPEC-0037).
 - **Cobrir `renderer.js` por teste automatizado** — risco estrutural registrado pelo `architecture-reviewer` no gate da SPEC-0043: 7ª réplica renderer↔módulo do projeto, e a 2ª vez que essa duplicação derivou por acidente (o resíduo (2) da SPEC-0043 ficou sem efeito por 6 fatias sem que nenhum gate mecânico detectasse). Exige decisão de stack (ADR-0019) → ADR novo → escalação humana antes de qualquer SPEC.
 - **Fase 1, itens `candidato`** (não são gates, todos os gates fecharam):
   - **Memória** — retenção/curadoria de fatos aprendidos, relações entre informações, teto por bytes (resíduo da SPEC-0030), `/lembrar` e `/esquecer` ao vivo numa sessão de chat.
