@@ -51,7 +51,7 @@ A ausência de atrito também é informação.
 
 ---
 
-**Escopo deste arquivo:** o Registro abaixo mantém as **últimas 5 SPECs**. As entradas da SPEC-0040 e anteriores estão em `LESSONS_LEARNED-ARCHIVE.md`, preservadas sem edição (regra 2 intacta — nada é reescrito, só realocado).
+**Escopo deste arquivo:** o Registro abaixo mantém as **últimas 5 SPECs**. As entradas da SPEC-0041 e anteriores estão em `LESSONS_LEARNED-ARCHIVE.md`, preservadas sem edição (regra 2 intacta — nada é reescrito, só realocado).
 
 O corte existe porque este arquivo chegou a 157 KB (~39k tokens) e era relido no arranque de quase todo subagent, dominando o custo em tokens do pipeline. Ao fechar uma SPEC: adicione a entrada nova no topo do Registro e mova a mais antiga das 6 para o arquivo.
 
@@ -67,11 +67,29 @@ Lições que se repetiram em três ou mais SPECs. Este índice existe para sobre
 - **Campo obrigatório novo em `Deps` exige grep pelo nome da função construtora** (`createRuntime(`, `createPermissionService(`) em **todo o repo** — repetido 8× até a SPEC-0013.
 - **Membro obrigatório novo numa interface de contrato não é pego por esse grep** — busque pelo **nome do tipo** (`git grep 'PermissionService'`), que acha fakes e implementações diretas nos testes (quebrou o typecheck na SPEC-0017).
 - **`vitest run` não faz typecheck** (esbuild só remove tipos) — um passo TDD "RED" que depende de erro de *tipo* só falha de verdade em `pnpm --filter <pkg> typecheck`.
-- **Smoke visual das fatias desktop nunca confirmado** — SPEC-0031 a 0043, 12 seguidas. O shell de automação não tem WindowServer. Não bloqueia fechamento documental, mas não conte como verificado.
+- **Smoke visual/sonoro das fatias desktop nunca confirmado** — SPEC-0031 a 0046, 13 seguidas. O shell de automação não tem WindowServer, microfone nem os binários Piper/`whisper-cli`. Não bloqueia fechamento documental, mas não conte como verificado.
 - **Contrato só sobe a `@atlas/contracts` com 2º consumidor real**, via ADR (ADR-0007). Tipos de uma app só (`StatusSnapshot`, `TurnSnapshot`, `FactSnapshot`) ficam locais.
 
 
 # Registro
+
+## [SPEC-0046](specs/SPEC-0046-desktop-voice-input-stt.md) — Desktop: entrada de voz (STT) no chat, push-to-talk sobre `whisper.cpp` local (2026-08-01)
+
+**Descobrimos que...**
+
+O 1º veto do `architecture-reviewer` (6 bloqueantes) não foi sobre desenho, e sim sobre um defeito que teria deixado a fatia inteira **inoperante com os Critérios de Aceitação passando verde**: `captureInFlight` era uma entrada obrigatória da política de permissão de microfone sem nenhum produtor declarado na v1.1 — a política negaria a concessão sempre, porque nada jamais marcava a janela de captura como aberta. Um CA que só verifica o **consumidor** de um dado (a política nega corretamente quando `captureInFlight` é falso) sem verificar se existe um **produtor** real para esse dado passa mecanicamente mesmo com a feature inteira quebrada — a mesma classe de risco do "garantia em prosa incompleta" já visto nas SPECs 0034/0038/0039, mas na variante mais severa possível (não um resíduo, a fatia toda). Descobrimos também dois números pinados que colidiam na v1.1: teto de gravação de 60s e timeout de transcrição fixo em 60s, sem processo quente — nos piores casos o timeout expiraria antes mesmo de a gravação (que ainda precisa ser transcrita inteira) terminar de ser processada; resolvido com um orçamento assimétrico (`clamp(20s + 5×duração, 20s, 180s)`, gravação reduzida a 30s) que dá margem proporcional ao tamanho real do áudio. E, pela 2ª vez nesta SPEC (não só uma), uma tabela declarada "exaustiva" não era: a v1.1 não cobria fronteira de áudio inválida, a v1.2 não cobria falha de IO — ambas pegas em rodadas sucessivas do gate, não na primeira.
+
+**A arquitetura ajudou porque...**
+
+O molde estrutural inteiro (subprocesso local via porta injetável, argv em array, resolução de recursos em 3 níveis, artefato temporário sempre removido, fallback fail-closed) já vinha pago e validado pelo ADR-0021/SPEC-0040 do lado da saída — o ADR-0022 é a aplicação simétrica ao sentido oposto do fluxo, e nenhum padrão novo precisou ser inventado, só o contrato do binário e do modelo. O harness `jsdom` da SPEC-0045 (relógio injetável, dublês de mídia) foi o que tornou possível testar a captura por `ScriptProcessorNode`/`getUserMedia`/permissão de microfone inteiramente sem hardware — sem ele, esta SPEC não teria como provar o glue do renderer. A decisão consciente de **não** introduzir processo de longa duração (divergência deliberada do Piper, D8/nota de desempenho do ADR-0022) evitou reabrir a complexidade de reciclagem de `piper-tts.ts` num caso onde o custo relativo do recarregamento é muito menor.
+
+**A arquitetura atrapalhou porque...**
+
+Nada de estrutural — o padrão inteiro já estava validado pelo ADR-0021. O atrito ficou em precisão de registro: uma divergência textual dentro da própria SPEC (`Int16Array` em "Interfaces Necessárias" × `ArrayBuffer` em D12) sobreviveu ao rascunho e ao gate, só corrigida pelo `spec-closer` no fechamento; e uma lacuna de convenção — `eslint.config.js` (editado para os 4 globals novos do renderer) não constava dos "Arquivos Esperados", o mesmo omitido em SPECs de voz anteriores, sem que ninguém tivesse notado até agora. Atrito de ambiente: `pnpm exec eslint` via RTK devolveu saída truncada — foi preciso `./node_modules/.bin/eslint` direto para ver as mensagens reais, o mesmo tipo de limitação de proxy já registrado para `grep`.
+
+**Precisamos mudar...**
+
+(1) CA que verifica só o consumidor de um dado obrigatório sem confirmar a existência de um produtor é o tipo de lacuna mais perigoso que o gate já pegou neste projeto — encaminhamento: nenhuma mudança estrutural pedida pelo `architecture-reviewer` além da correção já aplicada; registrar aqui como alerta explícito para o próprio `architecture-reviewer` em revisões futuras que envolvam estado booleano de "janela aberta"/"operação em voo". (2) `eslint.config.js` deveria constar como convenção explícita em "Arquivos Esperados" sempre que uma SPEC adicionar globals novos ao renderer — encaminhamento: nenhum ADR necessário; registrado aqui para a próxima SPEC de voz/renderer citar `eslint.config.js` explicitamente no Escopo. (3) A fatia inteira segue sem confirmação em ambiente real (microfone, binário `whisper-cli`, diálogo nativo de permissão do macOS, negativa do usuário, eco com alto-falante aberto) — encaminhamento: já registrado em `docs/05-context/NEXT_CONTEXT.md` e `apps/desktop/CLAUDE.md`, ampliando a pendência de smoke visual desde a SPEC-0031 com o eixo de áudio de entrada.
 
 ## [SPEC-0045](specs/SPEC-0045-renderer-automated-coverage.md) — Cobertura automatizada de `renderer.js` e gate mecânico contra a deriva das réplicas renderer↔`speech-output.ts` (2026-08-01)
 
@@ -145,24 +163,6 @@ O gate errou uma premissa e registrou o próprio erro no parecer da 3ª rodada: 
 
 `__resetBridgeStateForTests()` não fecha sessões vivas — lacuna nomeada por D15 como candidato a fatia futura que toca `src/` (fora desta SPEC, que proibiu explicitamente esse caminho por D14). Encaminhamento: registrada em `apps/desktop/CLAUDE.md` ("Candidatos futuros já nomeados" + qualificação da linha sobre o próprio `__resetBridgeStateForTests()`), para que o próximo teste que abrir uma sessão encontre o aviso sem precisar redescobrir o flake.
 
-## [SPEC-0041](specs/SPEC-0041-desktop-piper-only-voice-surface.md) — Desktop: superfície de voz Piper-only, revertendo a precedência da SPEC-0040/D8 sem tocar o fallback fail-closed (2026-07-29)
-
-**Descobrimos que...**
-
-Reverter deliberadamente uma decisão `Accepted` anterior (a precedência do ADR-0020(b)/D8 da SPEC-0040) é um processo bem mais caro em gate do que uma fatia aditiva comum: esta SPEC levou 3 rodadas do `architecture-reviewer`, com 2 vetos consecutivos. O 1º veto (A1-A5) pegou exatamente o mesmo defeito já registrado como achado A2 na SPEC-0035 ("nunca ativo-porém-mudo") ressurgindo por um caminho novo — condicionar o modo Piper-only só à lista de modelos em disco criaria um "Testar voz" habilitado-porém-mudo em máquinas com modelos mas sem o binário; a correção (condicionar a `PiperTts.isAvailable()` real via IPC) generalizou a lição sem redesenho. O 2º veto (B1) foi de outra natureza — não um defeito de comportamento, mas uma **afirmação textual imprecisa** na própria SPEC (dizer que `isAvailable()` detecta binário "quebrado" quando na verdade só verifica presença do arquivo + catálogo não vazio); esse veto escalou ao usuário (2ª reprovação, Emenda v1.1), que decidiu explicitamente aceitar o residual conhecido (binário presente-mas-inexecutável deixa "Testar voz" mudo) em vez de pedir uma sonda ativa — a primeira vez neste projeto em que uma escalação de 2º veto se resolveu por honestidade textual (declarar o limite) em vez de por mudança de código.
-
-**A arquitetura ajudou porque...**
-
-A separação D4 (política nova como camada **antes** de `resolveVoiceBackend`, não como edição da cadeia D8) permitiu reverter um efeito observável de peso — Piper à frente de qualquer preferência de SO persistida — sem invalidar nenhum teste existente da SPEC-0035/0036/0039/0040 nem tocar o mecanismo de resiliência do ADR-0021(c); o diff de `speech-output.ts` é só adição (`isPiperOnlyMode`/`piperOnlyPreference`), confirmando por diff o próprio Critério de Aceitação 6. A disciplina de "declare o limite, não finja cobri-lo" (D3/D11, honestidade sobre o que `isAvailable()` prova) transformou o 2º veto de um bloqueio recorrente em uma correção textual de uma sessão — a mesma arquitetura que gerou o achado (checagem de presença, não de execução) já vinha com o vocabulário certo para descrevê-lo sem ambiguidade.
-
-**A arquitetura atrapalhou porque...**
-
-Nada de estrutural atrapalhou. O atrito ficou em precisão de linguagem na própria SPEC (B1) — descrever com exatidão o que uma checagem de disponibilidade prova é mais difícil do que parece quando o efeito prático (evitar o estado "ativo-porém-mudo") é real na maioria dos casos, mas não em todos.
-
-**Precisamos mudar...**
-
-Dois achados não-bloqueantes ficaram registrados nas Observações da própria SPEC-0041 como candidatos a fatia futura, não resolvidos aqui: (1) apagamento silencioso de uma `voiceURI` Piper persistida no modo degradado (assimetria com o aviso D6, que só cobre voz de SO legada) — encaminhamento: nova SPEC futura de aviso simétrico "Piper órfão", quando a linha de voz for revisitada; (2) a deriva pré-existente do `createSpeechOutputGlue({ synth })` no renderer sem `preferredVoiceURI` (desde a SPEC-0035, reafirmada nas SPECs 0036/0039/0040/0041) segue sem correção — encaminhamento: já registrado como candidato a fatia futura desde a SPEC-0035; nenhuma SPEC de voz nova deveria fechar sem reavaliar se é hora de pagar essa dívida.
-
 ---
 
-**Entradas anteriores (SPEC-0040 e mais antigas):** `LESSONS_LEARNED-ARCHIVE.md`.
+**Entradas anteriores (SPEC-0041 e mais antigas):** `LESSONS_LEARNED-ARCHIVE.md`.

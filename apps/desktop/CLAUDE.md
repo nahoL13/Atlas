@@ -2,7 +2,7 @@
 
 Interface gráfica do Atlas sobre Electron ([ADR-0019](../../docs/06-adr/ADR-0019-desktop-electron-stack.md)) — equivalente desktop de `@atlas/cli`. Abre a Fase 2 do Roadmap.
 
-Este arquivo descreve o **estado atual** e as **regras em vigor**. O histórico fatia a fatia vive nas SPECs (`docs/implementation/specs/`, SPEC-0031 a 0045) e em `CLAUDE-ARCHIVE.md` (versão anterior deste arquivo, congelada — não leia no arranque).
+Este arquivo descreve o **estado atual** e as **regras em vigor**. O histórico fatia a fatia vive nas SPECs (`docs/implementation/specs/`, SPEC-0031 a 0046) e em `CLAUDE-ARCHIVE.md` (versão anterior deste arquivo, congelada — não leia no arranque).
 
 ---
 
@@ -140,6 +140,32 @@ Paths resolvidos em 3 níveis: `ATLAS_PIPER_DIR` → `process.resourcesPath/pipe
 
 ---
 
+## Voz (STT) — entrada, desde a SPEC-0046
+
+Consome o [ADR-0022](../../docs/06-adr/ADR-0022-whisper-cpp-local-stt-engine.md) (Accepted): motor `whisper.cpp` (`whisper-cli` v1.7.6), modelo empacotado `ggml-small-q5_1.bin`, idioma fixado em PT-BR (`-l pt`, sem autodetecção). Push-to-talk, **sem** processo de longa duração — divergência deliberada de `piper-tts.ts` (a transcrição roda uma vez por fala, já precedida de segundos de gravação; sustentar o modelo na RAM pela sessão inteira custaria mais do que a recarga por chamada).
+
+### `src/stt-engine.ts` — espelho estrutural de `piper-tts.ts`
+
+`createSttEngine({ spawn, resolveDir, tmpDirProvider, randomId, now, writeFile, stat, unlink })` → `{ transcribe, isAvailable, describe, cancel }`. Valida a fronteira `{ pcm: ArrayBuffer, sampleRate }`, deriva `durationMs` do buffer, monta o cabeçalho WAV e escreve o `.wav` temporário no main process (nunca a partir de caminho vindo do renderer), invoca o binário por `spawn` injetável com argv em array (nunca shell), aplica o orçamento de timeout, e **sempre** remove o temporário — inclusive em erro/timeout/cancelamento, sem propagar falha de `unlink`. `isAvailable()` = binário presente **e** modelo exato presente (mesma semântica e mesma limitação conhecida de `PiperTts.isAvailable()`: prova presença de arquivo, não que o binário execute). Resolução de recursos em 3 níveis, mesmo padrão do Piper.
+
+Orçamento: gravação até 30 s (imposto no renderer); timeout de transcrição `clamp(20 s + 5 × duração, 20 s, 180 s)`; cancelamento e timeout enviam `SIGTERM`, aguardam 2 s, e escalam a `SIGKILL`. Dez desfechos exaustivos com `reason` pinado, incluindo `invalid-audio` (fronteira malformada) e `audio-too-long`/`io-failed`.
+
+### `src/media-permission.ts` — permissão de microfone, fail-closed
+
+Não importa `electron`. Decide a política para `session.defaultSession.setPermissionRequestHandler`/`setPermissionCheckHandler` (fiados em `main.ts`, casca fina): **nega tudo** por padrão, concede `'media'` só com pedido de áudio **e** a janela de captura explicitamente aberta. A janela é controlada por `createCaptureWindow` (`begin`/`end`/`isOpen`), com watchdog de 35 s e **rearme quando `getUserMedia` resolve** (o renderer chama `'atlas:stt:capture:begin'` de novo assim que a promessa resolve, para que o watchdog meça a partir do início real da captura, não do clique). Sem carência entre `end` e o próximo `begin`. Três gatilhos de fechamento cobertos (fim normal, erro, destruição da janela/app).
+
+### Captura no renderer
+
+`ScriptProcessorNode` (`bufferSize` 4096, 1 canal de entrada e 1 de saída) — **não** `AudioWorkletNode`, que exigiria um arquivo de script novo carregado em runtime, fora do padrão sem-bundler do ADR-0019. O nó fica conectado a um `GainNode` de ganho 0 até o `destination` (mantém o grafo puxando amostras sem eco audível). `Float32` acumulado é convertido para `Int16`; o buffer cruza o IPC como `{ pcm: ArrayBuffer, sampleRate }` — `durationMs` é **sempre** derivado no main, nunca aceito do renderer. Cinco canais IPC (`'atlas:stt:available'`/`':transcribe'`/`':cancel'`/`':capture:begin'`/`':capture:end'`), expostos em `window.atlas.stt.*` pelo `preload.cjs`.
+
+Estados de UI: `indisponível` (desabilitado + aviso do motivo, nunca ativo-porém-mudo), `ocioso`, `gravando` (tempo decorrido, teto de 30 s com encerramento automático avisado), `transcrevendo` (botão de microfone desabilitado, mas **"Cancelar" segue visível e habilitado** — `'atlas:stt:cancel'` resolve com `cancelled` e entrada intacta), `erro` (aviso textual por `reason`, entrada intacta). Transcrição bem-sucedida **sempre** é só anexada ao campo de entrada — nunca enviada automaticamente (Artigo 7/13). Integrada à serialização de gestos existente: gravar/transcrever bloqueia e é bloqueado por turno de chat/`ask` em voo. Nenhum áudio ou transcrição é persistido em nenhum caminho.
+
+`apps/desktop/tests/helpers/renderer-harness.ts` ganhou, para cobrir isso sem hardware: um relógio injetável que substitui `setTimeout`/`clearTimeout`/`setInterval`/`clearInterval`/`Date.now` na janela `jsdom` (`fixture.clock.advance(ms)`), e dublês de `navigator.mediaDevices.getUserMedia`/`AudioContext`/`ScriptProcessorNode`/`GainNode`/`MediaStreamAudioSourceNode`/`MediaStreamTrack`, registrados em `RendererCalls`.
+
+**Zero diff em `packages/*`, `apps/cli`, `core-bridge.ts`, `speech-output.ts`, `piper-tts.ts`.** Wake word/escuta contínua segue explicitamente fora de escopo (ADR-0022, candidato futuro com ADR próprio).
+
+---
+
 ## Renderer: duplicação deliberada (padrão obrigatório)
 
 `renderer/renderer.js` é `<script>` clássico carregado por `loadFile`, **sem bundler** (ADR-0019) — não pode `import` os módulos TS do app em runtime (diferente de `confirm-port.ts`/`steps-view.ts`/`piper-tts.ts`, consumidos só pelo main process via `tsx`).
@@ -174,10 +200,10 @@ O painel de permissões mostra `config.permissions` (o que o `loadConfig` valido
 
 ## Pendência estrutural: smoke visual nunca confirmado
 
-**12 fatias seguidas (SPEC-0031 a 0043) foram fechadas sem confirmação visual real.** O shell de automação não tem WindowServer (`app.whenReady()` nunca resolve; `screencapture` falha por não haver display); desde a SPEC-0040, soma-se a ausência do binário Piper.
+**13 fatias seguidas (SPEC-0031 a 0046) foram fechadas sem confirmação visual/sonora real.** O shell de automação não tem WindowServer (`app.whenReady()` nunca resolve; `screencapture` falha por não haver display); desde a SPEC-0040, soma-se a ausência do binário Piper; desde a SPEC-0046, soma-se a ausência de microfone e do binário `whisper-cli`.
 
-A cadeia de carregamento é validada programaticamente (zero erro de módulo, handlers registrados, `whenReady` sem exceção), mas **nada visual/sonoro foi verificado de fato**. Não bloqueia o fechamento documental — mas não conte como verificado. Lista item a item no Critério de Aceitação 25 da SPEC-0040, ampliada pelas SPECs 0041/0043. **A cobertura automatizada da SPEC-0045 não fecha esta pendência**: um DOM de teste prova lógica e fiação, não pixel nem som — as APIs de voz seguem dubladas, nenhum áudio real é exercitado.
+A cadeia de carregamento é validada programaticamente (zero erro de módulo, handlers registrados, `whenReady` sem exceção), mas **nada visual/sonoro foi verificado de fato**. Não bloqueia o fechamento documental — mas não conte como verificado. Lista item a item no Critério de Aceitação 25 da SPEC-0040, ampliada pelas SPECs 0041/0043/0046. **A cobertura automatizada da SPEC-0045 não fecha esta pendência**: um DOM de teste prova lógica e fiação, não pixel nem som — as APIs de voz (saída e, desde a SPEC-0046, também entrada) seguem dubladas, nenhum áudio real é exercitado. Pendente de confirmação humana: captura de microfone real, transcrição real em PT-BR, latência do modelo `small`, o diálogo nativo de permissão do macOS (inclusive o tempo de leitura que motivou o rearme do watchdog em `media-permission.ts`), a negativa do usuário nesse diálogo, e eco com alto-falante aberto.
 
 ## Candidatos futuros já nomeados
 
-Equivalente de CLI para Persona (**entregue pela SPEC-0044** — `atlas persona create/edit/delete/list`; `use`/seleção durável segue fora) · persistir Persona ativa e política de permissões entre reinícios (exige ADR) · entrada por voz (STT) e wake word (exige ADR + brainstorming humano) · instalador/empacotamento com `extraResources` (Fase 3) · streaming incremental de playback · controle de prosódia · exportar/importar Personas · lock/escrita atômica no arquivo de Personas · seletor nativo de diretório · expor a política resolvida · `BrowserWindow` como pai em `dialog.showMessageBox` (tornaria os diálogos modais e eliminaria a origem da corrida tratada em `selectPermissionRoots`) · `__resetBridgeStateForTests()` fechar sessões vivas no próprio reset, em vez de exigir fecho manual em cada teste (SPEC-0042/D15 — toca `src/`, fora de higiene de teste) · quebrar `renderer.js` (1.112 linhas) e `core-bridge.ts` em arquivos menores (SPEC-0042/D8, intocado pela SPEC-0045) · cobertura comportamental ampla dos painéis sobre o harness da SPEC-0045 (CRUD de Persona pelo formulário, permissões, memória, `ask`, serialização de gestos — SPEC-0045/D7, agora barata) · aplicar o mesmo gate mecânico de paridade da SPEC-0045 aos exports de `piper-tts.ts` (achado 3 do `architecture-reviewer` da SPEC-0045: réplica vinda de outro módulo, ou lógica nova escrita direto no renderer sem contraparte em TS, ainda não é coberta pelo gate).
+Equivalente de CLI para Persona (**entregue pela SPEC-0044** — `atlas persona create/edit/delete/list`; `use`/seleção durável segue fora) · persistir Persona ativa e política de permissões entre reinícios (exige ADR) · **wake word / escuta contínua** (STT já entregue pela SPEC-0046; wake word segue exigindo ADR próprio, ADR-0022 a marca como candidato não comprometido) · ditado ao vivo (transcrição incremental) e processo de longa duração para STT, para eliminar a recarga do modelo (locais à porta injetada de `stt-engine.ts`, sem mudança estrutural) · catálogo multi-modelo de STT (`base`/`small`/`medium`), se qualidade/latência do default se mostrarem insuficientes · instalador/empacotamento com `extraResources` para os dois binários + modelos (Fase 3) · streaming incremental de playback · controle de prosódia · exportar/importar Personas · lock/escrita atômica no arquivo de Personas · seletor nativo de diretório · expor a política resolvida · `BrowserWindow` como pai em `dialog.showMessageBox` (tornaria os diálogos modais e eliminaria a origem da corrida tratada em `selectPermissionRoots`) · `__resetBridgeStateForTests()` fechar sessões vivas no próprio reset, em vez de exigir fecho manual em cada teste (SPEC-0042/D15 — toca `src/`, fora de higiene de teste) · quebrar `renderer.js` e `core-bridge.ts` em arquivos menores (SPEC-0042/D8) · cobertura comportamental ampla dos painéis sobre o harness da SPEC-0045 (CRUD de Persona pelo formulário, permissões, memória, `ask`, serialização de gestos — SPEC-0045/D7, agora barata) · aplicar o mesmo gate mecânico de paridade da SPEC-0045 aos exports de `piper-tts.ts` (achado 3 do `architecture-reviewer` da SPEC-0045: réplica vinda de outro módulo, ou lógica nova escrita direto no renderer sem contraparte em TS, ainda não é coberta pelo gate).

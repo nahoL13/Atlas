@@ -48,6 +48,11 @@ function refreshPermissionsPanelState() {
   // O painel de Persona (SPEC-0039) entra na MESMA serialização de turno —
   // desabilitado enquanto houver um turno de chat/ask em voo.
   refreshPersonaPanelState();
+  // Entrada por voz (STT, SPEC-0046, item 2.3-restante): com um turno de
+  // chat/ask em voo, o botão de microfone fica desabilitado — CA34, uma das
+  // duas direções da serialização de gestos entre voz e chat.
+  refreshMicButtons();
+  refreshChatControlsForMic();
 }
 
 // Placeholder até a definição real mais abaixo (o painel de Persona é
@@ -932,6 +937,319 @@ window.atlas.chat.open().then((session) => {
   appendTranscriptLine('(sessão de chat aberta)');
 });
 
+// Entrada por voz (STT, item 2.3-restante / SPEC-0046): push-to-talk por
+// alternância — um clique inicia a gravação, outro a encerra (D4). Captura
+// no renderer (`getUserMedia` → `AudioContext(16kHz)` →
+// `ScriptProcessorNode` → `GainNode(0)` → `destination`, D5), transcrição
+// SEMPRE no main process (`stt-engine.ts`, whisper.cpp local). O texto
+// nunca é enviado automaticamente (D6) — só anexado ao campo de entrada.
+const micButton = document.getElementById('mic-button');
+const micCancelButton = document.getElementById('mic-cancel-button');
+const micStatusEl = document.getElementById('mic-status');
+
+const STT_RECORD_LIMIT_MS = 30_000;
+
+// 'unavailable' | 'idle' | 'recording' | 'transcribing' — reflete o Escopo
+// item 5 da SPEC (cinco estados de UI; 'erro' é um aviso textual sobre
+// 'idle', não um estado próprio de `micState`).
+let micState = 'unavailable';
+let micUnavailableReason = 'entrada por voz indisponível';
+let activeRecording = null;
+
+function micBusy() {
+  return micState === 'recording' || micState === 'transcribing';
+}
+
+// CA34 (segunda direção): enquanto grava ou transcreve, o botão de envio do
+// chat e o seletor de Persona ficam desabilitados — a mesma serialização de
+// gestos já em vigor para turno de chat/ask (SPEC-0037/0038).
+function refreshChatControlsForMic() {
+  const disabled = chatTurnInFlight || micBusy();
+  const sendButton = document.getElementById('chat-send');
+  if (sendButton !== null) {
+    sendButton.disabled = disabled;
+  }
+  if (personaSelect !== undefined && personaSelect !== null) {
+    personaSelect.disabled = disabled || askInFlight;
+  }
+}
+
+function setMicStatus(text) {
+  micStatusEl.textContent = text;
+}
+
+function refreshMicButtons() {
+  const externalBusy = chatTurnInFlight || askInFlight;
+  if (micState === 'unavailable') {
+    micButton.disabled = true;
+    micButton.textContent = '🎤 Falar';
+    micButton.title = micUnavailableReason;
+    micCancelButton.hidden = true;
+    return;
+  }
+  micButton.title = '';
+  if (micState === 'idle') {
+    micButton.disabled = externalBusy;
+    micButton.textContent = '🎤 Falar';
+    micCancelButton.hidden = true;
+  } else if (micState === 'recording') {
+    micButton.disabled = false;
+    micButton.textContent = '⏹ Parar gravação';
+    micCancelButton.hidden = false;
+    micCancelButton.disabled = false;
+  } else if (micState === 'transcribing') {
+    micButton.disabled = true;
+    micButton.textContent = 'Transcrevendo…';
+    // R3: "Cancelar" segue visível e habilitado durante a transcrição — a
+    // janela de timeout pode chegar a 170s (D14), então o usuário nunca
+    // fica sem uma saída visível.
+    micCancelButton.hidden = false;
+    micCancelButton.disabled = false;
+  }
+}
+
+const STT_FAILURE_MESSAGES = {
+  'invalid-audio': 'Áudio inválido — tente gravar novamente.',
+  'audio-too-long': 'Gravação longa demais para transcrever — tente uma fala mais curta.',
+  'io-failed': 'Falha ao salvar o áudio temporário para transcrição.',
+  'empty-transcript': 'Não foi possível reconhecer fala no áudio gravado.',
+  'engine-failed': 'O motor de transcrição falhou.',
+  'engine-unavailable': 'Motor de transcrição indisponível.',
+  timeout: 'A transcrição demorou demais e foi interrompida.',
+  cancelled: 'Transcrição cancelada.',
+  busy: 'Já existe uma transcrição em andamento.',
+};
+
+// Mapeamento dos dez desfechos pinados (D12) para um aviso textual visível e
+// distinguível (CA33) — nunca um estado silencioso.
+function describeSttFailure(reason) {
+  return STT_FAILURE_MESSAGES[reason] || 'Falha na transcrição por voz.';
+}
+
+// Converte os buffers `Float32` acumulados por `onaudioprocess` (faixa
+// [-1, 1]) para `Int16` (PCM assinado 16 bits) — formato exigido pela
+// fronteira `'atlas:stt:transcribe'` (D18).
+function floatChunksToInt16(chunks) {
+  let length = 0;
+  for (const chunk of chunks) {
+    length += chunk.length;
+  }
+  const output = new Int16Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    for (let i = 0; i < chunk.length; i += 1) {
+      const clamped = Math.max(-1, Math.min(1, chunk[i]));
+      output[offset] = clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff;
+      offset += 1;
+    }
+  }
+  return output;
+}
+
+// Anexa a transcrição ao campo de entrada do chat SEM sobrescrever o que já
+// estava lá (D6/CA31) — o envio continua sendo um gesto humano separado.
+function appendTranscription(text) {
+  const inputEl = document.getElementById('chat-input');
+  const current = inputEl.value;
+  inputEl.value = current === '' ? text : `${current} ${text}`;
+}
+
+function loadSttAvailability() {
+  if (window.atlas === undefined || window.atlas.stt === undefined) {
+    micState = 'unavailable';
+    micUnavailableReason = 'entrada por voz indisponível';
+    refreshMicButtons();
+    return Promise.resolve();
+  }
+  return window.atlas.stt
+    .available()
+    .then((info) => {
+      if (info && info.available === true) {
+        micState = 'idle';
+        micUnavailableReason = '';
+      } else {
+        micState = 'unavailable';
+        micUnavailableReason = describeSttFailure((info && info.reason) || 'engine-unavailable');
+      }
+      refreshMicButtons();
+    })
+    .catch(() => {
+      micState = 'unavailable';
+      micUnavailableReason = 'entrada por voz indisponível';
+      refreshMicButtons();
+    });
+}
+
+function releaseCaptureResources(capture) {
+  try {
+    capture.processor.disconnect();
+  } catch {
+    // fail-safe: nunca propaga
+  }
+  try {
+    capture.source.disconnect();
+  } catch {
+    // fail-safe: nunca propaga
+  }
+  try {
+    capture.gain.disconnect();
+  } catch {
+    // fail-safe: nunca propaga
+  }
+  for (const track of capture.stream.getTracks()) {
+    try {
+      track.stop();
+    } catch {
+      // fail-safe: nunca propaga
+    }
+  }
+  try {
+    capture.audioContext.close();
+  } catch {
+    // fail-safe: nunca propaga
+  }
+}
+
+// Encerra a gravação por UM dos três caminhos ('stop' | 'cancel' | 'limit')
+// — em TODOS eles: desconecta os nós, para as tracks, fecha o
+// `AudioContext`, e chama `'atlas:stt:capture:end'` em `finally` (CA26).
+async function finishRecording(reason) {
+  const capture = activeRecording;
+  if (capture === null || capture.finished) {
+    return;
+  }
+  capture.finished = true;
+  clearTimeout(capture.limitTimer);
+  releaseCaptureResources(capture);
+  try {
+    await window.atlas.stt.captureEnd();
+  } finally {
+    activeRecording = null;
+  }
+
+  if (reason === 'cancel') {
+    micState = 'idle';
+    setMicStatus('Gravação cancelada.');
+    refreshMicButtons();
+    refreshChatControlsForMic();
+    return;
+  }
+
+  // 'stop' ou 'limit' — em ambos os casos a gravação SEGUE para a
+  // transcrição, nunca descarta o áudio em silêncio (D14).
+  micState = 'transcribing';
+  setMicStatus(
+    reason === 'limit' ? 'Tempo máximo de gravação atingido — transcrevendo…' : 'Transcrevendo…',
+  );
+  refreshMicButtons();
+  refreshChatControlsForMic();
+
+  const pcm = floatChunksToInt16(capture.chunks);
+  try {
+    const result = await window.atlas.stt.transcribe(pcm.buffer, 16000);
+    if (result && result.ok) {
+      appendTranscription(result.text);
+      setMicStatus('');
+    } else {
+      setMicStatus(describeSttFailure(result && result.reason));
+    }
+  } catch {
+    // fail-safe: nunca propaga para o fluxo do chat
+    setMicStatus('Falha inesperada na transcrição.');
+  } finally {
+    micState = 'idle';
+    refreshMicButtons();
+    refreshChatControlsForMic();
+  }
+}
+
+async function startRecording() {
+  if (micState !== 'idle') {
+    return;
+  }
+  setMicStatus('');
+  micState = 'recording';
+  refreshMicButtons();
+  refreshChatControlsForMic();
+
+  // Janela de captura (D17): `begin` ANTES de `getUserMedia` — o main
+  // concede a permissão de mídia só enquanto essa janela está aberta.
+  await window.atlas.stt.captureBegin();
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch {
+    await window.atlas.stt.captureEnd();
+    micState = 'idle';
+    setMicStatus('Permissão de microfone negada ou indisponível.');
+    refreshMicButtons();
+    refreshChatControlsForMic();
+    return;
+  }
+
+  // Rearme (R1): `begin` de novo assim que `getUserMedia` resolve — o
+  // watchdog de 35s volta a contar do início REAL da captura, não da
+  // abertura do diálogo nativo de permissão do SO.
+  await window.atlas.stt.captureBegin();
+
+  const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+  const audioContext = new AudioContextCtor({ sampleRate: 16000 });
+  const source = audioContext.createMediaStreamSource(stream);
+  const processor = audioContext.createScriptProcessor(4096, 1, 1);
+  const gain = audioContext.createGain();
+  gain.gain.value = 0;
+
+  const chunks = [];
+  processor.onaudioprocess = (event) => {
+    const channelData = event.inputBuffer.getChannelData(0);
+    chunks.push(new Float32Array(channelData));
+  };
+  source.connect(processor);
+  // GainNode(0) → destination: mantém o grafo puxando amostras sem eco
+  // audível (D5) — nunca reproduz a captura no alto-falante.
+  processor.connect(gain);
+  gain.connect(audioContext.destination);
+
+  const capture = {
+    stream,
+    audioContext,
+    source,
+    processor,
+    gain,
+    chunks,
+    finished: false,
+    limitTimer: undefined,
+  };
+  activeRecording = capture;
+
+  capture.limitTimer = setTimeout(() => {
+    void finishRecording('limit');
+  }, STT_RECORD_LIMIT_MS);
+}
+
+micButton.addEventListener('click', () => {
+  if (micState === 'idle') {
+    void startRecording();
+  } else if (micState === 'recording') {
+    void finishRecording('stop');
+  }
+  // 'transcribing'/'unavailable': o botão está desabilitado, sem-op.
+});
+
+micCancelButton.addEventListener('click', () => {
+  if (micState === 'recording') {
+    void finishRecording('cancel');
+  } else if (micState === 'transcribing') {
+    // O desfecho 'cancelled' chega pela MESMA promessa de
+    // `window.atlas.stt.transcribe(...)` em voo (dentro de
+    // `finishRecording`) — nenhum estado duplicado aqui (CA28).
+    window.atlas.stt.cancel();
+  }
+});
+
+loadSttAvailability();
+
 document.getElementById('chat-form').addEventListener('submit', (event) => {
   event.preventDefault();
   if (chatSession === null) {
@@ -964,7 +1282,7 @@ document.getElementById('chat-form').addEventListener('submit', (event) => {
     })
     .finally(() => {
       inputEl.disabled = false;
-      sendButton.disabled = false;
+      sendButton.disabled = micBusy();
       personaSelect.disabled = false;
       chatTurnInFlight = false;
       refreshPermissionsPanelState();

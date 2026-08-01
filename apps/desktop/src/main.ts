@@ -2,10 +2,11 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { spawn as nodeSpawn } from 'node:child_process';
-import { access, readFile, readdir, rm } from 'node:fs/promises';
+import { accessSync } from 'node:fs';
+import { access, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { createInterface } from 'node:readline';
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, session } from 'electron';
 import {
   closeChatSession,
   createPersona,
@@ -29,6 +30,9 @@ import { createGrantConfirmDialog } from './permission-grant-dialog.js';
 import { createPersonaDeleteDialog } from './persona-delete-dialog.js';
 import { createPiperTts } from './piper-tts.js';
 import type { PiperFsPort, PiperPaths, SpawnPiper } from './piper-tts.js';
+import { createCaptureWindow, decideMediaPermission } from './media-permission.js';
+import { createSttEngine } from './stt-engine.js';
+import type { SttProcess, SpawnStt, SttTranscribeInput } from './stt-engine.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -149,6 +153,120 @@ const piperTts = createPiperTts({
   paths: resolvePiperPaths(),
 });
 
+// whisper.cpp (SPEC-0046, ADR-0022): motor de STT local, subprocesso
+// injetado só no main process — `stt-engine.ts` nunca importa `electron` nem
+// conhece caminho real algum (portas injetadas aqui, mesmo molde do Piper).
+
+/** Sobe o binário `whisper-cli` sempre por argv array (nunca `shell: true`). */
+function nodeSpawnStt(): SpawnStt {
+  return (command, args) => {
+    const child = nodeSpawn(command, [...args], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const stdoutListeners: Array<(chunk: string) => void> = [];
+    const stderrListeners: Array<(chunk: string) => void> = [];
+    const exitListeners: Array<(code: number | null) => void> = [];
+
+    child.stdout?.on('data', (data: Buffer) => {
+      const chunk = data.toString('utf8');
+      for (const cb of stdoutListeners) cb(chunk);
+    });
+    child.stderr?.on('data', (data: Buffer) => {
+      const chunk = data.toString('utf8');
+      for (const cb of stderrListeners) cb(chunk);
+    });
+    child.on('exit', (code) => {
+      for (const cb of exitListeners) cb(code);
+    });
+
+    const process: SttProcess = {
+      onStdout: (cb) => stdoutListeners.push(cb),
+      onStderr: (cb) => stderrListeners.push(cb),
+      onExit: (cb) => exitListeners.push(cb),
+      kill: (signal) => {
+        child.kill(signal);
+      },
+    };
+    return process;
+  };
+}
+
+/** Verificação síncrona de presença de arquivo — fail-safe, nunca lança (D10 de `isAvailable()`). */
+function nodeSttStat(): (path: string) => boolean {
+  return (path) => {
+    try {
+      accessSync(path);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+}
+
+/**
+ * Resolução dos recursos em três níveis, espelho de `resolvePiperDir()`:
+ * `ATLAS_STT_DIR` → `process.resourcesPath/stt` quando empacotado →
+ * `resources/stt` em desenvolvimento. Nenhum download, em runtime ou não.
+ */
+function resolveSttDir(): string {
+  const envDir = process.env['ATLAS_STT_DIR'];
+  if (envDir !== undefined && envDir.trim() !== '') {
+    return envDir;
+  }
+  if (app.isPackaged) {
+    return join(process.resourcesPath, 'stt');
+  }
+  return join(__dirname, '..', 'resources', 'stt');
+}
+
+const sttEngine = createSttEngine({
+  spawn: nodeSpawnStt(),
+  resolveDir: resolveSttDir,
+  tmpDirProvider: () => tmpdir(),
+  randomId: () => randomUUID(),
+  now: () => Date.now(),
+  writeFile: (path, data) => writeFile(path, data),
+  stat: nodeSttStat(),
+  unlink: (path) => rm(path, { force: true }),
+});
+
+// Janela de captura (SPEC-0046, D9/D17): único estado de `captureInFlight`
+// consumido pelos dois handlers de permissão de mídia abaixo — aberta/
+// rearmada por `'atlas:stt:capture:begin'`, fechada por
+// `'atlas:stt:capture:end'`, pelo watchdog de 35s, ou pelos gatilhos de
+// ciclo de vida fiados em `createWindow()`/`before-quit` mais abaixo.
+const captureWindow = createCaptureWindow({
+  setTimer: (fn, ms) => setTimeout(fn, ms),
+  clearTimer: (handle) => clearTimeout(handle as NodeJS.Timeout),
+});
+
+interface MediaPermissionDetails {
+  readonly mediaTypes?: readonly string[];
+}
+
+function buildMediaPermissionRequest(
+  permission: string,
+  details: MediaPermissionDetails | undefined,
+): Parameters<typeof decideMediaPermission>[0] {
+  const requestedMedia = details?.mediaTypes;
+  return requestedMedia === undefined
+    ? { permission, captureInFlight: captureWindow.isOpen() }
+    : { permission, requestedMedia, captureInFlight: captureWindow.isOpen() };
+}
+
+session.defaultSession.setPermissionRequestHandler(
+  (_webContents, permission, callback, details) => {
+    const granted = decideMediaPermission(
+      buildMediaPermissionRequest(permission, details as MediaPermissionDetails),
+    );
+    callback(granted);
+  },
+);
+
+session.defaultSession.setPermissionCheckHandler((_webContents, permission, _origin, details) => {
+  return decideMediaPermission(
+    buildMediaPermissionRequest(permission, details as MediaPermissionDetails | undefined),
+  );
+});
+
 function createWindow(): void {
   const window = new BrowserWindow({
     width: 800,
@@ -159,6 +277,13 @@ function createWindow(): void {
       nodeIntegration: false,
     },
   });
+
+  // Gatilhos de fechamento da janela de captura (D17): navegação/recarga do
+  // `webContents` e o fechamento da própria janela — nenhum deles deve
+  // deixar a permissão de microfone concedida além do necessário.
+  window.webContents.on('did-start-navigation', () => captureWindow.end());
+  window.webContents.on('did-finish-load', () => captureWindow.end());
+  window.on('closed', () => captureWindow.end());
 
   void window.loadFile(join(__dirname, 'renderer', 'index.html'));
 }
@@ -210,6 +335,27 @@ ipcMain.handle('atlas:tts:cancel', () => {
 // renderer) — a única condição que governa a política de superfície
 // Piper-only (`isPiperOnlyMode`, `src/speech-output.ts`).
 ipcMain.handle('atlas:tts:available', () => piperTts.isAvailable());
+
+// STT (entrada por voz, SPEC-0046, D12/D17): cinco canais IPC pinados.
+ipcMain.handle('atlas:stt:available', () => {
+  const available = sttEngine.isAvailable();
+  if (!available) {
+    return { available: false, reason: 'engine-unavailable' };
+  }
+  return { available: true, engine: sttEngine.describe() };
+});
+ipcMain.handle('atlas:stt:transcribe', (_event, payload: SttTranscribeInput) =>
+  sttEngine.transcribe(payload),
+);
+ipcMain.handle('atlas:stt:cancel', () => {
+  sttEngine.cancel();
+});
+ipcMain.handle('atlas:stt:capture:begin', () => {
+  captureWindow.begin();
+});
+ipcMain.handle('atlas:stt:capture:end', () => {
+  captureWindow.end();
+});
 
 ipcMain.handle('atlas:permissions:select', async (_event, roots: PermissionRoots) => {
   const selection = await selectPermissionRoots(roots, { confirmGrant });
@@ -277,4 +423,7 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   void closeAllChatSessions();
   void piperTts.shutdown();
+  // D17: a app encerrando é um dos gatilhos de fechamento pinados da janela
+  // de captura — nunca deixa a permissão de microfone concedida.
+  captureWindow.end();
 });

@@ -29,4 +29,12 @@ contextBridge.exposeInMainWorld('atlas', {
     cancel: () => ipcRenderer.invoke('atlas:tts:cancel'),
     available: () => ipcRenderer.invoke('atlas:tts:available'),
   },
+  stt: {
+    available: () => ipcRenderer.invoke('atlas:stt:available'),
+    transcribe: (pcm, sampleRate) =>
+      ipcRenderer.invoke('atlas:stt:transcribe', { pcm, sampleRate }),
+    cancel: () => ipcRenderer.invoke('atlas:stt:cancel'),
+    captureBegin: () => ipcRenderer.invoke('atlas:stt:capture:begin'),
+    captureEnd: () => ipcRenderer.invoke('atlas:stt:capture:end'),
+  },
 });

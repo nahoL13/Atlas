@@ -29,6 +29,11 @@ export default tseslint.config(
         Blob: 'readonly',
         URL: 'readonly',
         Audio: 'readonly',
+        // SPEC-0046 — entrada por voz (STT): captura via getUserMedia/AudioContext.
+        navigator: 'readonly',
+        AudioContext: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
       },
     },
   },

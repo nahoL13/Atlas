@@ -99,6 +99,25 @@ export interface RendererPersonaMutation {
   readonly closedSessions: readonly string[];
 }
 
+/** Espelho de `SttEngineInfo` (`src/stt-engine.ts`) — só o formato, sem repetir o contrato pinado. */
+export interface RendererSttEngineInfo {
+  readonly engineId: string;
+  readonly version: string;
+  readonly modelId: string;
+  readonly language: string;
+}
+
+export interface RendererSttAvailability {
+  readonly available: boolean;
+  readonly engine?: RendererSttEngineInfo;
+  readonly reason?: string;
+}
+
+/** Espelho de `SttResult` (`src/stt-engine.ts`, SPEC-0046) — dez desfechos exaustivos. */
+export type RendererSttResult =
+  | { readonly ok: true; readonly text: string; readonly durationMs: number }
+  | { readonly ok: false; readonly reason: string; readonly detail?: string };
+
 /** Superfície IPC completa exposta em `window.atlas` (espelho de `src/preload.cjs`). */
 export interface AtlasDouble {
   getStatus(): Promise<RendererStatusSnapshot>;
@@ -132,6 +151,14 @@ export interface AtlasDouble {
     cancel(): Promise<void>;
     available(): Promise<boolean>;
   };
+  /** SPEC-0046 — entrada por voz (STT), espelho de `window.atlas.stt` em `src/preload.cjs`. */
+  stt: {
+    available(): Promise<RendererSttAvailability>;
+    transcribe(pcm: ArrayBuffer, sampleRate: number): Promise<RendererSttResult>;
+    cancel(): Promise<void>;
+    captureBegin(): Promise<void>;
+    captureEnd(): Promise<void>;
+  };
 }
 
 type AtlasOverrides = {
@@ -155,6 +182,16 @@ export interface RendererCalls {
   readonly speechSynthesisSpeak: Array<{ text: string; voiceURI?: string }>;
   speechSynthesisCancel: number;
   readonly audioPlayed: string[];
+  /** SPEC-0046 — entrada por voz (STT): chamadas de IPC e de mídia registradas pelos dublês. */
+  readonly sttTranscribeCalls: Array<{ pcm: ArrayBuffer; sampleRate: number }>;
+  sttCancelCalls: number;
+  sttCaptureBeginCalls: number;
+  sttCaptureEndCalls: number;
+  readonly getUserMediaCalls: Array<{ audio?: unknown; video?: unknown }>;
+  mediaTrackStops: number;
+  audioContextClosed: number;
+  readonly audioContextOptions: unknown[];
+  readonly scriptProcessorCreated: Array<{ bufferSize: number; numIn: number; numOut: number }>;
 }
 
 function createCalls(): RendererCalls {
@@ -165,6 +202,15 @@ function createCalls(): RendererCalls {
     personaUpdate: [],
     personaDelete: [],
     memoryForget: [],
+    sttTranscribeCalls: [],
+    sttCancelCalls: 0,
+    sttCaptureBeginCalls: 0,
+    sttCaptureEndCalls: 0,
+    getUserMediaCalls: [],
+    mediaTrackStops: 0,
+    audioContextClosed: 0,
+    audioContextOptions: [],
+    scriptProcessorCreated: [],
     permissionsSelect: [],
     ttsSpeak: [],
     speechSynthesisSpeak: [],
@@ -189,6 +235,21 @@ export interface RendererFixtureOptions {
   ) => RendererTurnSnapshot | Promise<RendererTurnSnapshot>;
   /** Override total ou parcial (por canal) da superfície `window.atlas` — resolver/rejeitar cada canal individualmente. */
   readonly atlas?: AtlasOverrides;
+  /** SPEC-0046 — disponibilidade/resultado padrão de `window.atlas.stt`. */
+  readonly stt?: {
+    readonly available?: boolean;
+    readonly reason?: string;
+    readonly transcribe?: (
+      pcm: ArrayBuffer,
+      sampleRate: number,
+    ) => RendererSttResult | Promise<RendererSttResult>;
+  };
+  /** SPEC-0046 — comportamento do dublê de `navigator.mediaDevices.getUserMedia`. */
+  readonly media?: {
+    readonly getUserMediaBehavior?: 'resolve' | 'reject';
+    readonly getUserMediaDelayMs?: number;
+    readonly getUserMediaError?: string;
+  };
 }
 
 function defaultStatus(options: RendererFixtureOptions): RendererStatusSnapshot {
@@ -222,6 +283,11 @@ function buildAtlasDouble(options: RendererFixtureOptions, calls: RendererCalls)
       steps: [],
       learned: [],
     }));
+  const sttAvailable = options.stt?.available ?? false;
+  const sttReason = options.stt?.reason ?? 'engine-unavailable';
+  const sttTranscribe =
+    options.stt?.transcribe ??
+    ((): RendererSttResult => ({ ok: true, text: 'texto transcrito', durationMs: 500 }));
 
   const base: AtlasDouble = {
     getStatus: () => Promise.resolve(status),
@@ -318,6 +384,38 @@ function buildAtlasDouble(options: RendererFixtureOptions, calls: RendererCalls)
       cancel: () => Promise.resolve(),
       available: () => Promise.resolve(piperAvailable),
     },
+    stt: {
+      available: () =>
+        Promise.resolve(
+          sttAvailable
+            ? {
+                available: true,
+                engine: {
+                  engineId: 'whisper.cpp',
+                  version: 'v1.7.6',
+                  modelId: 'ggml-small-q5_1.bin',
+                  language: 'pt',
+                },
+              }
+            : { available: false, reason: sttReason },
+        ),
+      transcribe: (pcm, sampleRate) => {
+        calls.sttTranscribeCalls.push({ pcm, sampleRate });
+        return Promise.resolve(sttTranscribe(pcm, sampleRate));
+      },
+      cancel: () => {
+        calls.sttCancelCalls += 1;
+        return Promise.resolve();
+      },
+      captureBegin: () => {
+        calls.sttCaptureBeginCalls += 1;
+        return Promise.resolve();
+      },
+      captureEnd: () => {
+        calls.sttCaptureEndCalls += 1;
+        return Promise.resolve();
+      },
+    },
   };
 
   const overrides = options.atlas;
@@ -332,6 +430,7 @@ function buildAtlasDouble(options: RendererFixtureOptions, calls: RendererCalls)
     persona: { ...base.persona, ...overrides.persona },
     permissions: { ...base.permissions, ...overrides.permissions },
     tts: { ...base.tts, ...overrides.tts },
+    stt: { ...base.stt, ...overrides.stt },
   };
 }
 
@@ -420,6 +519,182 @@ function installAudioDouble(window: DOMWindow, calls: RendererCalls): void {
   url.revokeObjectURL ??= () => {};
 }
 
+/**
+ * SPEC-0046 (D5/D17/R1): dublês de `navigator.mediaDevices.getUserMedia`
+ * (com controle de resolução/rejeição, e atraso opcional para exercitar o
+ * rearme R1 via `fixture.clock.advance`) e do grafo de captura de áudio
+ * (`AudioContext`/`MediaStreamAudioSourceNode`/`ScriptProcessorNode`/
+ * `GainNode`/`MediaStreamTrack`) — o suficiente para provar fiação e
+ * liberação de recursos, sem áudio real algum.
+ */
+function installMediaDouble(
+  window: DOMWindow,
+  calls: RendererCalls,
+  options: RendererFixtureOptions['media'],
+): void {
+  const behavior = options?.getUserMediaBehavior ?? 'resolve';
+  const delayMs = options?.getUserMediaDelayMs ?? 0;
+  const errorMessage = options?.getUserMediaError ?? 'permissão de microfone negada';
+
+  interface FakeMediaStreamTrack {
+    stop(): void;
+  }
+  interface FakeMediaStream {
+    getTracks(): FakeMediaStreamTrack[];
+  }
+
+  function createFakeTrack(): FakeMediaStreamTrack {
+    return {
+      stop: () => {
+        calls.mediaTrackStops += 1;
+      },
+    };
+  }
+
+  const getUserMedia = (constraints: unknown): Promise<FakeMediaStream> => {
+    calls.getUserMediaCalls.push(constraints as { audio?: unknown; video?: unknown });
+    return new Promise((resolve, reject) => {
+      const settle = (): void => {
+        if (behavior === 'reject') {
+          reject(new Error(errorMessage));
+        } else {
+          resolve({ getTracks: () => [createFakeTrack()] });
+        }
+      };
+      if (delayMs > 0) {
+        window.setTimeout(settle, delayMs);
+      } else {
+        settle();
+      }
+    });
+  };
+
+  Object.defineProperty(window.navigator, 'mediaDevices', {
+    configurable: true,
+    value: { getUserMedia },
+  });
+
+  interface FakeAudioProcessEvent {
+    readonly inputBuffer: { getChannelData(channel: number): Float32Array };
+  }
+
+  class FakeAudioNode {
+    connect(): FakeAudioNode {
+      return this;
+    }
+    disconnect(): void {
+      // no-op — só precisa não lançar
+    }
+  }
+
+  class FakeScriptProcessorNode extends FakeAudioNode {
+    onaudioprocess: ((event: FakeAudioProcessEvent) => void) | null = null;
+  }
+
+  class FakeGainNode extends FakeAudioNode {
+    gain = { value: 0 };
+  }
+
+  class FakeMediaStreamAudioSourceNode extends FakeAudioNode {}
+
+  class FakeAudioContext {
+    readonly destination = new FakeAudioNode();
+    constructor(contextOptions?: unknown) {
+      calls.audioContextOptions.push(contextOptions);
+    }
+    createMediaStreamSource(): FakeMediaStreamAudioSourceNode {
+      return new FakeMediaStreamAudioSourceNode();
+    }
+    createScriptProcessor(
+      bufferSize: number,
+      numIn: number,
+      numOut: number,
+    ): FakeScriptProcessorNode {
+      calls.scriptProcessorCreated.push({ bufferSize, numIn, numOut });
+      return new FakeScriptProcessorNode();
+    }
+    createGain(): FakeGainNode {
+      return new FakeGainNode();
+    }
+    close(): Promise<void> {
+      calls.audioContextClosed += 1;
+      return Promise.resolve();
+    }
+  }
+
+  Object.assign(window, { AudioContext: FakeAudioContext });
+}
+
+export interface InjectedClock {
+  /** Avança o relógio da janela jsdom em `ms`, disparando os timers devidos, na ordem. */
+  advance(ms: number): void;
+}
+
+/**
+ * SPEC-0046/D19: `setTimeout`/`clearTimeout`/`setInterval`/`clearInterval`/
+ * `Date.now` do OBJETO `window` do jsdom — não `globalThis` (que
+ * `vi.useFakeTimers()` patcheia, mas `renderer.js` roda dentro da janela
+ * jsdom e usa os timers DAQUELA janela). Chamado ANTES do `window.eval`.
+ */
+function installClock(window: DOMWindow): InjectedClock {
+  let now = 0;
+  let nextId = 1;
+  const timers = new Map<number, { callback: () => void; time: number; interval?: number }>();
+
+  function schedule(callback: () => void, delay: number, interval?: number): number {
+    const id = nextId;
+    nextId += 1;
+    const time = now + Math.max(0, delay || 0);
+    timers.set(id, interval === undefined ? { callback, time } : { callback, time, interval });
+    return id;
+  }
+
+  function clear(handle: unknown): void {
+    if (typeof handle === 'number') {
+      timers.delete(handle);
+    }
+  }
+
+  function advance(ms: number): void {
+    const target = now + ms;
+    for (;;) {
+      let nextEntryId: number | undefined;
+      let nextEntry: { callback: () => void; time: number; interval?: number } | undefined;
+      for (const [id, entry] of timers) {
+        if (entry.time <= target && (nextEntry === undefined || entry.time < nextEntry.time)) {
+          nextEntry = entry;
+          nextEntryId = id;
+        }
+      }
+      if (nextEntry === undefined || nextEntryId === undefined) {
+        break;
+      }
+      timers.delete(nextEntryId);
+      now = nextEntry.time;
+      if (nextEntry.interval !== undefined) {
+        timers.set(nextEntryId, { ...nextEntry, time: now + nextEntry.interval });
+      }
+      nextEntry.callback();
+    }
+    now = target;
+  }
+
+  const fakeSetTimeout = ((fn: (...args: unknown[]) => void, ms?: number, ...args: unknown[]) =>
+    schedule(() => fn(...args), ms ?? 0)) as unknown as DOMWindow['setTimeout'];
+  const fakeSetInterval = ((fn: (...args: unknown[]) => void, ms?: number, ...args: unknown[]) =>
+    schedule(() => fn(...args), ms ?? 0, ms ?? 0)) as unknown as DOMWindow['setInterval'];
+
+  Object.assign(window, {
+    setTimeout: fakeSetTimeout,
+    clearTimeout: clear,
+    setInterval: fakeSetInterval,
+    clearInterval: clear,
+  });
+  window.Date.now = () => now;
+
+  return { advance };
+}
+
 export interface RendererFixture {
   readonly window: DOMWindow;
   readonly document: Document;
@@ -428,6 +703,8 @@ export interface RendererFixture {
   /** Chamadas registradas pelos dublês de IPC e de voz. */
   readonly calls: RendererCalls;
   readonly speechSynthesis: SpeechSynthesisDouble;
+  /** SPEC-0046/D19 — relógio injetável instalado na janela jsdom ANTES do `window.eval`. */
+  readonly clock: InjectedClock;
   /** Drena microtarefas/macrotarefas até as promessas do carregamento assentarem. */
   flush(): Promise<void>;
   /** Fecha a janela jsdom (chamado em `afterEach`). */
@@ -449,6 +726,8 @@ const EPILOGUE = `
   piperOnlyPreference: typeof piperOnlyPreference !== 'undefined' ? piperOnlyPreference : undefined,
   resolvePersistedVoiceSelection: typeof resolvePersistedVoiceSelection !== 'undefined' ? resolvePersistedVoiceSelection : undefined,
   PIPER_VOICE_PREFIX: typeof PIPER_VOICE_PREFIX !== 'undefined' ? PIPER_VOICE_PREFIX : undefined,
+  floatChunksToInt16: typeof floatChunksToInt16 !== 'undefined' ? floatChunksToInt16 : undefined,
+  describeSttFailure: typeof describeSttFailure !== 'undefined' ? describeSttFailure : undefined,
 };
 `;
 
@@ -482,6 +761,10 @@ export async function loadRenderer(options: RendererFixtureOptions = {}): Promis
 
   const speechSynthesis = installSpeechSynthesisDouble(window, options.osVoices ?? [], calls);
   installAudioDouble(window, calls);
+  installMediaDouble(window, calls, options.media);
+  // SPEC-0046/D19: instalado ANTES do `window.eval` — `renderer.js` usa os
+  // timers DA JANELA jsdom, não `globalThis`.
+  const clock = installClock(window);
 
   window.eval(rendererSource + '\n' + EPILOGUE);
 
@@ -493,6 +776,7 @@ export async function loadRenderer(options: RendererFixtureOptions = {}): Promis
         .__RENDERER_TEST_INTERNALS__ ?? {},
     calls,
     speechSynthesis,
+    clock,
     flush: flushMicroAndMacrotasks,
     close: () => {
       window.close();
