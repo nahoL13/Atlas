@@ -12,6 +12,15 @@ este `README.md`; `.gitignore` exclui todo o resto do diretório.
 contrato descrito abaixo é motivo de parar a implementação e devolver ao
 `spec-drafter` (D4) — nunca de ajuste ad hoc no código.
 
+> **A tag do GitHub `v1.2.0` não é onde mora o binário de todas as
+> plataformas.** Ela publica **só** builds Linux (`piper_amd64`/`arm64`/
+> `armv7`). Os binários macOS e Windows vivem na release seguinte,
+> **`2023.11.14-2`** — nomenclatura diferente, mesma linha de código: o
+> executável de lá se identifica como `1.2.0` em `piper --version`, e o
+> contrato de invocação abaixo foi verificado na prática contra ele
+> (2026-08-01, macOS arm64). O pin de D4 continua sendo **a versão do
+> binário** (`1.2.0`), não o nome da tag.
+
 ## Layout esperado
 
 ```text
@@ -20,6 +29,7 @@ apps/desktop/resources/piper/
 ├── piper                  (binário, macOS/Linux — piper.exe no Windows)
 ├── libpiper_phonemize.*   (biblioteca compartilhada, nome varia por SO)
 ├── onnxruntime.*          (biblioteca compartilhada, nome varia por SO)
+├── libespeak-ng.*         (biblioteca compartilhada, nome varia por SO)
 ├── espeak-ng-data/        (diretório de dados do espeak-ng)
 └── voices/
     ├── pt_BR-faber-medium.onnx
@@ -31,6 +41,55 @@ O binário **precisa** dos arquivos/bibliotecas vizinhos no mesmo diretório
 (`libpiper_phonemize`, `onnxruntime`, `espeak-ng-data/`) — mover só o
 executável não funciona. Os pares de modelo `<id>.onnx`/`<id>.onnx.json`
 ficam em `voices/`, resolvido como `modelsDir` por `piper-tts.ts`.
+
+## Instalação em macOS arm64 (procedimento verificado)
+
+O tarball macOS de `2023.11.14-2` **vem incompleto e não roda como sai da
+caixa**. Duas armadilhas, ambas resolvidas *em disco* — nenhuma delas é
+motivo de tocar em `src/`:
+
+1. **As três `.dylib` não estão no pacote.** O tarball traz o diretório de
+   símbolos `libonnxruntime.1.14.1.dylib.dSYM/` mas **não** a `.dylib` em
+   si, nem `libespeak-ng.1.dylib`, nem `libpiper_phonemize.1.dylib`. Elas
+   vivem no repo irmão
+   [`rhasspy/piper-phonemize`](https://github.com/rhasspy/piper-phonemize),
+   release **`2023.11.14-4`**, asset `piper-phonemize_macos_aarch64.tar.gz`,
+   dentro de `lib/` — copie-as para **junto do binário** (este diretório).
+2. **O executável sai sem nenhum `LC_RPATH`.** Ele procura as libs por
+   `@rpath`, mas sem entrada de rpath o `dyld` só tenta `/usr/local/lib` e
+   `/usr/lib` e aborta com `Library not loaded: @rpath/libespeak-ng.1.dylib`.
+   Corrija adicionando o próprio diretório e re-assinando ad hoc (o
+   `install_name_tool` invalida a assinatura existente):
+
+```sh
+install_name_tool -add_rpath @loader_path ./piper
+codesign --force -s - ./piper
+./piper --version   # deve imprimir: 1.2.0
+```
+
+Modelos: baixe o par `<id>.onnx` + `<id>.onnx.json` de
+[`rhasspy/piper-voices`](https://huggingface.co/rhasspy/piper-voices)
+(`pt/pt_BR/<dataset>/<quality>/`) para `voices/`.
+
+Smoke test de ponta a ponta, no mesmo contrato de invocação de D4:
+
+```sh
+echo '{"text":"Bom dia.","output_file":"/tmp/smoke.wav"}' \
+  | ./piper --model ./voices/pt_BR-faber-medium.onnx \
+            --config ./voices/pt_BR-faber-medium.onnx.json --json-input
+file /tmp/smoke.wav   # RIFF ... WAVE audio, 16 bit, mono 22050 Hz
+```
+
+> **Cuidado ao interpretar a saída:** as linhas `[piper] [info] …` saem por
+> **stderr**; a **primeira linha de stdout** é o caminho do WAV — é ela, e
+> só ela, o sinal de conclusão que `piper-tts.ts` consome (D4).
+
+**Por que isto importa:** `isAvailable()` prova presença do *arquivo* do
+binário + catálogo não-vazio, **não** que o binário execute (residual
+conhecido, aceito na SPEC-0041). Um binário instalado sem as `.dylib` ou
+sem rpath deixa a app em modo Piper-only com "Testar voz" **mudo** — o
+sintoma não aponta para a instalação. Rode o smoke test acima antes de
+concluir que há bug no app.
 
 ## Resolução do diretório (Decisão D10, três níveis)
 
