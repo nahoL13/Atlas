@@ -2,7 +2,7 @@
 
 > **Project Atlas — Estado do Trabalho Atual**
 
-Atualizado em: 2026-07-31 (SPEC-0044)
+Atualizado em: 2026-08-01 (SPEC-0045)
 
 ---
 
@@ -56,5 +56,6 @@ Objetivo: plataforma mínima operável + primeira interface executável (CLI) + 
 | [SPEC-0042](../implementation/specs/SPEC-0042-test-split-scoped-verification.md) | Quebra do `core-bridge.test.ts` por assunto e verificação escopada por package (`"test": "vitest run"` em 13 packages/apps, `pnpm --filter <pkg> test`/`typecheck`); corrigiu flake pré-existente de vazamento de sessão sob `--sequence.shuffle`; zero diff em `src/` | Done |
 | [SPEC-0043](../implementation/specs/SPEC-0043-desktop-voice-residues.md) | Desktop: fecha os dois resíduos de voz da SPEC-0041 — `voiceURI` persistida não-ofertável por razão ambiental vira `<option>` retida e visível em vez de apagada em silêncio; `createSpeechOutputGlue` do renderer passa a receber `preferredVoiceURI`, restaurando ADR-0020(b) no caminho `'os'`; política Piper-only da SPEC-0041 intacta | Done |
 | [SPEC-0044](../implementation/specs/SPEC-0044-cli-persona-crud.md) | CLI: `atlas persona` (`list`/`show`/`create`/`edit`/`delete`) — equivalente de terminal do CRUD de Personas custom da SPEC-0039, sobre o mesmo `personas.json`; `apps/cli` injeta `personaStorage` em `createAtlas`, `--persona <id-custom>` passa a funcionar em todos os comandos; escrita atômica em `@atlas/persona` (`packages/persona/src/storage/persona-storage.ts`) | Done |
+| [SPEC-0045](../implementation/specs/SPEC-0045-renderer-automated-coverage.md) | Cobertura automatizada de `apps/desktop/src/renderer/renderer.js` e gate mecânico contra a deriva das réplicas renderer↔`speech-output.ts` (`renderer-harness.ts` sobre `jsdom`, `renderer.speech-parity.test.ts`/`renderer.boot.test.ts`/`renderer.voice-triggers.test.ts`); zero diff em `apps/desktop/src/`/`packages/*`, ADR-0019 intacto | Done |
 
 Detalhes de retomada: `docs/05-context/NEXT_CONTEXT.md`.

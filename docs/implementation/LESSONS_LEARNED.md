@@ -51,7 +51,7 @@ A ausência de atrito também é informação.
 
 ---
 
-**Escopo deste arquivo:** o Registro abaixo mantém as **últimas 5 SPECs**. As entradas da SPEC-0039 e anteriores estão em `LESSONS_LEARNED-ARCHIVE.md`, preservadas sem edição (regra 2 intacta — nada é reescrito, só realocado).
+**Escopo deste arquivo:** o Registro abaixo mantém as **últimas 5 SPECs**. As entradas da SPEC-0040 e anteriores estão em `LESSONS_LEARNED-ARCHIVE.md`, preservadas sem edição (regra 2 intacta — nada é reescrito, só realocado).
 
 O corte existe porque este arquivo chegou a 157 KB (~39k tokens) e era relido no arranque de quase todo subagent, dominando o custo em tokens do pipeline. Ao fechar uma SPEC: adicione a entrada nova no topo do Registro e mova a mais antiga das 6 para o arquivo.
 
@@ -63,7 +63,7 @@ Lições que se repetiram em três ou mais SPECs. Este índice existe para sobre
 
 - **Correção de bloqueante introduz bloqueante novo no mesmo caminho de código** — SPEC-0034, 0038, 0039. Ao corrigir um veto do gate, re-examine o caminho inteiro, não só a linha apontada.
 - **Garantia em prosa absoluta tende a estar incompleta** — SPEC-0038 (A1/A2 → A6/A7). "Toda função que X" quase sempre esquece um caso; enumere ou restrinja a formulação.
-- **Duplicação deliberada renderer↔módulo** — SPEC-0035, 0036, 0039, 0040, 0041, 0043 (7 ocorrências). `renderer.js` é `<script>` clássico sem bundler (ADR-0019) e não pode importar o módulo TS em runtime; a réplica em JS puro é consciente e leva comentário apontando o teste de referência. A SPEC-0043 é a 2ª vez que essa duplicação **deriva por acidente** (não só risco teórico): o glue do renderer ficou sem `preferredVoiceURI` desde a SPEC-0035 sem que nenhuma das cinco fatias seguintes notasse.
+- **Duplicação deliberada renderer↔módulo** — SPEC-0035, 0036, 0039, 0040, 0041, 0043 (8 réplicas + a constante `PIPER_VOICE_PREFIX`). `renderer.js` é `<script>` clássico sem bundler (ADR-0019) e não pode importar o módulo TS em runtime; a réplica em JS puro é consciente e leva comentário apontando o teste de referência. A SPEC-0043 é a 2ª vez que essa duplicação **deriva por acidente** (não só risco teórico): o glue do renderer ficou sem `preferredVoiceURI` desde a SPEC-0035 sem que nenhuma das cinco fatias seguintes notasse. Desde a **SPEC-0045**, a deriva entre as duas cópias é coberta por um gate mecânico (`renderer.speech-parity.test.ts`, sobre `jsdom` num harness que carrega `renderer.js` do disco) — cobre só réplicas de `speech-output.ts`; réplica de outro módulo segue por convenção.
 - **Campo obrigatório novo em `Deps` exige grep pelo nome da função construtora** (`createRuntime(`, `createPermissionService(`) em **todo o repo** — repetido 8× até a SPEC-0013.
 - **Membro obrigatório novo numa interface de contrato não é pego por esse grep** — busque pelo **nome do tipo** (`git grep 'PermissionService'`), que acha fakes e implementações diretas nos testes (quebrou o typecheck na SPEC-0017).
 - **`vitest run` não faz typecheck** (esbuild só remove tipos) — um passo TDD "RED" que depende de erro de *tipo* só falha de verdade em `pnpm --filter <pkg> typecheck`.
@@ -72,6 +72,24 @@ Lições que se repetiram em três ou mais SPECs. Este índice existe para sobre
 
 
 # Registro
+
+## [SPEC-0045](specs/SPEC-0045-renderer-automated-coverage.md) — Cobertura automatizada de `renderer.js` e gate mecânico contra a deriva das réplicas renderer↔`speech-output.ts` (2026-08-01)
+
+**Descobrimos que...**
+
+A avaliação registrada no fechamento da SPEC-0043 ("cobrir `renderer.js` exige mudar a stack do renderer, portanto ADR novo") pressupunha uma única rota — modularizar/empacotar o renderer para poder importá-lo — e essa premissa nunca foi questionada antes de propagar por `NEXT_CONTEXT.md` e `apps/desktop/CLAUDE.md`. A rota que de fato resolveu o problema é outra: carregar `renderer.js` **como texto**, do disco, num DOM de teste (`jsdom` instanciado programaticamente), deixando o ADR-0019 literal e o diff de produção vazio. Descobrimos também dois erros factuais menores que sobreviveram ao rascunho: a contagem de réplicas renderer↔módulo registrada como "7 ocorrências" estava incompleta (são 8 funções + a constante `PIPER_VOICE_PREFIX`), e a própria SPEC-0045 errou a origem dessa constante (afirmou que `speech-output.ts` a reexporta; na verdade só a importa de `piper-tts.ts`) — corrigido na implementação com um campo `moduleSource` no registro de paridade, sem o qual o par ficaria com o teste de referência errado.
+
+**A arquitetura ajudou porque...**
+
+`jsdom` como `devDependency` só de `apps/desktop`, sem tocar `environment` do `vitest.config.ts` raiz, preservou intacta a condição de validade D12 da SPEC-0042 (equivalência entre verificação escopada e CI depende da config raiz conter só `include`). O epílogo de teste concatenado na avaliação (em vez de qualquer `export` no renderer) manteve o Critério de Aceitação 1 (diff de produção vazio) estruturalmente garantido, não por disciplina de revisão. E a tabela de casos única aplicada às duas implementações (nenhum literal esperado escrito por lado) é o que torna o gate capaz de pegar exatamente o defeito histórico — divergência silenciosa entre cópias internamente coerentes, não incorreção isolada.
+
+**A arquitetura atrapalhou porque...**
+
+Nada de estrutural. O atrito ficou em precisão de registro (a avaliação de "exige ADR" da SPEC-0043, corrigida só agora) e em uma lição de ferramenta: `pnpm exec prettier --check <arquivos>` fora da raiz passou enquanto `pnpm format:check` na raiz reprovou 3 dos mesmos arquivos — só o comando da raiz tem paridade real com a CI, e a suíte de 59 testes novos com uma janela `jsdom` por caso mediu um custo real, ainda que pequeno (`pnpm test` na raiz de ~1.8s para ~2.1s), pelo isolamento por caso que o Critério de Aceitação 9 exige.
+
+**Precisamos mudar...**
+
+O gate mecânico cobre hoje só um eixo — export novo de `speech-output.ts` não classificado; uma réplica vinda de outro módulo (ex.: `piper-tts.ts`) ou lógica nova escrita direto no renderer sem contraparte em TS segue protegida só por convenção documentada, achado 3 do `architecture-reviewer` registrado como limite conhecido, não assumido em silêncio. Encaminhamento: candidato registrado em `docs/05-context/NEXT_CONTEXT.md` (aplicar o mesmo gate aos exports de `piper-tts.ts`, sem diff em `src/`, custo baixo com o harness já pronto), junto da cobertura comportamental ampla dos painéis (SPEC-0045/D7).
 
 ## [SPEC-0044](specs/SPEC-0044-cli-persona-crud.md) — CLI: `atlas persona list|show|create|edit|delete`, equivalente de terminal do CRUD de Personas custom da SPEC-0039 (2026-07-31)
 
@@ -145,25 +163,6 @@ Nada de estrutural atrapalhou. O atrito ficou em precisão de linguagem na próp
 
 Dois achados não-bloqueantes ficaram registrados nas Observações da própria SPEC-0041 como candidatos a fatia futura, não resolvidos aqui: (1) apagamento silencioso de uma `voiceURI` Piper persistida no modo degradado (assimetria com o aviso D6, que só cobre voz de SO legada) — encaminhamento: nova SPEC futura de aviso simétrico "Piper órfão", quando a linha de voz for revisitada; (2) a deriva pré-existente do `createSpeechOutputGlue({ synth })` no renderer sem `preferredVoiceURI` (desde a SPEC-0035, reafirmada nas SPECs 0036/0039/0040/0041) segue sem correção — encaminhamento: já registrado como candidato a fatia futura desde a SPEC-0035; nenhuma SPEC de voz nova deveria fechar sem reavaliar se é hora de pagar essa dívida.
 
-## [SPEC-0040](specs/SPEC-0040-desktop-piper-neural-tts.md) — Desktop: Piper como motor de TTS neural local, com processo de longa duração e fallback fail-closed para a Web Speech API (2026-07-29)
-
-**Descobrimos que...**
-
-Pinar o contrato técnico de um binário externo **como dado da SPEC** (D4/D13, derivado de documentação/código lidos sem executar o binário) funciona bem quando a suíte de testes é honesta sobre o que ela realmente prova: nenhum dos 47 casos novos de `piper-tts.test.ts` toca o Piper real, então o gate mecânico (lint/typecheck/test) fecha a SPEC inteira sem nunca confirmar se o contrato pinado (argv, framing por linha, sinal de conclusão) bate com o binário v1.2.0 de verdade — daí o Critério de Aceitação 25 existir como categoria própria, fora do que o `spec-validator`/`spec-closer` pode fechar. Também descobrimos, de novo (5ª ocorrência desde a SPEC-0035), que a duplicação deliberada do roteamento de voz entre `speech-output.ts` (módulo puro, testável) e `renderer.js` (`<script>` clássico sem bundler, ADR-0019) segue sendo o único jeito de reusar essa lógica sem introduzir build no renderer — o padrão está estável, mas o risco de deriva entre as duas cópias cresce a cada fatia que mexe em roteamento de voz.
-
-**A arquitetura ajudou porque...**
-
-O molde de subprocesso injetável de `packages/tools/src/git-port.ts` (SPEC-0028) generalizou quase sem ajuste para um caso bem mais exigente — processo de **longa duração** com reciclagem condicional (troca de modelo, timeout, cancelamento), em vez de um subprocesso descartável por chamada. A separação D16 (`resolveVoiceBackend` decide só a origem; `createSpeechOutput` continua o único resolvedor autoritativo de voz do SO) evitou introduzir uma segunda implementação concorrente da mesma regra de seleção de voz local — e o critério 20 (teste de concordância entre as duas resoluções) fechou por construção o risco de as duas divergirem silenciosamente no futuro, em vez de confiar em "elas deveriam bater" em prosa. A regra de omissão mínima de D13 (nenhum campo opcional ausente descarta um modelo) evitou por desenho o modo de falha mais perigoso da fatia: catálogo sempre vazio numa máquina real com suíte 100% verde contra fakes.
-
-**A arquitetura atrapalhou porque...**
-
-Nada de estrutural atrapalhou; o atrito ficou inteiro em mecânica de TypeScript/teste, não em desenho: `noUncheckedIndexedAccess` exigiu tratamento explícito de `array[i]` como `T | undefined` em `piper-tts.ts` e nos testes (recorrência do mesmo tipo de atrito mecânico já visto em SPECs anteriores com esse flag), e a porta `PiperFsPort` fake sendo assíncrona por design (Promises reais, para espelhar IO real) exigiu um helper `flushMicrotasks()` para os testes observarem o ponto exato em que `synthesize` chega ao `spawn`/`writeLine` síncronos — nenhuma das duas interfaces da SPEC previa esse detalhe de engenharia de teste.
-
-**Precisamos mudar...**
-
-Dois pontos de resolução de implementação não estavam especificados literalmente nas "Interfaces Necessárias" da SPEC-0040 — a resolução do `defaultPiperVoiceURI` (D9: `pt_BR-faber-medium` se instalado, senão o primeiro por ordem de `id`) e o layout do diretório interno de modelos (`voices/` dentro do diretório Piper) — e precisaram de decisão do `spec-implementer` documentada em código/README em vez de na SPEC. Isoladamente não vale um ADR nem uma SPEC nova; encaminhamento: se um padrão semelhante ("resolução de default não especificada literalmente na SPEC, decidida ad hoc na implementação") se repetir numa próxima SPEC de motor/subprocesso, revisar o template de SPEC (`docs/implementation/templates/SPEC-TEMPLATE.md`) para exigir uma subseção explícita de "defaults e layout interno" nas Interfaces Necessárias.
-
-
 ---
 
-**Entradas anteriores (SPEC-0039 e mais antigas):** `LESSONS_LEARNED-ARCHIVE.md`.
+**Entradas anteriores (SPEC-0040 e mais antigas):** `LESSONS_LEARNED-ARCHIVE.md`.
