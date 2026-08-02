@@ -252,20 +252,31 @@ function buildMediaPermissionRequest(
     : { permission, requestedMedia, captureInFlight: captureWindow.isOpen() };
 }
 
-session.defaultSession.setPermissionRequestHandler(
-  (_webContents, permission, callback, details) => {
-    const granted = decideMediaPermission(
-      buildMediaPermissionRequest(permission, details as MediaPermissionDetails),
-    );
-    callback(granted);
-  },
-);
-
-session.defaultSession.setPermissionCheckHandler((_webContents, permission, _origin, details) => {
-  return decideMediaPermission(
-    buildMediaPermissionRequest(permission, details as MediaPermissionDetails | undefined),
+/**
+ * Registra a política de permissão de mídia na `session` padrão do Electron.
+ *
+ * `session.defaultSession` só pode ser acessado depois de `app.whenReady()`
+ * (o Electron lança `TypeError: Session can only be received when app is
+ * ready` se tocado no topo do módulo, em nível de importação) — por isso
+ * esta função é chamada de dentro do callback de `app.whenReady()`, nunca no
+ * momento em que este arquivo é avaliado. Ver SPEC-0046, correção pós-fecho.
+ */
+function registerMediaPermissionHandlers(): void {
+  session.defaultSession.setPermissionRequestHandler(
+    (_webContents, permission, callback, details) => {
+      const granted = decideMediaPermission(
+        buildMediaPermissionRequest(permission, details as MediaPermissionDetails),
+      );
+      callback(granted);
+    },
   );
-});
+
+  session.defaultSession.setPermissionCheckHandler((_webContents, permission, _origin, details) => {
+    return decideMediaPermission(
+      buildMediaPermissionRequest(permission, details as MediaPermissionDetails | undefined),
+    );
+  });
+}
 
 function createWindow(): void {
   const window = new BrowserWindow({
@@ -403,6 +414,7 @@ async function closeAllChatSessions(): Promise<void> {
 }
 
 void app.whenReady().then(() => {
+  registerMediaPermissionHandlers();
   createWindow();
 
   app.on('activate', () => {

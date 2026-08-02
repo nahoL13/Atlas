@@ -23,3 +23,8 @@ docs/.obsidian/cache
 # (Decisão D10) — só o contrato de layout (README.md) fica no git.
 apps/desktop/resources/piper/*
 !apps/desktop/resources/piper/README.md
+
+# whisper.cpp (SPEC-0046, ADR-0022): binário + modelo de reconhecimento não são
+# versionados — só o contrato de layout (README.md) fica no git.
+apps/desktop/resources/stt/*
+!apps/desktop/resources/stt/README.md

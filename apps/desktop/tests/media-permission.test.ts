@@ -172,4 +172,65 @@ describe('media-permission: asserção estática de src/main.ts (CA20, D16 — n
     expect(mainSource).toMatch(/app\.on\(\s*['"]before-quit['"]/);
     expect(mainSource).toContain('captureWindow.end()');
   });
+
+  // Regressão do defeito descoberto na primeira execução real da app: as duas
+  // chamadas de `session.defaultSession.*` estavam escritas no topo do
+  // módulo, portanto avaliadas na importação — mas `session.defaultSession`
+  // só pode ser acessado depois de `app.whenReady()` (o Electron lança
+  // `TypeError: Session can only be received when app is ready`). A
+  // asserção original (acima) prova só que o texto existe em `main.ts`, não
+  // *onde* ele é alcançado — passava verde com o bug em produção. Este bloco
+  // prova o posicionamento: `session.defaultSession` só aparece dentro do
+  // corpo de uma função (nunca em nível de módulo, onde uma referência
+  // executaria na importação — declarações de função não executam o corpo
+  // ao serem definidas), e essa função só é invocada de dentro do callback
+  // de `app.whenReady().then(...)`, antes de `createWindow()`.
+  //
+  // Isto continua sendo prova estática de fonte, não um teste de arranque
+  // (D16 segue em vigor: nenhum `vi.mock('electron')`). O que muda é o que a
+  // asserção consegue honestamente demonstrar: não mais "o texto existe em
+  // algum lugar do arquivo", mas "o texto só existe dentro de uma função, e
+  // essa função só é chamada depois que o app está pronto".
+  it('session.defaultSession só é referenciado dentro de uma função chamada por app.whenReady(), nunca em nível de módulo (regressão)', () => {
+    const functionMatch = mainSource.match(
+      /function registerMediaPermissionHandlers\(\): void \{([\s\S]*?)\n\}\n/,
+    );
+    expect(functionMatch).not.toBeNull();
+    const functionBody = functionMatch![1]!;
+
+    // A função de fato registra os dois handlers.
+    const requestHandlerInBody = functionBody.match(/session\.defaultSession\./g) ?? [];
+    expect(requestHandlerInBody.length).toBe(2);
+
+    // Nenhuma outra ocorrência de `session.defaultSession` existe no
+    // arquivo fora dessa função — ou seja, nenhuma referência sobrevive em
+    // nível de módulo, onde seria avaliada na importação.
+    const totalOccurrences = mainSource.match(/session\.defaultSession\./g) ?? [];
+    expect(totalOccurrences.length).toBe(requestHandlerInBody.length);
+
+    // A função só é invocada uma vez em todo o arquivo (além da própria
+    // declaração), e essa chamada mora dentro do callback de
+    // `app.whenReady().then(...)`, antes de `createWindow()`.
+    const whenReadyMatch = mainSource.match(
+      /app\.whenReady\(\)\.then\(\(\) => \{([\s\S]*?)\n\}\);\n/,
+    );
+    expect(whenReadyMatch).not.toBeNull();
+    const whenReadyBody = whenReadyMatch![1]!;
+
+    expect(whenReadyBody).toContain('registerMediaPermissionHandlers()');
+
+    const registerCallIndex = whenReadyBody.indexOf('registerMediaPermissionHandlers()');
+    const createWindowCallIndex = whenReadyBody.indexOf('createWindow()');
+    expect(createWindowCallIndex).toBeGreaterThan(-1);
+    expect(registerCallIndex).toBeLessThan(createWindowCallIndex);
+
+    // A chamada de `registerMediaPermissionHandlers()` só existe dentro do
+    // callback de `whenReady` — nenhuma segunda chamada solta em nível de
+    // módulo (o que reintroduziria o defeito por outra via). A regex também
+    // casa a própria assinatura da declaração (`function
+    // registerMediaPermissionHandlers(): void {`), por isso o teto
+    // esperado é 2: a declaração + a única chamada.
+    const totalCalls = mainSource.match(/registerMediaPermissionHandlers\(\)/g) ?? [];
+    expect(totalCalls.length).toBe(2);
+  });
 });
