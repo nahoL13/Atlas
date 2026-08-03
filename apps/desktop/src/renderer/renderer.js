@@ -414,9 +414,10 @@ function resolveVoiceBackend({
 
 // Default de modelo Piper (Decisão D9): `pt_BR-faber-medium` se instalado,
 // senão o primeiro por ordem de `id`. Só o renderer tem, ao mesmo tempo, o
-// catálogo Piper e a preferência de Persona — resíduo sem cobertura
-// automatizada, mesma classe do roteamento replicado já documentada nas
-// SPECs 0035/0036/0039.
+// catálogo Piper e a preferência de Persona — réplica de
+// `resolveDefaultPiperVoiceURI` (`piper-tts.ts`), coberta pelo gate de
+// paridade desde a SPEC-0047; teste de referência:
+// `apps/desktop/tests/renderer.speech-parity.test.ts`.
 function computeDefaultPiperVoiceURI(voices) {
   if (voices.length === 0) {
     return undefined;
@@ -962,15 +963,18 @@ function micBusy() {
 
 // CA34 (segunda direção): enquanto grava ou transcreve, o botão de envio do
 // chat e o seletor de Persona ficam desabilitados — a mesma serialização de
-// gestos já em vigor para turno de chat/ask (SPEC-0037/0038).
+// gestos já em vigor para turno de chat/ask (SPEC-0037/0038). Desde a
+// SPEC-0048, `#chat-send` soma também `askInFlight`: um `ask` em voo passa a
+// bloquear o envio de um turno de chat, fechando o achado registrado pela
+// SPEC-0047 (`#chat-input` fica deliberadamente fora — D3 da SPEC-0048).
 function refreshChatControlsForMic() {
-  const disabled = chatTurnInFlight || micBusy();
+  const disabled = chatTurnInFlight || askInFlight || micBusy();
   const sendButton = document.getElementById('chat-send');
   if (sendButton !== null) {
     sendButton.disabled = disabled;
   }
   if (personaSelect !== undefined && personaSelect !== null) {
-    personaSelect.disabled = disabled || askInFlight;
+    personaSelect.disabled = disabled;
   }
 }
 
@@ -1255,6 +1259,13 @@ document.getElementById('chat-form').addEventListener('submit', (event) => {
   if (chatSession === null) {
     return;
   }
+  // SPEC-0048/D2: guarda explícita, além do atributo `disabled` do botão —
+  // um `submit` despachado programaticamente ou por submissão implícita do
+  // `<form>` contorna o botão. Serializa contra o próprio turno de chat e
+  // contra um `ask` em voo (fecha o achado da SPEC-0047).
+  if (chatTurnInFlight || askInFlight) {
+    return;
+  }
   const inputEl = document.getElementById('chat-input');
   const input = inputEl.value.trim();
   if (input === '') {
@@ -1282,7 +1293,11 @@ document.getElementById('chat-form').addEventListener('submit', (event) => {
     })
     .finally(() => {
       inputEl.disabled = false;
-      sendButton.disabled = micBusy();
+      // SPEC-0048/D1: sem atribuição direta a `sendButton.disabled` aqui — o
+      // `.finally` deixa de recalcular o estado por conta própria. O valor
+      // final vem só de `refreshChatControlsForMic()`, chamada logo abaixo
+      // por `refreshPermissionsPanelState()`; senão um turno de chat que
+      // assenta durante um `ask` em voo reabriria o botão por outro caminho.
       personaSelect.disabled = false;
       chatTurnInFlight = false;
       refreshPermissionsPanelState();

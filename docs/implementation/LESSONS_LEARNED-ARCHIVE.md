@@ -1004,3 +1004,21 @@ O gate errou uma premissa e registrou o próprio erro no parecer da 3ª rodada: 
 **Precisamos mudar...**
 
 `__resetBridgeStateForTests()` não fecha sessões vivas — lacuna nomeada por D15 como candidato a fatia futura que toca `src/` (fora desta SPEC, que proibiu explicitamente esse caminho por D14). Encaminhamento: registrada em `apps/desktop/CLAUDE.md` ("Candidatos futuros já nomeados" + qualificação da linha sobre o próprio `__resetBridgeStateForTests()`), para que o próximo teste que abrir uma sessão encontre o aviso sem precisar redescobrir o flake.
+
+## [SPEC-0043](specs/SPEC-0043-desktop-voice-residues.md) — Desktop: fecha os dois resíduos de voz da SPEC-0041 — `voiceURI` retida em vez de apagada em silêncio, e o caminho `'os'` do glue volta a honrar a preferência da Persona (2026-07-31)
+
+**Descobrimos que...**
+
+Uma citação de artigo errada na própria SPEC ("nada de escrita persistente implícita", atribuída ao Artigo 11 — que na verdade é a autoridade exclusiva da Memória sobre estado persistente) sobreviveu ao rascunho e ao 1º veto do gate, e mesmo depois de o gate corrigir 4 ocorrências para os Artigos 7 e 8 (transparência; nenhuma ação destrutiva sem autorização explícita), 2 ocorrências residuais (Fora do Escopo, D9) só foram pegas pelo `spec-validator` — um erro de registro simples propagou por três revisões diferentes antes de ser fechado por completo no fechamento. Descobrimos também, ao investigar o resíduo (2) (o glue `createSpeechOutputGlue({ synth })` nunca recebeu `preferredVoiceURI`), que a deriva declarada como candidata a fatia futura na Observação da SPEC-0041 já vinha sendo carregada, sem correção, desde a SPEC-0035 — cinco fatias de voz seguidas (0036/0039/0040/0041) reafirmaram o contrato de preferência no módulo puro sem que nenhuma delas notasse que o renderer nunca o consumia de fato.
+
+**A arquitetura ajudou porque...**
+
+A distinção "política × ambiente", codificada como uma função pura composta **sobre** `piperOnlyPreference` (D3) em vez de uma condição paralela, deixou os quatro desfechos (`none`/`available`/`retained`/`dropped`) exaustivos e testáveis sem duplicar a regra que já decide o que soa — se a política Piper-only mudar um dia, a classificação acompanha sozinha. Colocar a preservação **dentro** do próprio `<select>`, como uma `<option>` retida e selecionada (D2), eliminou por construção a ambiguidade que motivou a SPEC inteira: hoje o que está selecionado é sempre o que será salvo, e `readPersonaFormInput` ficou intocado — a garantia de transparência (Artigo 7) caiu de graça da mecânica que já existia, sem precisar de estado paralelo "lembrado" no submit. O provider do glue reusando o **mesmo** `piperOnlyPreference(...)` que `currentVoiceBackend` já usa (D6) fechou o resíduo (2) sem introduzir uma segunda cópia da política de superfície — um `piper:<id>` nunca casa com voz do SO por construção (filtro `localService === true`), então o fallback do ADR-0021(c) degrada corretamente sem condição nova.
+
+**A arquitetura atrapalhou porque...**
+
+`renderer.js` segue sem cobertura automatizada (sem bundler, ADR-0019), e esta é a **7ª** réplica renderer↔módulo do projeto — e a **2ª** vez que essa duplicação derivou por acidente, não só por risco teórico (a 1ª foi o próprio resíduo 2 desta SPEC). O padrão já falhou uma vez de verdade: um contrato documentado desde a SPEC-0039, reafirmado como autoritativo pela D16 da SPEC-0040, ficou sem efeito no app real por seis fatias sem que nenhum gate mecânico pudesse detectar — só inspeção manual de diff. A correção de citação de artigo (Artigo 11 → 7/8) também mostrou que erros de registro em prosa sobrevivem a múltiplas rodadas de revisão quando ninguém grepa pelo número do artigo especificamente.
+
+**Precisamos mudar...**
+
+O risco estrutural da 7ª réplica (e da 2ª deriva por acidente) foi registrado pelo `architecture-reviewer` como candidato a decisão de arquitetura — cobrir `renderer.js` por teste automatizado exigiria mudar a stack do renderer (ADR-0019), portanto ADR novo e escalação humana (Emenda v1.1); não é decisão desta sessão. Encaminhamento: candidato registrado em `docs/05-context/NEXT_CONTEXT.md`, para que a próxima SPEC de voz ou de Persona avalie se já é hora de pagar essa dívida antes de abrir uma 8ª réplica.

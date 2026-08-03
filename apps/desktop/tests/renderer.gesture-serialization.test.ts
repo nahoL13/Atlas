@@ -16,19 +16,24 @@ import { loadRenderer } from './helpers/renderer-harness.js';
 //   botões de #persona-list · #persona-form-save · #persona-form-cancel ·
 //   #read-root-add · #write-root-add · #permissions-apply
 //
-// ACHADO registrado no relatório final do `spec-implementer`: essa lista
-// vale integralmente para um TURNO DE CHAT em voo (a suíte abaixo confirma),
-// mas NÃO para um `ask` em voo. `askInFlight` alimenta
-// `refreshPermissionsPanelState()` → `refreshPersonaPanelState()` +
-// `refreshChatControlsForMic()`, e esta última só soma `askInFlight` à
-// condição de `#persona-select` (`disabled = disabled || askInFlight`) — o
-// botão `#chat-send` usa só `chatTurnInFlight || micBusy()`, sem
-// `askInFlight`, e `#chat-input` nunca é tocado fora do próprio manipulador
-// de envio de chat. Ou seja: durante um `ask` em voo, `#chat-input` e
-// `#chat-send` permanecem HABILITADOS na implementação real. A SPEC previu
-// exatamente este caso ("corrigir a lista nesta SPEC — nunca 'consertar' o
-// renderer"): a suíte abaixo testa os dois cenários com listas distintas,
-// documentando o gap em vez de escondê-lo.
+// SPEC-0048 corrigiu o achado registrado pela SPEC-0047: `#chat-send` agora
+// entra também na serialização de um `ask` em voo (`refreshChatControlsForMic`
+// soma `chatTurnInFlight || askInFlight || micBusy()`), e o manipulador de
+// `submit` de `#chat-form` recusa o gesto (sem chamar `atlas.chat.send`)
+// enquanto `chatTurnInFlight` ou `askInFlight` for verdadeiro — guarda
+// independente do atributo `disabled`, que cobre submissão implícita/
+// programática do `<form>`. O `.finally` do turno de chat deixou de
+// recalcular o estado de `#chat-send` por conta própria (não tem mais
+// `sendButton.disabled = micBusy()`): o valor final vem só de
+// `refreshChatControlsForMic()`, chamada por `refreshPermissionsPanelState()`
+// logo abaixo na mesma linha de código.
+//
+// `#chat-input` continua DELIBERADAMENTE fora da serialização de `ask`
+// (Decisão D3 da SPEC-0048): digitar não dispara gesto algum contra o Core,
+// e desabilitar o campo no meio de um `ask` roubaria foco/texto em curso por
+// um round-trip que não é do chat. É decisão, não gap — por isso a lista
+// usada durante um `ask` (`collectAskSerializedControls`) exclui só
+// `chat-input`, nunca `chat-send`.
 
 let fixture: RendererFixture | undefined;
 
@@ -45,6 +50,21 @@ async function open(options?: RendererFixtureOptions): Promise<RendererFixture> 
 
 function setValue(f: RendererFixture, id: string, value: string): void {
   (f.document.getElementById(id) as unknown as { value: string }).value = value;
+}
+
+// O manipulador de `#ask-form` em `renderer.js` encadeia só `.finally(...)`
+// sobre `window.atlas.ask(...)` (sem `.catch`) — uma rejeição segue sem
+// handler ao nível do processo Node (a promessa É tratada pelo `finally`,
+// mas isso não some com o aviso de rejeição não tratada do V8). Mesmo padrão
+// de `renderer.memory-ask.test.ts`.
+async function withSuppressedUnhandledRejection<T>(action: () => Promise<T> | T): Promise<T> {
+  const handler = (): void => {};
+  process.on('unhandledRejection', handler);
+  try {
+    return await action();
+  } finally {
+    process.off('unhandledRejection', handler);
+  }
 }
 
 interface DisableableElement {
@@ -75,11 +95,9 @@ function collectSerializedControls(f: RendererFixture): DisableableElement[] {
 }
 
 function collectAskSerializedControls(f: RendererFixture): DisableableElement[] {
-  // ACHADO (ver cabeçalho): #chat-input/#chat-send não fazem parte da
-  // serialização real de `ask` — excluídos deliberadamente aqui.
-  return collectSerializedControls(f).filter(
-    (el) => el.id !== 'chat-input' && el.id !== 'chat-send',
-  );
+  // D3 (ver cabeçalho): só `#chat-input` fica fora da serialização real de
+  // `ask` — decisão deliberada, não gap. `#chat-send` volta à lista comum.
+  return collectSerializedControls(f).filter((el) => el.id !== 'chat-input');
 }
 
 function expectAllDisabled(elements: readonly DisableableElement[], expected: boolean): void {
@@ -131,7 +149,7 @@ describe('serialização de gestos — turno de chat em voo', () => {
 });
 
 describe('serialização de gestos — ask em voo', () => {
-  it('a mesma lista (exceto #chat-input/#chat-send, achado registrado) fica desabilitada durante o ask, e reabilitada ao assentar', async () => {
+  it('a mesma lista (exceto #chat-input, D3) fica desabilitada durante o ask, e reabilitada ao assentar', async () => {
     let resolveAsk: ((value: RendererAskSnapshot) => void) | undefined;
     const askPromise = new Promise<RendererAskSnapshot>((resolve) => {
       resolveAsk = resolve;
@@ -144,18 +162,45 @@ describe('serialização de gestos — ask em voo', () => {
     submitAsk(f, 'faça algo');
 
     expectAllDisabled(collectAskSerializedControls(f), true);
-    // Achado: #chat-input/#chat-send NÃO entram na serialização real de `ask`.
+    // D3: só #chat-input fica fora da serialização de `ask` — decisão, não
+    // gap. #chat-send agora entra (SPEC-0048).
     expect(
       (f.document.getElementById('chat-input') as unknown as { disabled: boolean }).disabled,
     ).toBe(false);
     expect(
       (f.document.getElementById('chat-send') as unknown as { disabled: boolean }).disabled,
-    ).toBe(false);
+    ).toBe(true);
 
     resolveAsk?.({ text: 'pronto', steps: [], learned: [] });
     await f.flush();
 
     expectAllDisabled(collectAskSerializedControls(f), false);
+  });
+
+  it('ask rejeitando reabilita #chat-send', async () => {
+    let rejectAsk: ((error: Error) => void) | undefined;
+    const askPromise = new Promise<RendererAskSnapshot>((_resolve, reject) => {
+      rejectAsk = reject;
+    });
+    const f = await open({
+      personas: PERSONAS_WITH_CUSTOM,
+      atlas: { ask: () => askPromise },
+    });
+
+    submitAsk(f, 'faça algo');
+
+    expect(
+      (f.document.getElementById('chat-send') as unknown as { disabled: boolean }).disabled,
+    ).toBe(true);
+
+    await withSuppressedUnhandledRejection(async () => {
+      rejectAsk?.(new Error('falha no ask'));
+      await f.flush();
+    });
+
+    expect(
+      (f.document.getElementById('chat-send') as unknown as { disabled: boolean }).disabled,
+    ).toBe(false);
   });
 });
 
@@ -203,5 +248,68 @@ describe('serialização de gestos — guardas de entrada', () => {
     await f.flush();
 
     expect(f.calls.chatSend).toEqual([]);
+  });
+
+  it('submeter #chat-form com um ask em voo não chama atlas.chat.send; ao assentar o ask, o mesmo submit chama', async () => {
+    let resolveAsk: ((value: RendererAskSnapshot) => void) | undefined;
+    const askPromise = new Promise<RendererAskSnapshot>((resolve) => {
+      resolveAsk = resolve;
+    });
+    const f = await open({
+      atlas: { ask: () => askPromise },
+    });
+
+    submitAsk(f, 'faça algo');
+
+    await submitChat(f, 'olá');
+    await f.flush();
+    expect(f.calls.chatSend).toEqual([]);
+
+    resolveAsk?.({ text: 'pronto', steps: [], learned: [] });
+    await f.flush();
+
+    await submitChat(f, 'olá');
+    await f.flush();
+    expect(f.calls.chatSend).toEqual([{ session: 'session-1', input: 'olá' }]);
+  });
+});
+
+describe('serialização de gestos — não-regressão do .finally do turno de chat', () => {
+  it('um turno de chat que assenta enquanto um ask segue em voo deixa #chat-send desabilitado', async () => {
+    let resolveAsk: ((value: RendererAskSnapshot) => void) | undefined;
+    const askPromise = new Promise<RendererAskSnapshot>((resolve) => {
+      resolveAsk = resolve;
+    });
+    let resolveSend: ((value: RendererTurnSnapshot) => void) | undefined;
+    const sendPromise = new Promise<RendererTurnSnapshot>((resolve) => {
+      resolveSend = resolve;
+    });
+    const f = await open({
+      atlas: { ask: () => askPromise },
+      chatSend: () => sendPromise,
+    });
+
+    // Sessão de chat aberta e turno disparado ANTES do ask, para que o
+    // `.finally` do turno de chat assente enquanto `askInFlight` ainda é
+    // verdadeiro.
+    await submitChat(f, 'olá');
+    submitAsk(f, 'faça algo');
+
+    resolveSend?.({ reply: 'oi', steps: [], learned: [] });
+    await f.flush();
+
+    // O turno de chat assentou, mas o ask segue em voo: `#chat-send` precisa
+    // continuar desabilitado — prova de que o `.finally` deixou de recalcular
+    // o estado por conta própria (a edição 2 da Frente 1 da SPEC-0048).
+    expect(
+      (f.document.getElementById('chat-send') as unknown as { disabled: boolean }).disabled,
+    ).toBe(true);
+
+    resolveAsk?.({ text: 'pronto', steps: [], learned: [] });
+    await f.flush();
+
+    expect(
+      (f.document.getElementById('chat-send') as unknown as { disabled: boolean }).disabled,
+    ).toBe(false);
   });
 });

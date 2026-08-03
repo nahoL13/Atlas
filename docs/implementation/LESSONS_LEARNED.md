@@ -51,7 +51,7 @@ A ausência de atrito também é informação.
 
 ---
 
-**Escopo deste arquivo:** o Registro abaixo mantém as **últimas 5 SPECs**. As entradas da SPEC-0041 e anteriores estão em `LESSONS_LEARNED-ARCHIVE.md`, preservadas sem edição (regra 2 intacta — nada é reescrito, só realocado).
+**Escopo deste arquivo:** o Registro abaixo mantém as **últimas 5 SPECs**. As entradas da SPEC-0043 e anteriores estão em `LESSONS_LEARNED-ARCHIVE.md`, preservadas sem edição (regra 2 intacta — nada é reescrito, só realocado).
 
 O corte existe porque este arquivo chegou a 157 KB (~39k tokens) e era relido no arranque de quase todo subagent, dominando o custo em tokens do pipeline. Ao fechar uma SPEC: adicione a entrada nova no topo do Registro e mova a mais antiga das 6 para o arquivo.
 
@@ -61,7 +61,7 @@ O corte existe porque este arquivo chegou a 157 KB (~39k tokens) e era relido no
 
 Lições que se repetiram em três ou mais SPECs. Este índice existe para sobreviver ao corte acima — consulte o arquivo para o caso concreto de cada uma.
 
-- **Correção de bloqueante introduz bloqueante novo no mesmo caminho de código** — SPEC-0034, 0038, 0039. Ao corrigir um veto do gate, re-examine o caminho inteiro, não só a linha apontada.
+- **Correção de bloqueante introduz bloqueante novo no mesmo caminho de código** — SPEC-0034, 0038, 0039, 0048 (`#chat-send` corrigido em `refreshChatControlsForMic()` reabriria pelo `.finally` do turno de chat, que tinha origem de cálculo própria). Ao corrigir um veto do gate, re-examine o caminho inteiro, não só a linha apontada.
 - **Garantia em prosa absoluta tende a estar incompleta** — SPEC-0038 (A1/A2 → A6/A7). "Toda função que X" quase sempre esquece um caso; enumere ou restrinja a formulação.
 - **Duplicação deliberada renderer↔módulo** — SPEC-0035, 0036, 0039, 0040, 0041, 0043 (8 réplicas + a constante `PIPER_VOICE_PREFIX`). `renderer.js` é `<script>` clássico sem bundler (ADR-0019) e não pode importar o módulo TS em runtime; a réplica em JS puro é consciente e leva comentário apontando o teste de referência. A SPEC-0043 é a 2ª vez que essa duplicação **deriva por acidente** (não só risco teórico): o glue do renderer ficou sem `preferredVoiceURI` desde a SPEC-0035 sem que nenhuma das cinco fatias seguintes notasse. Desde a **SPEC-0045**, a deriva entre as duas cópias é coberta por um gate mecânico (`renderer.speech-parity.test.ts`, sobre `jsdom` num harness que carrega `renderer.js` do disco) — cobre só réplicas de `speech-output.ts`; réplica de outro módulo segue por convenção.
 - **Campo obrigatório novo em `Deps` exige grep pelo nome da função construtora** (`createRuntime(`, `createPermissionService(`) em **todo o repo** — repetido 8× até a SPEC-0013.
@@ -72,6 +72,24 @@ Lições que se repetiram em três ou mais SPECs. Este índice existe para sobre
 
 
 # Registro
+
+## [SPEC-0048](specs/SPEC-0048-desktop-chat-send-ask-serialization.md) — `#chat-send` na serialização de `ask` e comentário desatualizado de `computeDefaultPiperVoiceURI` (2026-08-03)
+
+**Descobrimos que...**
+
+O achado da SPEC-0047 ("`#chat-send` não soma `askInFlight` ao `disabled`") tinha uma segunda camada não nomeada até esta SPEC abrir o código: mesmo corrigindo a condição em `refreshChatControlsForMic()`, o `.finally` do manipulador de `submit` de `#chat-form` tinha **uma segunda origem de cálculo** (`sendButton.disabled = micBusy()`, sem `askInFlight`) que reabriria o botão ao assentar um turno de chat durante um `ask` em voo — reintroduzindo o mesmo defeito por outro caminho, se corrigido só na função. E `disabled` sozinho nunca teria sido suficiente para o CA de guarda de entrada: o harness `jsdom` despacha `submit` diretamente, contornando o atributo do botão, então a garantia real exigiu uma guarda explícita no manipulador — o texto do achado da SPEC-0047 já falava em "**enviado**", não em pixel cinza, mas só ficou óbvio ao tentar escrever o teste RED. O gate arquitetural também achou, de graça na mesma revisão, a direção simétrica não pedida: `#ask-form` não tem guarda nenhuma contra um 2º `ask` ou contra um turno de chat em voo (A3) — mesma classe de defeito, ainda aberta por decisão de escopo, não por desconhecimento.
+
+**A arquitetura ajudou porque...**
+
+A condição já vivia num lugar só nomeado (`refreshChatControlsForMic()`, já compartilhado com `#persona-select` desde as SPECs 0037/0038), então somar `askInFlight` foi uma linha; o padrão "condição em um lugar só, chamada por `refreshPermissionsPanelState()`" (D1) generalizou sem desenho novo. O harness `jsdom` da SPEC-0045/0047, com promessas controláveis de `ask`/`chatSend`, tornou os dois casos novos (CA 7/8) e o de reforço do gate (`ask` rejeitando) triviais de escrever e de observar em RED antes da correção — sem ele, provar a guarda de entrada exigiria mockar `dispatchEvent` manualmente.
+
+**A arquitetura atrapalhou porque...**
+
+Nada de estrutural. O atrito ficou em ler completo antes de escrever: quem só olhasse a linha da condição em `refreshChatControlsForMic()` teria corrigido metade do defeito e deixado o `.finally` reabrir o botão por baixo — a mesma classe "corrigir bloqueante introduz bloqueante novo no mesmo caminho" já catalogada nos Padrões Recorrentes (SPEC-0034/0038/0039), agora no par ask/chat em vez de permissões/Persona.
+
+**Precisamos mudar...**
+
+(1) As duas direções residuais registradas pelo DoD desta SPEC ficam deliberadamente fora: **(d.1) chat → ask** — serializar `#ask-form` contra um turno de chat em voo (direção inversa; decidir se o painel `ask` deve mesmo se bloquear pelo chat é questão de UX própria, não corolário desta correção) — encaminhamento: candidato registrado em `docs/05-context/NEXT_CONTEXT.md`/`apps/desktop/CLAUDE.md`, para uma fatia futura avaliar. **(d.2) ask × ask** — `renderer.js:136-166` (manipulador de `submit` de `#ask-form`) não tem guarda contra `askInFlight`/`chatTurnInFlight`, e `#objective`/`#ask-submit` não entram em nenhuma função de refresh: dois cliques seguidos em "Perguntar" sobem dois Cores concorrentes capazes de executar Tools, achado do gate arquitetural (A3), sem registro em nenhuma doc viva até esta SPEC — encaminhamento: candidato registrado em `docs/05-context/NEXT_CONTEXT.md`/`apps/desktop/CLAUDE.md` para a próxima SPEC de serialização de gestos do painel `ask`. (2) Achado colateral do mesmo gate, não corrigido aqui: o manipulador de `submit` de `#ask-form` (`renderer.js:146-166`) só tem `.finally`, sem `.catch` — uma rejeição de `atlas.ask` vira unhandled rejection e o erro nunca chega ao `#ask-result` — encaminhamento: candidato registrado em `apps/desktop/CLAUDE.md`, para a mesma fatia futura do item (d.2) avaliar junto. (3) Limite estrutural reafirmado, não fechado: a serialização segue sendo garantia do **renderer**; o `core-bridge` não rastreia `sendChatTurn` em `inFlightOperations` (só `selectPermissionRoots`) — encaminhamento: fora de escopo por decisão explícita da SPEC (mudaria a garantia documentada em "Rastreio de operação em voo" e afetaria recusas de `selectPermissionRoots`); registrado como candidato em `apps/desktop/CLAUDE.md` para SPEC própria, caso o produto exija a garantia estrutural no main process.
 
 ## [SPEC-0047](specs/SPEC-0047-renderer-parity-gate-and-panel-coverage.md) — Gate de paridade generalizado a `piper-tts.ts`/`stt-engine.ts` e cobertura comportamental dos painéis no harness (2026-08-03)
 
@@ -145,24 +163,6 @@ Nada de estrutural; o atrito ficou em precisão de registro na própria SPEC —
 
 O `spec-validator` sinalizou que `packages/persona/tests/persona-storage.test.ts:84` usa `chmod 0o500` para simular `EACCES` na escrita atômica — o que só funciona em processo **não-root**; verdadeiro hoje no runner `ubuntu-latest` do GitHub Actions (usuário `runner`), então não é flake em CI, mas é um pressuposto de ambiente não documentado. Encaminhamento: registrado aqui como nota; se a suíte algum dia rodar localmente como root (container root, sandbox elevado) ou migrar de runner, esse caso precisa de um teste alternativo de falha injetada (fake de `fs`/`rename`, não permissão real do SO).
 
-## [SPEC-0043](specs/SPEC-0043-desktop-voice-residues.md) — Desktop: fecha os dois resíduos de voz da SPEC-0041 — `voiceURI` retida em vez de apagada em silêncio, e o caminho `'os'` do glue volta a honrar a preferência da Persona (2026-07-31)
-
-**Descobrimos que...**
-
-Uma citação de artigo errada na própria SPEC ("nada de escrita persistente implícita", atribuída ao Artigo 11 — que na verdade é a autoridade exclusiva da Memória sobre estado persistente) sobreviveu ao rascunho e ao 1º veto do gate, e mesmo depois de o gate corrigir 4 ocorrências para os Artigos 7 e 8 (transparência; nenhuma ação destrutiva sem autorização explícita), 2 ocorrências residuais (Fora do Escopo, D9) só foram pegas pelo `spec-validator` — um erro de registro simples propagou por três revisões diferentes antes de ser fechado por completo no fechamento. Descobrimos também, ao investigar o resíduo (2) (o glue `createSpeechOutputGlue({ synth })` nunca recebeu `preferredVoiceURI`), que a deriva declarada como candidata a fatia futura na Observação da SPEC-0041 já vinha sendo carregada, sem correção, desde a SPEC-0035 — cinco fatias de voz seguidas (0036/0039/0040/0041) reafirmaram o contrato de preferência no módulo puro sem que nenhuma delas notasse que o renderer nunca o consumia de fato.
-
-**A arquitetura ajudou porque...**
-
-A distinção "política × ambiente", codificada como uma função pura composta **sobre** `piperOnlyPreference` (D3) em vez de uma condição paralela, deixou os quatro desfechos (`none`/`available`/`retained`/`dropped`) exaustivos e testáveis sem duplicar a regra que já decide o que soa — se a política Piper-only mudar um dia, a classificação acompanha sozinha. Colocar a preservação **dentro** do próprio `<select>`, como uma `<option>` retida e selecionada (D2), eliminou por construção a ambiguidade que motivou a SPEC inteira: hoje o que está selecionado é sempre o que será salvo, e `readPersonaFormInput` ficou intocado — a garantia de transparência (Artigo 7) caiu de graça da mecânica que já existia, sem precisar de estado paralelo "lembrado" no submit. O provider do glue reusando o **mesmo** `piperOnlyPreference(...)` que `currentVoiceBackend` já usa (D6) fechou o resíduo (2) sem introduzir uma segunda cópia da política de superfície — um `piper:<id>` nunca casa com voz do SO por construção (filtro `localService === true`), então o fallback do ADR-0021(c) degrada corretamente sem condição nova.
-
-**A arquitetura atrapalhou porque...**
-
-`renderer.js` segue sem cobertura automatizada (sem bundler, ADR-0019), e esta é a **7ª** réplica renderer↔módulo do projeto — e a **2ª** vez que essa duplicação derivou por acidente, não só por risco teórico (a 1ª foi o próprio resíduo 2 desta SPEC). O padrão já falhou uma vez de verdade: um contrato documentado desde a SPEC-0039, reafirmado como autoritativo pela D16 da SPEC-0040, ficou sem efeito no app real por seis fatias sem que nenhum gate mecânico pudesse detectar — só inspeção manual de diff. A correção de citação de artigo (Artigo 11 → 7/8) também mostrou que erros de registro em prosa sobrevivem a múltiplas rodadas de revisão quando ninguém grepa pelo número do artigo especificamente.
-
-**Precisamos mudar...**
-
-O risco estrutural da 7ª réplica (e da 2ª deriva por acidente) foi registrado pelo `architecture-reviewer` como candidato a decisão de arquitetura — cobrir `renderer.js` por teste automatizado exigiria mudar a stack do renderer (ADR-0019), portanto ADR novo e escalação humana (Emenda v1.1); não é decisão desta sessão. Encaminhamento: candidato registrado em `docs/05-context/NEXT_CONTEXT.md`, para que a próxima SPEC de voz ou de Persona avalie se já é hora de pagar essa dívida antes de abrir uma 8ª réplica.
-
 ---
 
-**Entradas anteriores (SPEC-0042 e mais antigas):** `LESSONS_LEARNED-ARCHIVE.md`.
+**Entradas anteriores (SPEC-0043 e mais antigas):** `LESSONS_LEARNED-ARCHIVE.md`.
