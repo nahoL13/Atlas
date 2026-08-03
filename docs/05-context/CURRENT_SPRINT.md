@@ -2,7 +2,7 @@
 
 > **Project Atlas — Estado do Trabalho Atual**
 
-Atualizado em: 2026-08-01 (SPEC-0046)
+Atualizado em: 2026-08-03 (SPEC-0047)
 
 ---
 
@@ -58,5 +58,6 @@ Objetivo: plataforma mínima operável + primeira interface executável (CLI) + 
 | [SPEC-0044](../implementation/specs/SPEC-0044-cli-persona-crud.md) | CLI: `atlas persona` (`list`/`show`/`create`/`edit`/`delete`) — equivalente de terminal do CRUD de Personas custom da SPEC-0039, sobre o mesmo `personas.json`; `apps/cli` injeta `personaStorage` em `createAtlas`, `--persona <id-custom>` passa a funcionar em todos os comandos; escrita atômica em `@atlas/persona` (`packages/persona/src/storage/persona-storage.ts`) | Done |
 | [SPEC-0045](../implementation/specs/SPEC-0045-renderer-automated-coverage.md) | Cobertura automatizada de `apps/desktop/src/renderer/renderer.js` e gate mecânico contra a deriva das réplicas renderer↔`speech-output.ts` (`renderer-harness.ts` sobre `jsdom`, `renderer.speech-parity.test.ts`/`renderer.boot.test.ts`/`renderer.voice-triggers.test.ts`); zero diff em `apps/desktop/src/`/`packages/*`, ADR-0019 intacto | Done |
 | [SPEC-0046](../implementation/specs/SPEC-0046-desktop-voice-input-stt.md) | Desktop: entrada de voz (STT) no chat, push-to-talk (`stt-engine.ts`/`media-permission.ts`, novos), consumindo o ADR-0022 (novo, Accepted — `whisper.cpp`); transcrição sempre anexa ao campo de entrada, nunca enviada automaticamente; permissão de microfone fail-closed; zero diff em `packages/*`/`apps/cli`/`core-bridge.ts`/`speech-output.ts`/`piper-tts.ts`; fecha o item 2.3 do Roadmap (wake word segue candidato) | Done |
+| [SPEC-0047](../implementation/specs/SPEC-0047-renderer-parity-gate-and-panel-coverage.md) | Desktop: gate mecânico de paridade renderer↔módulo (SPEC-0045) generalizado a `piper-tts.ts`/`stt-engine.ts` (10ª réplica amarrada, `resolveDefaultPiperVoiceURI`↔`computeDefaultPiperVoiceURI`) e cobertura comportamental dos cinco painéis (Persona, permissões, memória, `ask`, serialização de gestos) sobre o harness da SPEC-0045; zero diff em `apps/desktop/src/`/`packages/*` | Done |
 
 Detalhes de retomada: `docs/05-context/NEXT_CONTEXT.md`.

@@ -73,6 +73,24 @@ Lições que se repetiram em três ou mais SPECs. Este índice existe para sobre
 
 # Registro
 
+## [SPEC-0047](specs/SPEC-0047-renderer-parity-gate-and-panel-coverage.md) — Gate de paridade generalizado a `piper-tts.ts`/`stt-engine.ts` e cobertura comportamental dos painéis no harness (2026-08-03)
+
+**Descobrimos que...**
+
+A 1ª passada do `architecture-reviewer` vetou a SPEC só por defeitos mecânicos no **texto normativo**, não de desenho: Critérios de Aceitação escritos como estado absoluto do repositório (`git diff --name-only` sobre o repositório inteiro) reprovariam a SPEC por diff alheio — havia resíduo não commitado da própria correção pós-fecho da SPEC-0046 (`c1b9ba3`) na árvore no momento em que o rascunho foi escrito; a contagem absoluta de testes citada no rascunho ficou obsoleta entre o rascunho e a revisão (938 → 939, por causa de outra sessão); e dois CAs (8/9, as provas negativas) exigiam mutar `src/` para ver o gate ficar vermelho, exatamente o que as Restrições e o Checklist da mesma SPEC proibiam — um texto autocontraditório que teria empurrado o `spec-implementer` a pular a prova ou parar por contradição. Descobrimos também, na execução: a 1ª invocação do `spec-implementer` foi interrompida a meio da tarefa, deixando a maior parte do código já na árvore (não commitado); a 2ª invocação encontrou o trabalho pronto e fez majoritariamente verificação — por isso o `spec-validator` foi instruído a **reproduzir** as três provas negativas ele mesmo, em vez de aceitar o relato, e reproduziu, com as mensagens de falha esperadas batendo.
+
+**A arquitetura ajudou porque...**
+
+O campo `moduleSource` que o registro de paridade já carregava desde a SPEC-0045 (por causa de `PIPER_VOICE_PREFIX`) generalizou para uma lista de três módulos-fonte vigiados sem mudança de forma — só uma lista maior e mais entradas em `NOT_MIRRORED`; o harness `jsdom` da SPEC-0045 absorveu os cinco painéis sem precisar de opção nova além de controlar a resolução de `chat.send`/`ask` a partir do teste (Frente 5). O invariante "em recusa, o estado visível volta do estado real e nada é perdido em silêncio" — já provado em produção pelo `core-bridge` desde as SPECs 0034/0037/0038 — bastou como roteiro para os casos de recusa dos painéis, sem precisar de desenho novo.
+
+**A arquitetura atrapalhou porque...**
+
+Nada de estrutural. O atrito ficou inteiro em precisão de registro dos Critérios de Aceitação, como descrito acima — a mesma classe de defeito ("garantia em prosa incompleta/absoluta") já catalogada nos Padrões Recorrentes, agora manifestada em critério de **verificação**, não de comportamento do produto.
+
+**Precisamos mudar...**
+
+(1) CA de diff e de contagem de testes devem ser ancorados a um commit-base e a delta sobre uma base observada, nunca ao estado absoluto do repositório — encaminhamento: já aplicado nesta própria SPEC (D10, "Convenção de medição") e deve ser o padrão para toda SPEC futura de higiene de teste/verificação; se o padrão se repetir, revisar o `SPEC-TEMPLATE.md`. (2) Toda SPEC com prova negativa obrigatória precisa declarar a mutação temporária de `src/` como exceção sancionada nos três lugares onde a regra de somente-leitura aparece (CA, Restrições, Checklist) — encaminhamento: já aplicado nesta SPEC (D11); registrado aqui para a próxima SPEC de gate mecânico citar o precedente em vez de redescobrir a contradição. (3) Implementação de origem não confirmada (sessão anterior interrompida, trabalho já na árvore sem relato confiável) exige verificação independente reforçada pelo validador — não revisão de relatório — encaminhamento: nenhuma mudança de processo além do já aplicado nesta sessão; registrado como precedente. (4) Resíduo documental deliberado: o comentário em `apps/desktop/src/renderer/renderer.js:415-419` ("resíduo sem cobertura automatizada" sobre `computeDefaultPiperVoiceURI`) ficou factualmente desatualizado por decisão (D5, CA de diff vazio em `src/` prevalece) — encaminhamento: corrigir na próxima fatia que legitimamente toque `renderer.js`. (5) O harness lê **um** `renderer.js` do disco; esta SPEC elevou de 4 para 8 os arquivos de teste dependentes dessa premissa, encarecendo a fatia futura de quebrar `renderer.js` em arquivos menores (SPEC-0042/D8) — encaminhamento: já registrado em `apps/desktop/CLAUDE.md`/`NEXT_CONTEXT.md`, para a SPEC que atacar o D8 orçar esse custo. (6) Achado real, não corrigido por decisão de escopo: `#chat-send` calcula `disabled` sem somar `askInFlight` (`renderer.js:966-975`), então um turno de chat pode ser enviado com um `ask` ainda em voo — encaminhamento: candidato registrado em `apps/desktop/CLAUDE.md`/`NEXT_CONTEXT.md` para uma fatia futura que toque `src/`. (7) O eixo residual de D2 permanece: o gate vigia só três módulos nomeados; réplica de lógica de um módulo fora dessa lista segue protegida só por convenção — encaminhamento: nenhuma ação agora, registrado como limite conhecido nas Observações da própria SPEC e em `apps/desktop/CLAUDE.md`.
+
 ## [SPEC-0046](specs/SPEC-0046-desktop-voice-input-stt.md) — Desktop: entrada de voz (STT) no chat, push-to-talk sobre `whisper.cpp` local (2026-08-01)
 
 **Descobrimos que...**
@@ -145,24 +163,6 @@ A distinção "política × ambiente", codificada como uma função pura compost
 
 O risco estrutural da 7ª réplica (e da 2ª deriva por acidente) foi registrado pelo `architecture-reviewer` como candidato a decisão de arquitetura — cobrir `renderer.js` por teste automatizado exigiria mudar a stack do renderer (ADR-0019), portanto ADR novo e escalação humana (Emenda v1.1); não é decisão desta sessão. Encaminhamento: candidato registrado em `docs/05-context/NEXT_CONTEXT.md`, para que a próxima SPEC de voz ou de Persona avalie se já é hora de pagar essa dívida antes de abrir uma 8ª réplica.
 
-## [SPEC-0042](specs/SPEC-0042-test-split-scoped-verification.md) — Quebra do `core-bridge.test.ts` por assunto e verificação escopada por package, com flake pré-existente corrigido (2026-07-30)
-
-**Descobrimos que...**
-
-O caso `"updatePersona sobre a Persona ativa recusa com operação em voo…"` (bloco de autoria de Persona) abria sessão via `openChatSession` e nunca a fechava, vazando um `SessionId` no `Map` de sessões vivas do `core-bridge`. O `afterEach` do bloco chamava `__resetBridgeStateForTests()` — mas esse reset cobre seleção de Persona e de permissões, **não** o `Map` de sessões. Sob ordem natural de execução, nenhum caso posterior observava o resíduo; sob `--sequence.shuffle` (CA 8, obrigatório desde o desenho original da SPEC), um caso posterior herdava a sessão vazada e `closedSessions` chegava com 2 ids em vez de 1. Provamos a **pré-existência** rodando o arquivo monolítico original (`git show 0b32ccf:apps/desktop/tests/core-bridge.test.ts`) sob o mesmo shuffle: falha idêntica, mesmo teste. A quebra em sete arquivos não introduziu o defeito — só o tornou observável. Oito SPECs visuais anteriores (0031–0041) não viram.
-
-**A arquitetura ajudou porque...**
-
-A fronteira já desenhada nos oito blocos `describe` de topo (espelhando as famílias que `apps/desktop/CLAUDE.md` documenta em `core-bridge.ts`) tornou a movimentação mecânica e auditável por diff vazio contra o baseline, sem exigir reescrita — condição necessária para a garantia central "cobertura preservada integralmente". O próprio CA 8 (isolamento sob shuffle, decidido por D4 já no desenho original) provou seu valor na prática ao expor o flake antes que ele fosse mascarado silenciosamente em outra sessão. Leituras vinculantes do `architecture-reviewer`, emitidas junto da aprovação da emenda v1.2 em vez de virarem um 3º bounce, resolveram quatro ambiguidades de uma vez: CA 24 pinado no sha `0b32ccf` (em vez de um `HEAD` que se autodestruiria no commit de fechamento), CA 23 reescrito para ser exequível (faltava o import de `closeChatSession`; `session` era `const` dentro do `try`, fora de escopo no `finally`), fecho em `finally` exigindo `.catch` (para não esconder a asserção que de fato falha) e sementes de shuffle registradas para reprodutibilidade.
-
-**A arquitetura atrapalhou porque...**
-
-O gate errou uma premissa e registrou o próprio erro no parecer da 3ª rodada: o `architecture-reviewer` havia circunscrito o risco de flake aos "quatro blocos sem `reset` próprio"; o vazamento apareceu no bloco de autoria de Persona, que **tem** `reset`. Ter um `reset` não basta se ele não cobre todo o estado de módulo — limite de uma análise estática num gate que não executa a suíte.
-
-**Precisamos mudar...**
-
-`__resetBridgeStateForTests()` não fecha sessões vivas — lacuna nomeada por D15 como candidato a fatia futura que toca `src/` (fora desta SPEC, que proibiu explicitamente esse caminho por D14). Encaminhamento: registrada em `apps/desktop/CLAUDE.md` ("Candidatos futuros já nomeados" + qualificação da linha sobre o próprio `__resetBridgeStateForTests()`), para que o próximo teste que abrir uma sessão encontre o aviso sem precisar redescobrir o flake.
-
 ---
 
-**Entradas anteriores (SPEC-0041 e mais antigas):** `LESSONS_LEARNED-ARCHIVE.md`.
+**Entradas anteriores (SPEC-0042 e mais antigas):** `LESSONS_LEARNED-ARCHIVE.md`.

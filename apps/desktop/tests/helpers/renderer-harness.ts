@@ -726,6 +726,7 @@ const EPILOGUE = `
   piperOnlyPreference: typeof piperOnlyPreference !== 'undefined' ? piperOnlyPreference : undefined,
   resolvePersistedVoiceSelection: typeof resolvePersistedVoiceSelection !== 'undefined' ? resolvePersistedVoiceSelection : undefined,
   PIPER_VOICE_PREFIX: typeof PIPER_VOICE_PREFIX !== 'undefined' ? PIPER_VOICE_PREFIX : undefined,
+  computeDefaultPiperVoiceURI: typeof computeDefaultPiperVoiceURI !== 'undefined' ? computeDefaultPiperVoiceURI : undefined,
   floatChunksToInt16: typeof floatChunksToInt16 !== 'undefined' ? floatChunksToInt16 : undefined,
   describeSttFailure: typeof describeSttFailure !== 'undefined' ? describeSttFailure : undefined,
 };

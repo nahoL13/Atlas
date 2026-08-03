@@ -57,8 +57,9 @@ Este documento existe para responder, antes de começar a implementar uma SPEC, 
 | SPEC-0042 | Quebra do `core-bridge.test.ts` por assunto e verificação escopada por package (`--filter`) | Done | 1 | 2026-07-31 | 74.762.459 | 14.915.256 |
 | SPEC-0043 | Desktop: fechar os dois resíduos de voz registrados nas Observações da SPEC-0041 — (1) uma `Persona.voiceURI` persistida que o modo corrente **não pode oferecer por razão ambiental** (Piper indisponível, modelo removido, voz do SO desinstalada) passa a ser **preservada e visível** no formulário, em vez de apagada em silêncio no próximo submit; (2) o glue de TTS do renderer (`createSpeechOutputGlue`) passa a receber `preferredVoiceURI`, encerrando a deriva em que o caminho `'os'` ignorava a camada de preferência que `speech-output.ts` implementa desde a SPEC-0039/ADR-0020(b) | Done | 2 | 2026-07-31 | 31.088.699 | 5.512.543 |
 | SPEC-0044 | CLI de Persona — equivalente de terminal do CRUD de Personas custom entregue pela SPEC-0039 no desktop: `atlas persona list|show|create|edit|delete`, sobre o mesmo arquivo `personas.json`, com consentimento explícito na remoção | Done | 2 | 2026-07-31 | 35.155.485 | 6.189.830 |
-| SPEC-0045 | Cobertura automatizada de `apps/desktop/src/renderer/renderer.js` e gate mecânico contra a deriva das réplicas renderer↔`speech-output.ts` | Done | 2 | 2026-08-01 | 32.716.058 | 5.537.598 |
-| SPEC-0046 | Entrada por voz (STT) no chat do `apps/desktop`: captura por push-to-talk, transcrição por `whisper.cpp` local no main process, texto entregue ao campo de entrada para revisão do usuário | Done | 2 | 2026-08-01 | 86.787.476 | 14.212.134 |
+| SPEC-0045 | Cobertura automatizada de `apps/desktop/src/renderer/renderer.js` e gate mecânico contra a deriva das réplicas renderer↔`speech-output.ts` | Done | 2 | 2026-08-01 | 37.499.121 | 7.238.269 |
+| SPEC-0046 | Entrada por voz (STT) no chat do `apps/desktop`: captura por push-to-talk, transcrição por `whisper.cpp` local no main process, texto entregue ao campo de entrada para revisão do usuário | Done | 3 | 2026-08-02 | 87.177.539 | 14.470.028 |
+| SPEC-0047 | Extensão do gate mecânico de paridade renderer↔módulo aos exports de `apps/desktop/src/piper-tts.ts` (e `stt-engine.ts`) e cobertura comportamental dos painéis sobre o harness jsdom da SPEC-0045 | Ready | 1 | 2026-08-02 | 23.631.521 | 4.168.978 |
 
 ## Detalhamento por fase
 
@@ -109,8 +110,9 @@ Fase = qual agente fez o trabalho. **Criação/Decisão** é o que roda no **fio
 | SPEC-0042 | 4.946.729 | 2.259.129 | 1.611.242 | 3.956.511 | 747.497 | 1.394.148 | 0 |
 | SPEC-0043 | 730.595 | 0 | 662.341 | 1.736.316 | 624.460 | 1.758.831 | 0 |
 | SPEC-0044 | 1.016.115 | 0 | 861.759 | 2.375.298 | 627.284 | 1.309.374 | 0 |
-| SPEC-0045 | 690.243 | 0 | 396.721 | 2.104.535 | 772.901 | 1.573.198 | 0 |
-| SPEC-0046 | 3.433.670 | 0 | 913.037 | 7.537.297 | 892.737 | 1.435.393 | 0 |
+| SPEC-0045 | 690.243 | 1.700.671 | 396.721 | 2.104.535 | 772.901 | 1.573.198 | 0 |
+| SPEC-0046 | 3.691.564 | 0 | 913.037 | 7.537.297 | 892.737 | 1.435.393 | 0 |
+| SPEC-0047 | 615.289 | 0 | 1.016.949 | 2.536.740 | 0 | 0 | 0 |
 
 ## Eficiência de processo (overhead ÷ implementação)
 
@@ -150,12 +152,13 @@ Razão entre o custo de **processo** (todas as fases exceto Implementação — 
 | SPEC-0042 | 3.956.511 | 10.958.745 | 2.8× |
 | SPEC-0043 | 1.736.316 | 3.776.227 | 2.2× |
 | SPEC-0044 | 2.375.298 | 3.814.532 | 1.6× |
-| SPEC-0045 | 2.104.535 | 3.433.063 | 1.6× |
-| SPEC-0046 | 7.537.297 | 6.674.837 | 0.9× |
+| SPEC-0045 | 2.104.535 | 5.133.734 | 2.4× |
+| SPEC-0046 | 7.537.297 | 6.932.731 | 0.9× |
+| SPEC-0047 | 2.536.740 | 1.632.238 | 0.6× |
 
 ## Como estimar antes de começar uma SPEC nova
 
-- SPECs concluídas (`Done`) até agora: 43. Custo médio: **9.076.645 tokens efetivos**. Faixa observada: 2.795.790 – 35.026.030 tokens efetivos.
+- SPECs concluídas (`Done`) até agora: 43. Custo médio: **9.122.193 tokens efetivos**. Faixa observada: 2.795.790 – 35.026.030 tokens efetivos.
 
 - Compare a SPEC que você está prestes a começar com as mais parecidas em tamanho na tabela acima (número de itens em "Escopo"/"Critérios de Aceitação", quantidade de "Arquivos Esperados"). Uma SPEC do porte de uma linha já concluída tende a custar perto do que ela custou.
 - Se o consumo já acumulado na sessão atual (rode o relatório detalhado, `.claude/usage-report.md`) mais a estimativa da próxima SPEC passar perto do seu limite de janela, prefira parar num ponto de commit limpo e retomar na próxima sessão em vez de começar e arriscar cortar a implementação pela metade.

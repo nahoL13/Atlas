@@ -14,18 +14,32 @@ import {
   resolvePersistedVoiceSelection,
   resolveVoiceBackend,
 } from '../src/speech-output.js';
-import { PIPER_VOICE_PREFIX } from '../src/piper-tts.js';
+import * as piperTtsModule from '../src/piper-tts.js';
+import { PIPER_VOICE_PREFIX, resolveDefaultPiperVoiceURI } from '../src/piper-tts.js';
+import * as sttEngineModule from '../src/stt-engine.js';
 import type { RendererFixture } from './helpers/renderer-harness.js';
 import { loadRenderer } from './helpers/renderer-harness.js';
 
-// Frentes 2 e 3 (SPEC-0045): suíte de paridade renderer↔`speech-output.ts` e
-// gate mecânico contra a próxima réplica não classificada.
+// Frentes 2 e 3 (SPEC-0045), estendidas pela Frente 1 da SPEC-0047: suíte de
+// paridade renderer↔módulo e gate mecânico contra a próxima réplica não
+// classificada — agora generalizado a uma LISTA de módulos-fonte vigiados
+// (D1/D2 da SPEC-0047), não mais específico de `speech-output.ts`.
 //
-// D4: cada caso é um DADO só, executado nas DUAS implementações, comparado
-// por igualdade — nenhum literal esperado é escrito separadamente para o
-// renderer (CA 11). D1: `PIPER_VOICE_PREFIX` não é reexportado por
-// `speech-output.ts` (importa de `./piper-tts.js` sem reexportar) — o lado
-// módulo desta entrada importa diretamente de `piper-tts.js`.
+// D4 (SPEC-0045): cada caso é um DADO só, executado nas DUAS implementações,
+// comparado por igualdade — nenhum literal esperado é escrito separadamente
+// para o renderer (CA 11/CA6). D1 (SPEC-0045): `PIPER_VOICE_PREFIX` não é
+// reexportado por `speech-output.ts` (importa de `./piper-tts.js` sem
+// reexportar) — o lado módulo desta entrada importa diretamente de
+// `piper-tts.js`.
+
+/** Módulos-fonte vigiados pelo gate (SPEC-0047/D1) — a FONTE da enumeração é o `import * as` em runtime, nunca uma lista escrita à mão dos nomes exportados. */
+type WatchedModule = 'speech-output' | 'piper-tts' | 'stt-engine';
+
+const WATCHED_MODULES: Readonly<Record<WatchedModule, Record<string, unknown>>> = {
+  'speech-output': speechOutputModule as unknown as Record<string, unknown>,
+  'piper-tts': piperTtsModule as unknown as Record<string, unknown>,
+  'stt-engine': sttEngineModule as unknown as Record<string, unknown>,
+};
 
 const LOCAL_1: VoiceInfo = { voiceURI: 'local-1', name: 'Local Um', localService: true };
 const LOCAL_2: VoiceInfo = { voiceURI: 'local-2', name: 'Local Dois', localService: true };
@@ -37,7 +51,7 @@ type ReplicaKind = 'direct' | 'transitive';
 
 interface ReplicaEntry {
   readonly moduleSymbol: string;
-  readonly moduleSource: 'speech-output' | 'piper-tts';
+  readonly moduleSource: WatchedModule;
   readonly rendererSymbol: string;
   readonly kind: ReplicaKind;
   readonly casesKey: string;
@@ -101,21 +115,49 @@ const REGISTRY: readonly ReplicaEntry[] = [
     casesKey: 'resolvePersistedVoiceSelection',
   },
   {
-    // D1: fonte real é `piper-tts.ts:18` — `speech-output.ts` só importa,
-    // nunca reexporta. Único entry cujo `moduleSource` não é este módulo.
+    // D1 (SPEC-0045): fonte real é `piper-tts.ts:18` — `speech-output.ts` só
+    // importa, nunca reexporta.
     moduleSymbol: 'PIPER_VOICE_PREFIX',
     moduleSource: 'piper-tts',
     rendererSymbol: 'PIPER_VOICE_PREFIX',
     kind: 'direct',
     casesKey: 'PIPER_VOICE_PREFIX',
   },
+  {
+    // Frente 1 (SPEC-0047), Objetivo 2: a décima réplica — hoje documentada
+    // no próprio `renderer.js` como "resíduo sem cobertura automatizada".
+    moduleSymbol: 'resolveDefaultPiperVoiceURI',
+    moduleSource: 'piper-tts',
+    rendererSymbol: 'computeDefaultPiperVoiceURI',
+    kind: 'direct',
+    casesKey: 'resolveDefaultPiperVoiceURI',
+  },
 ];
 
-/** Exports de valor de `speech-output.ts` deliberadamente não replicados no renderer, com justificativa. */
-const NOT_MIRRORED: readonly { readonly symbol: string; readonly reason: string }[] = [
+interface NotMirroredEntry {
+  readonly moduleSource: WatchedModule;
+  readonly symbol: string;
+  readonly reason: string;
+}
+
+/** Exports de valor dos módulos vigiados deliberadamente não replicados no renderer, com justificativa (CA3/CA4). */
+const NOT_MIRRORED: readonly NotMirroredEntry[] = [
   {
+    moduleSource: 'speech-output',
     symbol: 'piperModelIdOf',
     reason: 'usado só no main process (src/piper-tts.ts/core-bridge.ts), nunca no renderer',
+  },
+  {
+    moduleSource: 'piper-tts',
+    symbol: 'createPiperTts',
+    reason:
+      'mantém o processo Piper de longa duração — vive só no main process (src/main.ts/core-bridge.ts), nunca no renderer',
+  },
+  {
+    moduleSource: 'stt-engine',
+    symbol: 'createSttEngine',
+    reason:
+      'invoca o subprocesso whisper-cli — roda só no main process (src/main.ts), nunca no renderer',
   },
 ];
 
@@ -272,6 +314,43 @@ const RESOLVE_PERSISTED_CASES: readonly PersistedCase[] = [
   },
 ];
 
+// --- Frente 1 (SPEC-0047): tabela de casos do par novo ------------------
+
+interface FakePiperVoice {
+  readonly id: string;
+  readonly voiceURI: string;
+  readonly name: string;
+  readonly language: string;
+  readonly sampleRate: number;
+}
+
+function fakeVoice(id: string): FakePiperVoice {
+  return { id, voiceURI: `piper:${id}`, name: id, language: 'pt-BR', sampleRate: 22050 };
+}
+
+interface DefaultVoiceCase {
+  readonly name: string;
+  readonly voices: readonly FakePiperVoice[];
+}
+
+const DEFAULT_PIPER_VOICE_CASES: readonly DefaultVoiceCase[] = [
+  { name: 'catálogo vazio', voices: [] },
+  { name: 'catálogo só com pt_BR-faber-medium', voices: [fakeVoice('pt_BR-faber-medium')] },
+  {
+    name: 'catálogo com pt_BR-faber-medium não em primeiro lugar por ordem de id',
+    voices: [fakeVoice('aaa-primeiro-por-id'), fakeVoice('pt_BR-faber-medium')],
+  },
+  {
+    name: 'catálogo sem faber, fora de ordem de id (prova a ordenação determinística)',
+    voices: [fakeVoice('zeta-modelo'), fakeVoice('alpha-modelo'), fakeVoice('mid-modelo')],
+  },
+  { name: 'catálogo com um item só, sem faber', voices: [fakeVoice('solo-modelo')] },
+  {
+    name: 'ids que diferem só por sufixo (…-low × …-medium)',
+    voices: [fakeVoice('voice-a-medium'), fakeVoice('voice-a-low')],
+  },
+];
+
 const CASES_BY_KEY: Record<string, readonly unknown[]> = {
   createSpeechOutput: GLUE_CASES,
   isPiperVoiceURI: PIPER_URI_CASES,
@@ -280,6 +359,7 @@ const CASES_BY_KEY: Record<string, readonly unknown[]> = {
   piperOnlyPreference: PIPER_ONLY_PREFERENCE_CASES,
   resolvePersistedVoiceSelection: RESOLVE_PERSISTED_CASES,
   PIPER_VOICE_PREFIX: [{}],
+  resolveDefaultPiperVoiceURI: DEFAULT_PIPER_VOICE_CASES,
 };
 
 // --- Frente 2: execução ---------------------------------------------------
@@ -479,35 +559,75 @@ describe('paridade: PIPER_VOICE_PREFIX', () => {
   });
 });
 
-// --- Frente 3: gate mecânico da próxima réplica --------------------------
+describe('paridade: resolveDefaultPiperVoiceURI ↔ computeDefaultPiperVoiceURI (Frente 1, décima réplica)', () => {
+  it.each(DEFAULT_PIPER_VOICE_CASES.map((c) => [c.name, c] as const))(
+    '%s',
+    async (_name, testCase) => {
+      const fixture = await loadRenderer();
+      try {
+        const rendererFn = fixture.internals.computeDefaultPiperVoiceURI as (
+          voices: readonly FakePiperVoice[],
+        ) => string | undefined;
+        expect(rendererFn(testCase.voices)).toBe(resolveDefaultPiperVoiceURI(testCase.voices));
+      } finally {
+        fixture.close();
+      }
+    },
+  );
+});
 
-describe('gate mecânico da próxima réplica (Frente 3)', () => {
-  it('registro contém exatamente as nove entradas da Frente 2', () => {
-    expect(REGISTRY.length).toBe(9);
+// --- Frente 3 (SPEC-0045) / Frente 1 (SPEC-0047): gate mecânico da próxima
+// réplica, generalizado à lista de módulos-fonte vigiados (D1/D2) ----------
+
+describe('gate mecânico da próxima réplica, generalizado a speech-output/piper-tts/stt-engine (SPEC-0047, Frente 1)', () => {
+  it('a lista de módulos vigiados contém exatamente speech-output, piper-tts e stt-engine', () => {
+    expect(Object.keys(WATCHED_MODULES).sort()).toEqual(
+      ['speech-output', 'piper-tts', 'stt-engine'].sort(),
+    );
   });
 
-  it('todo export de valor de speech-output.ts está classificado (registro direto ou NOT_MIRRORED)', () => {
-    const exportedNames = Object.keys(speechOutputModule);
-    expect(exportedNames.length).toBeGreaterThan(0);
+  it('registro contém exatamente as 10 entradas (9 da SPEC-0045 + resolveDefaultPiperVoiceURI)', () => {
+    expect(REGISTRY.length).toBe(10);
+  });
 
-    const registeredDirectModuleSymbols = new Set(
-      REGISTRY.filter(
-        (entry) => entry.moduleSource === 'speech-output' && entry.kind === 'direct',
-      ).map((entry) => entry.moduleSymbol),
-    );
-    const notMirroredSymbols = new Set(NOT_MIRRORED.map((entry) => entry.symbol));
+  it('todo export de valor de cada módulo vigiado está classificado (registro direto ou NOT_MIRRORED), enumerado em runtime via import * as', () => {
+    for (const moduleSource of Object.keys(WATCHED_MODULES) as WatchedModule[]) {
+      const exportedNames = Object.keys(WATCHED_MODULES[moduleSource]);
+      expect(exportedNames.length, `sem exports em ${moduleSource}`).toBeGreaterThan(0);
 
-    for (const name of exportedNames) {
-      const classified = registeredDirectModuleSymbols.has(name) || notMirroredSymbols.has(name);
-      expect(classified, `export não classificado no registro nem em NOT_MIRRORED: ${name}`).toBe(
-        true,
+      const registeredDirectModuleSymbols = new Set(
+        REGISTRY.filter(
+          (entry) => entry.moduleSource === moduleSource && entry.kind === 'direct',
+        ).map((entry) => entry.moduleSymbol),
       );
+      const notMirroredSymbols = new Set(
+        NOT_MIRRORED.filter((entry) => entry.moduleSource === moduleSource).map(
+          (entry) => entry.symbol,
+        ),
+      );
+
+      for (const name of exportedNames) {
+        const classified = registeredDirectModuleSymbols.has(name) || notMirroredSymbols.has(name);
+        expect(
+          classified,
+          `export não classificado no registro nem em NOT_MIRRORED: ${moduleSource}.${name}`,
+        ).toBe(true);
+      }
     }
   });
 
-  it('NOT_MIRRORED contém piperModelIdOf com justificativa, e nenhuma entrada sem justificativa', () => {
-    const entry = NOT_MIRRORED.find((n) => n.symbol === 'piperModelIdOf');
-    expect(entry).toBeDefined();
+  it('NOT_MIRRORED contém piperModelIdOf/createPiperTts/createSttEngine com moduleSource e justificativa, e nenhuma entrada sem justificativa', () => {
+    const expected: readonly [WatchedModule, string][] = [
+      ['speech-output', 'piperModelIdOf'],
+      ['piper-tts', 'createPiperTts'],
+      ['stt-engine', 'createSttEngine'],
+    ];
+    for (const [moduleSource, symbol] of expected) {
+      const entry = NOT_MIRRORED.find(
+        (n) => n.moduleSource === moduleSource && n.symbol === symbol,
+      );
+      expect(entry, `entrada ausente: ${moduleSource}.${symbol}`).toBeDefined();
+    }
     for (const n of NOT_MIRRORED) {
       expect(n.reason.trim().length).toBeGreaterThan(0);
     }

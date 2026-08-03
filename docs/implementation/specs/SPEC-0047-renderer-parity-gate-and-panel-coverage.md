@@ -2,7 +2,7 @@
 
 > **Project Atlas — Implementation Specification**
 
-Version: 1.0
+Version: 1.1
 
 ---
 
@@ -22,11 +22,11 @@ Extensão do gate mecânico de paridade renderer↔módulo aos exports de `apps/
 
 **Status**
 
-- [x] Draft
+- [ ] Draft
 - [ ] Ready
 - [ ] In Progress
 - [ ] Review
-- [ ] Done
+- [x] Done
 
 ---
 
@@ -62,7 +62,7 @@ Quando esta SPEC estiver concluída deverá existir:
 2. A **décima réplica hoje sem cobertura** amarrada por esse gate: `resolveDefaultPiperVoiceURI` (`piper-tts.ts`) ↔ `computeDefaultPiperVoiceURI` (`renderer.js`), comparada caso a caso pela mesma disciplina de tabela única da SPEC-0045 — hoje a própria `renderer.js` documenta essa função como "resíduo sem cobertura automatizada".
 3. Uma **cobertura comportamental dos painéis** do renderer sobre o harness `apps/desktop/tests/helpers/renderer-harness.ts`, cobrindo os cinco alvos nomeados em SPEC-0045/D7: CRUD de Persona pelo formulário, painel de permissões, painel de memória, `ask` de tiro único e a serialização de gestos — com foco no invariante que o projeto já quebrou na prática: **em recusa, o estado visível volta do estado real e nada é perdido em silêncio**.
 
-Sem mudar uma linha de `apps/desktop/src/` nem de `packages/*`. Sem bundler. Sem ADR novo. Sem mudar o que a CI verifica.
+Sem mudança persistida em `apps/desktop/src/` nem em `packages/*`. Sem bundler. Sem ADR novo. Sem mudar o que a CI verifica.
 
 ---
 
@@ -145,23 +145,33 @@ Novo arquivo `apps/desktop/tests/renderer.memory-ask.test.ts`:
 
 ## Frente 5 — serialização de gestos
 
-Novo arquivo `apps/desktop/tests/renderer.gesture-serialization.test.ts`:
+Novo arquivo `apps/desktop/tests/renderer.gesture-serialization.test.ts`.
 
-- **Turno de chat em voo** (dublê de `chat.send` com resolução controlada pelo teste): `#chat-input`, `#chat-send`, `#persona-select`, `#persona-new`, os botões de `#persona-list`, `#persona-form-save`/`#persona-form-cancel` e os controles do painel de permissões ficam desabilitados; ao assentar o turno, todos voltam a habilitado.
-- **`ask` em voo**: mesma verificação para os controles que a serialização cobre (`refreshPermissionsPanelState`/`refreshPersonaPanelState`).
-- **Falha do turno**: `chat.send` rejeitando escreve o aviso no transcript e **reabilita** todos os controles (nenhum gesto fica travado por erro).
+**Lista de controles serializados** — a mesma nos dois primeiros bullets, e a que o CA 19 cobra:
+
+```text
+#chat-input · #chat-send · #persona-select · #persona-new ·
+botões de #persona-list · #persona-form-save · #persona-form-cancel ·
+#read-root-add · #write-root-add · #permissions-apply
+```
+
+- **Turno de chat em voo** (dublê de `chat.send` com resolução controlada pelo teste): **todos** os controles da lista acima ficam desabilitados; ao assentar o turno, todos voltam a habilitado.
+- **`ask` em voo**: exatamente a **mesma lista**, mesma verificação — desabilitados durante o round-trip de `atlas.ask`, reabilitados ao assentar.
+- **Falha do turno**: `chat.send` rejeitando escreve o aviso no transcript e **reabilita** todos os controles da lista (nenhum gesto fica travado por erro).
 - **Guardas de entrada**: submeter `#chat-form` com texto vazio, ou sem sessão aberta (`chat.open` rejeitando no carregamento), não chama `atlas.chat.send`.
+
+Se, ao implementar, algum controle da lista se revelar **não** coberto pela serialização real do renderer, isso é **achado**: registrar no relatório final e corrigir a lista nesta SPEC — nunca "consertar" o renderer (ver Restrições).
 
 ---
 
 # Fora do Escopo
 
-- **Qualquer alteração em `apps/desktop/src/` ou `packages/*/src`** — inclusive comentários, marcadores de duplicação e `export` acrescentado "só para o teste". O diff de produção é **vazio** (CA 1).
+- **Qualquer alteração persistida em `apps/desktop/src/` ou `packages/*/src`** — inclusive comentários, marcadores de duplicação e `export` acrescentado "só para o teste". O diff atribuível a esta SPEC é **vazio** nesses caminhos (CA 1). A única exceção sancionada são as mutações **temporárias e revertidas** das provas negativas (CA 8/9), que jamais sobrevivem ao commit.
 - **Eliminar a duplicação renderer↔módulo** (bundler, `type="module"`, mover a lógica replicada para arquivo compartilhado) — mudaria a stack fixada pelo ADR-0019 ⇒ ADR novo ⇒ escalação humana.
-- **Detectar lógica nova escrita direto no renderer sem contraparte em TS** (a outra metade do achado 3 do reviewer): não há fonte mecânica contra a qual comparar. Segue por convenção documentada, agora com o limite registrado num lugar só (Observações).
+- **Detectar lógica nova escrita direto no renderer sem contraparte em TS** (a outra metade do achado 3 do reviewer): não há fonte mecânica contra a qual comparar. Segue por convenção documentada, com o limite registrado nas Observações.
 - **Vigiar módulos além dos três nomeados** (`confirm-port.ts`, `steps-view.ts`, `permission-grant-dialog.ts`, `persona-delete-dialog.ts`, `media-permission.ts`, `core-bridge.ts`): são consumidos **só** pelo main process, o renderer não replica nada deles. Acrescentá-los produziria uma lista `NOT_MIRRORED` inteira sem valor de gate.
 - **Cobrir `floatChunksToInt16`/`describeSttFailure`** por paridade: são lógica **exclusiva** do renderer, sem contraparte em `stt-engine.ts`, já cobertas diretamente por `renderer.voice-input.test.ts` (SPEC-0046). Não entram no registro de pares.
-- **Reescrever, renomear ou reorganizar os testes existentes de renderer** (`renderer.boot.test.ts`, `renderer.voice-triggers.test.ts`, `renderer.voice-input.test.ts`) e **qualquer teste dos demais 70 arquivos**. `renderer.speech-parity.test.ts` e `renderer-harness.ts` são estendidos — os casos e pares existentes seguem intactos.
+- **Reescrever, renomear ou reorganizar os testes existentes de renderer** (`renderer.boot.test.ts`, `renderer.voice-triggers.test.ts`, `renderer.voice-input.test.ts`) e **qualquer teste dos demais arquivos da suíte**. `renderer.speech-parity.test.ts` e `renderer-harness.ts` são estendidos — os casos e pares existentes seguem intactos.
 - **Quebrar `renderer.js` ou `core-bridge.ts` em arquivos menores** (SPEC-0042/D8) — mudança estrutural de produção, SPEC própria.
 - **Cobrir o `<select>` de voz do formulário de Persona** (política Piper-only, `<option>` retida): já é da SPEC-0045 (Frente 5) e da SPEC-0043 — esta SPEC não reabre esse terreno.
 - **Teste do `preload.cjs`, do `main.ts` e de qualquer áudio realmente reproduzido** — exigem Electron/hardware reais.
@@ -175,7 +185,7 @@ Novo arquivo `apps/desktop/tests/renderer.gesture-serialization.test.ts`:
 # Pré-requisitos
 
 - [SPEC-0045](./SPEC-0045-renderer-automated-coverage.md) — `Done` (verificado no arquivo: `- [x] Done`). Fornece o harness, o registro de paridade e o gate que esta SPEC generaliza.
-- [SPEC-0046](./SPEC-0046-desktop-voice-input-stt.md) — `Done` (verificado no arquivo: `- [x] Done`). É a última fatia a tocar `renderer.js` e o harness (relógio injetável e dublês de mídia); a cobertura tem de partir do estado final dela.
+- [SPEC-0046](./SPEC-0046-desktop-voice-input-stt.md) — `Done` (verificado no arquivo: `- [x] Done`). É a última fatia a tocar `renderer.js` e o harness (relógio injetável e dublês de mídia); a cobertura parte do estado final dela, **incluindo** a correção pós-fecho commitada em `c1b9ba3`.
 
 Nenhum outro pré-requisito: esta SPEC não depende de comportamento novo de nenhum package.
 
@@ -183,17 +193,19 @@ Nenhum outro pré-requisito: esta SPEC não depende de comportamento novo de nen
 
 # Critérios de Aceitação
 
-1. Nenhum arquivo sob `apps/desktop/src/` ou `packages/*/src/` aparece no diff desta SPEC (`git diff --name-only` não lista nenhum).
+> **Convenção de medição (vale para os CA 1, 22 e 23):** todo critério de diff e de contagem é medido **contra o commit-base registrado no passo 1 da Estratégia de Implementação** (`git rev-parse HEAD` antes de qualquer edição) e diz respeito **apenas ao diff atribuível a esta SPEC** — nunca ao estado absoluto do repositório. Alteração alheia presente na árvore no início não é objeto desta SPEC nem a invalida: deve ser reportada, não incorporada nem revertida.
+
+1. O diff atribuível a esta SPEC (contra o commit-base do passo 1) não contém **nenhum** arquivo sob `apps/desktop/src/` ou `packages/*/src/` — verificável por `git diff --name-only <commit-base>..HEAD`.
 2. A lista de módulos-fonte vigiados pelo gate contém exatamente `speech-output.ts`, `piper-tts.ts` e `stt-engine.ts`, e o teste enumera os exports de valor **em runtime** (via `import * as`), não por lista escrita à mão.
 3. Para cada um dos três módulos, todo export de valor está classificado: no registro de pares (`kind: 'direct'`) ou em `NOT_MIRRORED` com `moduleSource` e justificativa não vazia.
 4. `NOT_MIRRORED` contém, no mínimo, `piperModelIdOf` (`speech-output`), `createPiperTts` (`piper-tts`) e `createSttEngine` (`stt-engine`), cada um com justificativa em texto.
 5. O registro de pares contém **exatamente 10** entradas: as 9 da SPEC-0045 mais `resolveDefaultPiperVoiceURI ↔ computeDefaultPiperVoiceURI`.
 6. A tabela do par novo cobre, nomeadamente, os seis casos listados na Frente 1, e cada caso é executado nas **duas** implementações sobre a **mesma** entrada, com asserção de igualdade entre os dois resultados — nenhum literal de resultado esperado é escrito para o lado do renderer.
-7. O epílogo do harness publica `computeDefaultPiperVoiceURI`, e `apps/desktop/src/renderer/renderer.js` continua byte-idêntico ao anterior.
-8. **Prova negativa do par novo (obrigatória):** uma mutação temporária de `computeDefaultPiperVoiceURI` no renderer (por exemplo, remover a preferência por `pt_BR-faber-medium`) faz a suíte de paridade **falhar**; a mutação é revertida e o relatório final registra qual foi e qual teste falhou.
-9. **Prova negativa do gate generalizado (obrigatória):** um export de valor temporário acrescentado a `piper-tts.ts` (e, em segunda execução, a `stt-engine.ts`) faz o guarda **falhar**; ambas são revertidas e registradas no relatório final.
+7. O epílogo do harness publica `computeDefaultPiperVoiceURI`, e `apps/desktop/src/renderer/renderer.js` é byte-idêntico ao do commit-base.
+8. **Prova negativa do par novo (obrigatória):** uma mutação **temporária** de `computeDefaultPiperVoiceURI` no renderer (por exemplo, remover a preferência por `pt_BR-faber-medium`) faz a suíte de paridade **falhar**; a mutação é **revertida** antes de qualquer commit e o relatório final registra qual foi e qual teste falhou. Esta é a **exceção sancionada** à regra de somente-leitura de `src/` (ver Restrições): a proibição alcança o **diff final/persistido**, não o estado transitório da árvore de trabalho durante a prova.
+9. **Prova negativa do gate generalizado (obrigatória):** um export de valor **temporário** acrescentado a `piper-tts.ts` (e, em segunda execução, a `stt-engine.ts`) faz o guarda **falhar**; ambas as mutações são revertidas antes de qualquer commit e registradas no relatório final. Mesma exceção sancionada do CA 8.
 10. Existem os quatro arquivos novos `apps/desktop/tests/renderer.persona-crud.test.ts`, `renderer.permissions-panel.test.ts`, `renderer.memory-ask.test.ts` e `renderer.gesture-serialization.test.ts`.
-11. Todos os itens verificáveis das Frentes 2, 3, 4 e 5 têm ao menos um caso de teste correspondente; nenhum item da Frente 2–5 fica sem cobertura.
+11. Todos os itens verificáveis das Frentes 2, 3, 4 e 5 têm ao menos um caso de teste correspondente; nenhum item das Frentes 2–5 fica sem cobertura.
 12. Submeter o formulário de Persona sem `id` chama `atlas.persona.create` exatamente uma vez e `atlas.persona.update` **nenhuma**; com `id` preenchido, o inverso.
 13. Recusa de `create`/`update`/`delete` de Persona: `#persona-form-error` contém `⚠️`, `#chat-transcript` permanece com o conteúdo anterior, `atlas.chat.open` **não** é chamado de novo, e `atlas.persona.list` é chamado de novo (recarga do estado real).
 14. Update com `closedSessions` não vazio: `#chat-transcript` não contém o texto do turno anterior, contém o aviso de nova conversa, e `atlas.chat.open` foi chamado uma segunda vez.
@@ -201,11 +213,11 @@ Nenhum outro pré-requisito: esta SPEC não depende de comportamento novo de nen
 16. "Adicionar" com string vazia ou só espaços não altera as listas nem chama `atlas.permissions.select`.
 17. "Esquecer" chama `atlas.memory.forget` com o `id` do fato clicado (não do primeiro da lista) e provoca nova chamada a `atlas.memory.list`, inclusive quando `forget` rejeita.
 18. `#ask-result` contém, para um snapshot com `steps` (um deles com `denialKind`), `learned` e texto: a linha `🔧 … → …` com o marcador entre colchetes, o texto da resposta e a linha `💡 lembrado: …`; `ask` com objetivo vazio não chama `atlas.ask`.
-19. Com um turno de chat em voo, todos os controles listados na Frente 5 têm `disabled === true`; após o turno assentar (sucesso **ou** falha), todos têm `disabled === false`.
+19. Com um turno de chat em voo, **todos os controles da lista nomeada no cabeçalho da Frente 5** têm `disabled === true`; após o turno assentar (sucesso **ou** falha), todos têm `disabled === false`. O mesmo vale, sobre a **mesma lista**, para um `ask` em voo.
 20. Nenhum teste desta SPEC executa processo externo, abre socket, faz chamada de rede ou depende de Piper/whisper/Electron instalados.
 21. Cada arquivo novo passa quando executado **sozinho**, e a suíte de `apps/desktop` passa sob `--sequence.shuffle` em **três sementes distintas** (uma janela jsdom por caso, fechada em `afterEach`).
-22. `pnpm test` na raiz passa e reporta **74 arquivos** de teste (70 + 4), com total **≥ 958** testes (linha de base 938), e nenhum dos 70 arquivos pré-existentes aparece removido no diff; os únicos pré-existentes modificados são `apps/desktop/tests/renderer.speech-parity.test.ts` e `apps/desktop/tests/helpers/renderer-harness.ts`.
-23. `vitest.config.ts` da raiz, `package.json` da raiz e `apps/desktop/package.json` são byte-idênticos aos anteriores; `pnpm-lock.yaml` não muda (nenhuma dependência nova).
+22. **Delta medido contra a linha de base observada no passo 1** (esperada: **939 testes / 70 arquivos**, commit `c1b9ba3`): `pnpm test` na raiz passa e reporta **exatamente +4 arquivos** de teste e **+20 ou mais** testes em relação a essa base; **nenhum** arquivo de teste pré-existente é removido; os únicos pré-existentes modificados são `apps/desktop/tests/renderer.speech-parity.test.ts` e `apps/desktop/tests/helpers/renderer-harness.ts`. Se a base observada divergir de 939/70, prevalece a base observada e a divergência é reportada.
+23. `vitest.config.ts` da raiz, `package.json` da raiz, `apps/desktop/package.json` e `pnpm-lock.yaml` não aparecem no diff atribuível a esta SPEC (nenhuma dependência nova).
 24. `pnpm lint`, `pnpm typecheck`, `pnpm test` e `pnpm format:check` passam na raiz.
 
 ---
@@ -222,7 +234,7 @@ apps/desktop/tests/renderer.gesture-serialization.test.ts  (novo — Frente 5)
 docs/implementation/specs/SPEC-0047-renderer-parity-gate-and-panel-coverage.md
 ```
 
-Nenhum outro arquivo. Em particular: nada em `apps/desktop/src/`, nada em `packages/`, nada em `.github/`, nada na raiz (nem lockfile).
+**Nenhum outro arquivo no diff atribuível a esta SPEC** (medido contra o commit-base do passo 1). Em particular: nada em `apps/desktop/src/`, nada em `packages/`, nada em `.github/`, nada na raiz (nem lockfile). Arquivo alheio já modificado na árvore no início do trabalho não pertence a esta SPEC: reportar, não incorporar nem reverter.
 
 ---
 
@@ -238,7 +250,7 @@ Nenhum módulo do Module Catalog muda de responsabilidade. Nenhum módulo novo. 
 
 Nenhuma interface pública nova; `@atlas/contracts` não é tocado.
 
-Duas formas **internas de teste** (indicativas — podem variar desde que preservem as regras acima):
+Formas **internas de teste** (indicativas — podem variar desde que preservem as regras acima):
 
 ```ts
 // apps/desktop/tests/renderer.speech-parity.test.ts
@@ -262,7 +274,7 @@ interface NotMirroredEntry {
 const WATCHED_MODULES: Readonly<Record<WatchedModule, Record<string, unknown>>>;
 ```
 
-O harness mantém a interface `RendererFixture`/`loadRenderer` da SPEC-0045; muda apenas a lista fixa de símbolos do epílogo (mais `computeDefaultPiperVoiceURI`) e, se algum caso das Frentes 2–5 exigir, opções de dublê adicionais (por exemplo, controlar a resolução de `chat.send` a partir do teste). Nenhuma opção existente é removida ou tem semântica alterada.
+O harness mantém a interface `RendererFixture`/`loadRenderer` da SPEC-0045; mudam apenas a lista fixa de símbolos do epílogo (mais `computeDefaultPiperVoiceURI`) e, se algum caso das Frentes 2–5 exigir, opções de dublê adicionais (por exemplo, controlar a resolução de `chat.send`/`ask` a partir do teste). Nenhuma opção existente é removida ou tem semântica alterada.
 
 ---
 
@@ -290,15 +302,16 @@ renderer-harness (jsdom) ─► fixture ─┬─► Persona: create/update/dele
 
 # Estratégia de Implementação
 
-1. Conferir a linha de base real (`pnpm test` na raiz: esperado 938 testes / 70 arquivos) e reler `renderer.speech-parity.test.ts`, o harness e as seções do renderer cobertas.
-2. Frente 1, em duas etapas: (a) generalizar a enumeração para os três módulos e classificar tudo em `NOT_MIRRORED` sem par novo — a suíte deve continuar verde; (b) acrescentar o par `resolveDefaultPiperVoiceURI ↔ computeDefaultPiperVoiceURI` com a tabela de casos e o símbolo no epílogo.
-3. Provas negativas dos CA 8 e 9: mutar, ver falhar, reverter, registrar.
-4. Frente 2 (Persona), começando pelos caminhos de sucesso e fechando nos de recusa — os de recusa são o alvo real.
-5. Frente 3 (permissões), mesma ordem.
-6. Frente 4 (memória e `ask`) — os mais baratos, servem de aquecimento se a Frente 2 revelar atrito no harness.
-7. Frente 5 (serialização), que exige controlar a resolução de `chat.send`/`ask` a partir do teste: se o harness não permitir hoje, estender as **opções** do harness (nunca `src/`).
-8. Isolamento: cada arquivo sozinho + `--sequence.shuffle` em três sementes.
-9. Fechar com `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm format:check` na raiz.
+1. **Registrar o commit-base** (`git rev-parse HEAD`) e a **linha de base real** da suíte (`pnpm test` na raiz — esperado 939 testes / 70 arquivos, commit `c1b9ba3`), anotando ambos no relatório final: toda medição de diff e de contagem desta SPEC é relativa a esses dois valores. Conferir também se a árvore está limpa; se não estiver, reportar o que já estava modificado (não incorporar, não reverter).
+2. Reler `renderer.speech-parity.test.ts`, o harness e as seções do renderer cobertas.
+3. Frente 1, em duas etapas: (a) generalizar a enumeração para os três módulos e classificar tudo em `NOT_MIRRORED`, sem par novo — a suíte deve continuar verde; (b) acrescentar o par `resolveDefaultPiperVoiceURI ↔ computeDefaultPiperVoiceURI` com a tabela de casos e o símbolo no epílogo.
+4. Provas negativas dos CA 8 e 9: mutar temporariamente, ver falhar, **reverter**, e confirmar por `git status` que a árvore voltou ao estado sem mutação antes de seguir.
+5. Frente 2 (Persona), começando pelos caminhos de sucesso e fechando nos de recusa — os de recusa são o alvo real.
+6. Frente 3 (permissões), mesma ordem.
+7. Frente 4 (memória e `ask`) — os mais baratos; servem de aquecimento se a Frente 2 revelar atrito no harness.
+8. Frente 5 (serialização), que exige controlar a resolução de `chat.send`/`ask` a partir do teste: se o harness não permitir hoje, estender as **opções** do harness (nunca `src/`).
+9. Isolamento: cada arquivo sozinho + `--sequence.shuffle` em três sementes.
+10. Fechar com `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm format:check` na raiz e conferir o diff final contra o commit-base (CA 1, 22, 23).
 
 ---
 
@@ -307,7 +320,7 @@ renderer-harness (jsdom) ─► fixture ─┬─► Persona: create/update/dele
 Esta SPEC **é** estratégia de teste; o que se verifica é a própria suíte:
 
 - **Paridade por construção** (herdada da SPEC-0045/D4): a expectativa de cada caso é o resultado da implementação TypeScript já testada, nunca um literal reescrito para o renderer.
-- **Prova negativa obrigatória** (CA 8/9): gate que nunca foi visto falhando não é gate.
+- **Prova negativa obrigatória** (CA 8/9): gate que nunca foi visto falhando não é gate. A mutação é transitória por definição, e a reversão é verificada antes de qualquer commit.
 - **Painéis testados pelo comportamento observável** (chamadas de IPC registradas + DOM resultante), nunca por introspecção de variáveis internas do renderer — exceto os símbolos que o epílogo já publica para a paridade.
 - **Caminho de recusa em pé de igualdade com o de sucesso**: para Persona e permissões, cada gesto tem caso de sucesso **e** de rejeição; o invariante "listas recarregadas do estado real, transcript intacto" é o que a suíte existe para travar.
 - **Isolamento**: uma janela jsdom por caso, fechada no `afterEach`; estabilidade sob `--sequence.shuffle` é critério (CA 21).
@@ -321,22 +334,28 @@ Esta SPEC **é** estratégia de teste; o que se verifica é a própria suíte:
 Esta SPEC será considerada concluída somente quando:
 
 - todos os Critérios de Aceitação forem atendidos;
-- testes estiverem passando (raiz: 74 arquivos, ≥ 958 testes; suíte de desktop estável sob três sementes embaralhadas);
-- as provas negativas dos CA 8 e 9 estiverem registradas no relatório final do `spec-implementer`;
+- testes estiverem passando (delta do CA 22 sobre a base observada no passo 1: +4 arquivos, ≥ +20 testes; suíte de desktop estável sob três sementes embaralhadas);
+- as provas negativas dos CA 8 e 9 estiverem registradas no relatório final do `spec-implementer`, com confirmação explícita de que **todas as mutações foram revertidas**;
 - documentação atualizada;
-- arquitetura preservada (zero diff em `src/` e em `packages/*`; ADR-0019/0021/0022 intactos);
+- arquitetura preservada (diff atribuível a esta SPEC vazio em `src/` e em `packages/*`; ADR-0019/0021/0022 intactos);
 - revisão concluída;
 - lições aprendidas registradas em `docs/implementation/LESSONS_LEARNED.md`.
 
-**Quem faz o quê na documentação**: a sincronização das docs vivas (`CLAUDE.md` da raiz, `apps/desktop/CLAUDE.md`, `NEXT_CONTEXT.md`, `CURRENT_SPRINT.md`, `PLATFORM_STATE.md`) é do passo `doc-sync` no fecho, **não** do `spec-implementer`. O implementador toca apenas o arquivo desta SPEC. O fecho deve obrigatoriamente: (a) atualizar, em `apps/desktop/CLAUDE.md`, a frase do "Limite conhecido do gate" — o eixo "réplica vinda de outro módulo" passa a ser coberto, restando só "lógica nova escrita direto no renderer sem contraparte em TS"; (b) retirar de `apps/desktop/CLAUDE.md` e de `NEXT_CONTEXT.md` os dois candidatos que esta SPEC consome (gate sobre `piper-tts.ts` e cobertura comportamental dos painéis); (c) corrigir, em `renderer.js`… **não** — o comentário "resíduo sem cobertura automatizada" está em `src/` e **não pode ser editado por esta SPEC**; registrar a divergência como resíduo documental nas lições, para uma fatia futura que já toque aquele arquivo.
+**Quem faz o quê na documentação**: a sincronização das docs vivas (`CLAUDE.md` da raiz, `apps/desktop/CLAUDE.md`, `NEXT_CONTEXT.md`, `CURRENT_SPRINT.md`, `PLATFORM_STATE.md`) é do passo `doc-sync` no fecho, **não** do `spec-implementer`. O implementador toca apenas o arquivo desta SPEC. O fecho deve obrigatoriamente:
+
+- **(a)** atualizar, em `apps/desktop/CLAUDE.md`, a frase do "Limite conhecido do gate" — o eixo "réplica vinda de outro módulo **vigiado**" passa a ser coberto, restando "lógica nova escrita direto no renderer sem contraparte em TS" e "réplica de módulo fora da lista vigiada";
+- **(b)** retirar de `apps/desktop/CLAUDE.md` e de `NEXT_CONTEXT.md` os dois candidatos que esta SPEC consome (gate sobre `piper-tts.ts` e cobertura comportamental dos painéis);
+- **(c)** **não** editar `apps/desktop/src/renderer/renderer.js`: o comentário "resíduo sem cobertura automatizada" sobre `computeDefaultPiperVoiceURI` fica factualmente desatualizado **por decisão** (D5); registrar a divergência como resíduo documental nas lições, para a próxima fatia que legitimamente toque aquele arquivo;
+- **(d)** registrar nas lições que o número de arquivos de teste dependentes do harness (que lê **um** `renderer.js` do disco) sobe de 4 para 8, encarecendo a fatia futura de quebrar `renderer.js` em arquivos menores (SPEC-0042/D8).
 
 ---
 
 # Restrições
 
-- **Zero diff em código de produção.** Se cobrir algo exigir editar `apps/desktop/src/` — inclusive só um comentário —, **pare e reporte**: é a fronteira que separa higiene de teste de mudança de stack do renderer (ADR novo, escalação humana).
+- **Zero diff persistido em código de produção.** Se cobrir algo exigir editar `apps/desktop/src/` de forma **permanente** — inclusive só um comentário —, **pare e reporte**: é a fronteira que separa higiene de teste de mudança de stack do renderer (ADR novo, escalação humana).
+- **Exceção única e sancionada**: as mutações **temporárias** das provas negativas (CA 8/9) em `renderer.js`, `piper-tts.ts` e `stt-engine.ts`. Existem para ver o gate ficar vermelho, devem ser revertidas imediatamente, verificadas por `git status` limpo antes de qualquer commit, e registradas no relatório final. Nenhuma outra edição de `src/` é permitida — temporária ou não.
 - **Não introduzir bundler, `type="module"` no renderer, nem qualquer etapa de build** — ADR-0019 permanece literal.
-- **Nenhuma dependência nova**, em nenhum package nem na raiz; `pnpm-lock.yaml` não muda.
+- **Nenhuma dependência nova**, em nenhum package nem na raiz; `pnpm-lock.yaml` fora do diff.
 - **Não alterar `vitest.config.ts` da raiz** nem criar config por package (SPEC-0042/D12).
 - **Não alterar nem remover teste existente** além das duas extensões previstas (`renderer.speech-parity.test.ts`, `renderer-harness.ts`), e mesmo nessas: nenhum caso ou par existente é removido ou enfraquecido. Se um teste pré-existente começar a falhar, é achado — pare e reporte, não "ajuste".
 - **Não expandir a cobertura de painéis** além dos itens enumerados nas Frentes 2–5, ainda que o harness torne tentador.
@@ -346,11 +365,12 @@ Esta SPEC será considerada concluída somente quando:
 
 # Observações
 
-- **Por que isto continua sem exigir ADR**: vale integralmente o argumento da SPEC-0045/D1 — o renderer segue `<script>` clássico sem bundler, carregado como texto do disco; o que muda é só a suíte de testes. `piper-tts.ts` e `stt-engine.ts` são apenas **lidos** (via `import * as`), nunca alterados: ADR-0021 e ADR-0022 saem desta SPEC como entraram.
-- **Limite remanescente do gate, agora único**: depois desta SPEC, o gate cobre "export de valor novo em qualquer dos três módulos vigiados, não classificado". Continua **não** cobrindo lógica nova escrita direto no renderer sem contraparte em TS (não há fonte contra a qual comparar) nem réplica de um módulo fora da lista vigiada — a lista é a fonte, e ampliá-la é um item por módulo novo que o renderer passe a replicar. Fica registrado, não assumido em silêncio.
-- **Resíduo documental conhecido**: o comentário de `renderer.js` sobre `computeDefaultPiperVoiceURI` ("resíduo sem cobertura automatizada") fica factualmente desatualizado ao fim desta SPEC, porque o CA 1 proíbe editar `src/`. É dívida deliberada, de custo zero em comportamento; corrigir na próxima fatia que legitimamente toque aquele arquivo.
+- **Por que isto continua sem exigir ADR**: vale integralmente o argumento da SPEC-0045/D1 — o renderer segue `<script>` clássico sem bundler, carregado como texto do disco; o que muda é só a suíte de testes. `piper-tts.ts` e `stt-engine.ts` são apenas **lidos** (via `import * as`), nunca alterados de forma persistida: ADR-0021 e ADR-0022 saem desta SPEC como entraram.
+- **Limites remanescentes do gate, agora dois e explícitos**: (i) lógica nova escrita direto no renderer **sem contraparte em TS** continua fora — não há fonte contra a qual comparar; (ii) **réplica de um módulo fora da lista vigiada** silencia o gate. O eixo (ii) é o custo consciente de D2: a lista é a fonte, ampliá-la é uma linha por módulo novo que o renderer passe a replicar, e a mitigação enquanto isso é apenas convenção documentada — exatamente como antes desta SPEC, só que restrita a um conjunto muito menor de módulos plausíveis. Fica registrado, não assumido em silêncio.
+- **Custo colateral registrado**: o harness lê **um** `renderer.js` do disco. Antes desta SPEC, 4 arquivos de teste dependiam dessa premissa (`renderer.boot`, `renderer.speech-parity`, `renderer.voice-triggers`, `renderer.voice-input`); depois, 8. Isso **encarece** a fatia futura de quebrar `renderer.js` em arquivos menores (SPEC-0042/D8), que passará a reapontar o harness com o dobro de consumidores atrás. É custo aceito conscientemente — a alternativa (adiar a cobertura até a refatoração) deixaria os painéis sem gate por tempo indeterminado —, mas deve ir para as lições no fecho (DoD, item d).
+- **Resíduo documental conhecido**: o comentário de `renderer.js` sobre `computeDefaultPiperVoiceURI` ("resíduo sem cobertura automatizada") fica factualmente desatualizado ao fim desta SPEC, porque o CA 1 proíbe editar `src/`. É dívida deliberada (D5), de custo zero em comportamento; corrigir na próxima fatia que legitimamente toque aquele arquivo.
 - **Ortogonal e não resolvida**: a pendência de **smoke visual/sonoro nunca confirmado** (SPEC-0031 a 0046). Um DOM de teste prova lógica e fiação; não prova pixel nem som. Esta SPEC não deve ser lida como fechamento daquela pendência.
-- **Ponto de atrito antecipado**: a Frente 5 precisa de um turno de chat que **não** resolve até o teste mandar. Se o harness atual não expuser isso, a extensão é nas **opções** do harness (uma promessa controlada pelo teste no dublê de `chat.send`), jamais no renderer.
+- **Ponto de atrito antecipado**: a Frente 5 precisa de um turno de chat (e de um `ask`) que **não** resolvam até o teste mandar. Se o harness atual não expuser isso, a extensão é nas **opções** do harness (uma promessa controlada pelo teste no dublê), jamais no renderer.
 - Se `jsdom` não implementar algo que um painel exercite (por exemplo, comportamento de `<form>` ou de `focus()`), a acomodação é do **dublê no harness**, nunca do renderer — regra herdada da SPEC-0045/D11.
 
 ---
@@ -360,28 +380,29 @@ Esta SPEC será considerada concluída somente quando:
 Antes de implementar:
 
 - ler esta SPEC, a SPEC-0045 (Frentes 2/3 e D4/D6), `apps/desktop/CLAUDE.md` (seções "Renderer: duplicação deliberada", "Serialização de gestos", "Painéis"), `tests/renderer.speech-parity.test.ts`, `tests/helpers/renderer-harness.ts`;
-- conferir a linha de base real: `pnpm test` na raiz (esperado 938 testes / 70 arquivos);
-- confirmar, no fonte, os exports de valor atuais dos três módulos vigiados (o registro tem de refletir o estado real, não esta SPEC).
+- registrar commit-base e linha de base da suíte (passo 1 da Estratégia — esperado 939 testes / 70 arquivos);
+- confirmar, no fonte, os exports de valor atuais dos três módulos vigiados (o registro reflete o estado real, não esta SPEC).
 
 Durante implementação:
 
-- `src/` é **somente leitura**: nenhuma edição, em nenhuma circunstância;
+- `src/` é **somente leitura**, com a **única** exceção das mutações temporárias das provas negativas (CA 8/9), revertidas na hora e jamais commitadas;
 - expectativa de paridade nunca escrita à mão para o lado do renderer;
 - uma janela jsdom por caso, fechada no `afterEach`;
 - verificação escopada (`pnpm --filter @atlas/desktop test`) durante a iteração.
 
 Após implementação:
 
-- executar as provas negativas (CA 8/9) e registrá-las no relatório final;
+- executar as provas negativas (CA 8/9), reverter, confirmar árvore limpa e registrar no relatório final;
 - rodar cada arquivo novo isoladamente e a suíte de desktop sob três sementes embaralhadas;
 - rodar os quatro comandos completos na raiz;
+- conferir o diff final contra o commit-base (CA 1, 22, 23);
 - validar os Critérios de Aceitação um a um.
 
 ---
 
 # Resultado Esperado
 
-O gate de paridade deixa de ser um dispositivo específico de `speech-output.ts` e passa a ser uma regra sobre a **classe** de módulos de que o renderer replica lógica: nenhum export de valor novo em `speech-output.ts`, `piper-tts.ts` ou `stt-engine.ts` entra sem que alguém declare, no registro, se é replicado ou não. A décima réplica — a única hoje admitidamente sem cobertura, no comentário do próprio fonte — passa a ser comparada caso a caso a cada `pnpm test`. E os cinco painéis do desktop ganham cobertura comportamental sobre o harness já existente, com o caminho de **recusa** verificado em pé de igualdade com o de sucesso: em nenhum deles o usuário fica com uma lista divergente do Core, um transcript apagado por engano ou um controle travado depois de um erro. Nada muda para o usuário, nada muda no produto: a stack do renderer decidida no ADR-0019 sai desta SPEC exatamente como entrou, e o custo total é código de teste — nenhuma dependência nova, nenhum arquivo de produção tocado.
+O gate de paridade deixa de ser um dispositivo específico de `speech-output.ts` e passa a ser uma regra sobre a **classe** de módulos de que o renderer replica lógica: nenhum export de valor novo em `speech-output.ts`, `piper-tts.ts` ou `stt-engine.ts` entra sem que alguém declare, no registro, se é replicado ou não. A décima réplica — a única hoje admitidamente sem cobertura, no comentário do próprio fonte — passa a ser comparada caso a caso a cada `pnpm test`. E os cinco painéis do desktop ganham cobertura comportamental sobre o harness já existente, com o caminho de **recusa** verificado em pé de igualdade com o de sucesso: em nenhum deles o usuário fica com uma lista divergente do Core, um transcript apagado por engano ou um controle travado depois de um erro. Nada muda para o usuário, nada muda no produto: a stack do renderer decidida no ADR-0019 sai desta SPEC exatamente como entrou, e o custo total é código de teste — nenhuma dependência nova, nenhum arquivo de produção alterado no diff final.
 
 ---
 
@@ -396,7 +417,7 @@ O gate de paridade deixa de ser um dispositivo específico de `speech-output.ts`
 **D2 — Vigiar três módulos, e não todos os `src/*.ts` do desktop**
 
 - **Decisão**: a lista vigiada contém só os módulos dos quais o renderer replica ou poderia plausivelmente replicar lógica; `confirm-port.ts`, `steps-view.ts`, os diálogos, `media-permission.ts` e `core-bridge.ts` ficam fora.
-- **Porquê**: esses módulos são consumidos **só** pelo main process (fronteira dura documentada em `apps/desktop/CLAUDE.md`); incluí-los produziria uma `NOT_MIRRORED` de dezenas de entradas com justificativa idêntica — ruído que enfraquece o gate, porque classificar deixaria de ser um ato de pensamento e viraria burocracia copiada.
+- **Porquê**: esses módulos são consumidos **só** pelo main process (fronteira dura documentada em `apps/desktop/CLAUDE.md`); incluí-los produziria uma `NOT_MIRRORED` de dezenas de entradas com justificativa idêntica — ruído que enfraquece o gate, porque classificar deixaria de ser um ato de pensamento e viraria burocracia copiada. O eixo residual (réplica vinda de módulo fora da lista) fica registrado nas Observações, não assumido em silêncio.
 - **Alternativa descartada**: vigiar automaticamente todo módulo de `src/`. Perdeu por transformar cada export novo do main process num atrito de teste sem valor, e por criar incentivo a classificar no automático — o modo de falha clássico de gates barulhentos.
 
 **D3 — Entregar os cinco painéis nesta fatia, com casos enumerados na SPEC**
@@ -411,9 +432,9 @@ O gate de paridade deixa de ser um dispositivo específico de `speech-output.ts`
 - **Porquê**: o que precisa ficar travado é o contrato com o usuário e com o main process, não a forma interna do renderer — que a fatia futura de quebrar `renderer.js` em arquivos menores (SPEC-0042/D8) vai reorganizar. Testar estado interno tornaria essa refatoração cara sem proteger nada a mais.
 - **Alternativa descartada**: publicar as variáveis de serialização no epílogo e assertar sobre elas. Perdeu por congelar detalhe interno como se fosse contrato, e por ser mais frágil: `disabled` nos elementos é o que o usuário de fato encontra.
 
-**D5 — Nenhuma edição no comentário desatualizado de `renderer.js`**
+**D5 — Nenhuma edição persistida no comentário desatualizado de `renderer.js`**
 
-- **Decisão**: aceitar que o comentário "resíduo sem cobertura automatizada" sobre `computeDefaultPiperVoiceURI` fique factualmente desatualizado, registrando o resíduo nas Observações e nas lições.
+- **Decisão**: aceitar que o comentário "resíduo sem cobertura automatizada" sobre `computeDefaultPiperVoiceURI` fique factualmente desatualizado, registrando o resíduo nas Observações e nas lições (DoD, item c).
 - **Porquê**: o CA 1 (diff de produção vazio) é o que sustenta a inexistência de ADR nesta linha de SPECs desde a 0045; abrir exceção "só para um comentário" borra exatamente a fronteira que torna esta família de SPECs barata de revisar. Um comentário desatualizado é dano documental mínimo e reversível.
 - **Alternativa descartada**: corrigir o comentário junto. Perdeu porque custaria a propriedade mais valiosa da SPEC (diff de produção verificável mecanicamente) por um ganho cosmético.
 
@@ -440,3 +461,15 @@ O gate de paridade deixa de ser um dispositivo específico de `speech-output.ts`
 - **Decisão**: ancorar em `Fase 1 — 1.5 Infraestrutura de Desenvolvimento (transversal)`, declarando a exceção, em vez de criar item novo ou consumir item da Fase 2.
 - **Porquê**: é o precedente literal das SPECs 0042 e 0045, mesma natureza (infraestrutura que protege o desenvolvimento). Reivindicar item de Fase 2 seria falso — nada avança para o usuário.
 - **Alternativa descartada**: criar um item de Roadmap "cobertura de teste do desktop". Perdeu por inflar o Roadmap com higiene de desenvolvimento, que ele explicitamente não cataloga.
+
+**D10 — Critérios de diff e de contagem ancorados a um commit-base e a uma base observada, não ao estado absoluto do repositório**
+
+- **Decisão**: introduzir a "Convenção de medição" no topo dos Critérios de Aceitação — CA 1, 22 e 23 medem o **diff atribuível a esta SPEC** contra o commit-base registrado no passo 1, e o CA 22 exprime **delta** (+4 arquivos, ≥ +20 testes) sobre a base observada, com 939/70 (`c1b9ba3`) como valor esperado e a base observada prevalecendo em caso de divergência.
+- **Porquê**: critério redigido como estado absoluto do repositório é reprovável por causa alheia — uma alteração de terceiro na árvore, ou um teste vindo de outra fatia, faria o `spec-validator` reprovar uma SPEC correta e travar o pipeline. Ancorar ao commit-base mede exatamente o que esta SPEC controla, e é a mesma disciplina do invariante real ("nenhum arquivo pré-existente removido").
+- **Alternativa descartada**: manter números absolutos (`74 arquivos`, `≥ 958 testes`) e `git diff --name-only` sobre o repositório inteiro. Perdeu porque acopla a validação a um estado do mundo que a SPEC não controla — precisamente o defeito apontado no gate, e que já se materializou entre o rascunho e a revisão (938 → 939).
+
+**D11 — Mutação temporária de `src/` declarada como exceção sancionada, com a proibição alcançando o diff persistido**
+
+- **Decisão**: reconciliar CA 8/9 com as Restrições e o Checklist declarando, nos três lugares, que a **única** edição admitida em `src/` é a mutação transitória das provas negativas, revertida na hora, verificada por `git status` e registrada no relatório — e que "zero diff em produção" se refere ao **diff final/persistido**.
+- **Porquê**: como estava, a SPEC exigia (CA 8/9) e proibia (Restrições/Checklist) a mesma ação, o que na prática empurraria o implementador a pular a prova negativa ou a parar e escalar por contradição do texto — em ambos os casos perdendo justamente a demonstração de que o gate fecha. Nomear a exceção mantém o invariante que importa (nada de produção sobrevive ao commit) sem tornar o texto autocontraditório.
+- **Alternativa descartada**: remover as provas negativas para preservar a regra absoluta. Perdeu porque um gate nunca visto vermelho é exatamente a "convenção documentada" que já falhou duas vezes neste projeto; a prova negativa é o núcleo do valor desta SPEC, não um extra.

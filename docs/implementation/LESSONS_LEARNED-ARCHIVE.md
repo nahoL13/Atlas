@@ -986,3 +986,21 @@ Nada de estrutural atrapalhou. O atrito ficou em precisão de linguagem na próp
 **Precisamos mudar...**
 
 Dois achados não-bloqueantes ficaram registrados nas Observações da própria SPEC-0041 como candidatos a fatia futura, não resolvidos aqui: (1) apagamento silencioso de uma `voiceURI` Piper persistida no modo degradado (assimetria com o aviso D6, que só cobre voz de SO legada) — encaminhamento: nova SPEC futura de aviso simétrico "Piper órfão", quando a linha de voz for revisitada; (2) a deriva pré-existente do `createSpeechOutputGlue({ synth })` no renderer sem `preferredVoiceURI` (desde a SPEC-0035, reafirmada nas SPECs 0036/0039/0040/0041) segue sem correção — encaminhamento: já registrado como candidato a fatia futura desde a SPEC-0035; nenhuma SPEC de voz nova deveria fechar sem reavaliar se é hora de pagar essa dívida.
+
+## [SPEC-0042](specs/SPEC-0042-test-split-scoped-verification.md) — Quebra do `core-bridge.test.ts` por assunto e verificação escopada por package, com flake pré-existente corrigido (2026-07-30)
+
+**Descobrimos que...**
+
+O caso `"updatePersona sobre a Persona ativa recusa com operação em voo…"` (bloco de autoria de Persona) abria sessão via `openChatSession` e nunca a fechava, vazando um `SessionId` no `Map` de sessões vivas do `core-bridge`. O `afterEach` do bloco chamava `__resetBridgeStateForTests()` — mas esse reset cobre seleção de Persona e de permissões, **não** o `Map` de sessões. Sob ordem natural de execução, nenhum caso posterior observava o resíduo; sob `--sequence.shuffle` (CA 8, obrigatório desde o desenho original da SPEC), um caso posterior herdava a sessão vazada e `closedSessions` chegava com 2 ids em vez de 1. Provamos a **pré-existência** rodando o arquivo monolítico original (`git show 0b32ccf:apps/desktop/tests/core-bridge.test.ts`) sob o mesmo shuffle: falha idêntica, mesmo teste. A quebra em sete arquivos não introduziu o defeito — só o tornou observável. Oito SPECs visuais anteriores (0031–0041) não viram.
+
+**A arquitetura ajudou porque...**
+
+A fronteira já desenhada nos oito blocos `describe` de topo (espelhando as famílias que `apps/desktop/CLAUDE.md` documenta em `core-bridge.ts`) tornou a movimentação mecânica e auditável por diff vazio contra o baseline, sem exigir reescrita — condição necessária para a garantia central "cobertura preservada integralmente". O próprio CA 8 (isolamento sob shuffle, decidido por D4 já no desenho original) provou seu valor na prática ao expor o flake antes que ele fosse mascarado silenciosamente em outra sessão. Leituras vinculantes do `architecture-reviewer`, emitidas junto da aprovação da emenda v1.2 em vez de virarem um 3º bounce, resolveram quatro ambiguidades de uma vez: CA 24 pinado no sha `0b32ccf` (em vez de um `HEAD` que se autodestruiria no commit de fechamento), CA 23 reescrito para ser exequível (faltava o import de `closeChatSession`; `session` era `const` dentro do `try`, fora de escopo no `finally`), fecho em `finally` exigindo `.catch` (para não esconder a asserção que de fato falha) e sementes de shuffle registradas para reprodutibilidade.
+
+**A arquitetura atrapalhou porque...**
+
+O gate errou uma premissa e registrou o próprio erro no parecer da 3ª rodada: o `architecture-reviewer` havia circunscrito o risco de flake aos "quatro blocos sem `reset` próprio"; o vazamento apareceu no bloco de autoria de Persona, que **tem** `reset`. Ter um `reset` não basta se ele não cobre todo o estado de módulo — limite de uma análise estática num gate que não executa a suíte.
+
+**Precisamos mudar...**
+
+`__resetBridgeStateForTests()` não fecha sessões vivas — lacuna nomeada por D15 como candidato a fatia futura que toca `src/` (fora desta SPEC, que proibiu explicitamente esse caminho por D14). Encaminhamento: registrada em `apps/desktop/CLAUDE.md` ("Candidatos futuros já nomeados" + qualificação da linha sobre o próprio `__resetBridgeStateForTests()`), para que o próximo teste que abrir uma sessão encontre o aviso sem precisar redescobrir o flake.
