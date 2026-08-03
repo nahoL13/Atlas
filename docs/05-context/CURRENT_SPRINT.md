@@ -2,7 +2,7 @@
 
 > **Project Atlas — Estado do Trabalho Atual**
 
-Atualizado em: 2026-08-03 (SPEC-0048)
+Atualizado em: 2026-08-03 (SPEC-0049)
 
 ---
 
@@ -60,5 +60,6 @@ Objetivo: plataforma mínima operável + primeira interface executável (CLI) + 
 | [SPEC-0046](../implementation/specs/SPEC-0046-desktop-voice-input-stt.md) | Desktop: entrada de voz (STT) no chat, push-to-talk (`stt-engine.ts`/`media-permission.ts`, novos), consumindo o ADR-0022 (novo, Accepted — `whisper.cpp`); transcrição sempre anexa ao campo de entrada, nunca enviada automaticamente; permissão de microfone fail-closed; zero diff em `packages/*`/`apps/cli`/`core-bridge.ts`/`speech-output.ts`/`piper-tts.ts`; fecha o item 2.3 do Roadmap (wake word segue candidato) | Done |
 | [SPEC-0047](../implementation/specs/SPEC-0047-renderer-parity-gate-and-panel-coverage.md) | Desktop: gate mecânico de paridade renderer↔módulo (SPEC-0045) generalizado a `piper-tts.ts`/`stt-engine.ts` (10ª réplica amarrada, `resolveDefaultPiperVoiceURI`↔`computeDefaultPiperVoiceURI`) e cobertura comportamental dos cinco painéis (Persona, permissões, memória, `ask`, serialização de gestos) sobre o harness da SPEC-0045; zero diff em `apps/desktop/src/`/`packages/*` | Done |
 | [SPEC-0048](../implementation/specs/SPEC-0048-desktop-chat-send-ask-serialization.md) | Desktop: `#chat-send` entra na serialização de `ask` (`refreshChatControlsForMic()` soma `askInFlight`, guarda no `submit` de `#chat-form`, `.finally` deixa de recalcular por conta própria) e o comentário de `computeDefaultPiperVoiceURI` volta a descrever o estado real; `#chat-input` fica deliberadamente fora (D3); zero diff fora de `renderer.js`/teste | Done |
+| [SPEC-0049](../implementation/specs/SPEC-0049-desktop-ask-form-serialization-and-error-surfacing.md) | Desktop: `#ask-form` entra na serialização de gestos (guarda contra 2º `ask` e contra turno de chat em voo, `id="ask-submit"` + `refreshAskControls()`) e ganha `.catch` no `submit`, pintando erro de `atlas.ask` no `#ask-result`; `#objective` fica deliberadamente fora (D3); fecha os dois resíduos residuais da SPEC-0048 (DoD-d.1/d.2) | Done |
 
 Detalhes de retomada: `docs/05-context/NEXT_CONTEXT.md`.

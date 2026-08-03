@@ -51,7 +51,7 @@ A ausência de atrito também é informação.
 
 ---
 
-**Escopo deste arquivo:** o Registro abaixo mantém as **últimas 5 SPECs**. As entradas da SPEC-0043 e anteriores estão em `LESSONS_LEARNED-ARCHIVE.md`, preservadas sem edição (regra 2 intacta — nada é reescrito, só realocado).
+**Escopo deste arquivo:** o Registro abaixo mantém as **últimas 5 SPECs**. As entradas da SPEC-0044 e anteriores estão em `LESSONS_LEARNED-ARCHIVE.md`, preservadas sem edição (regra 2 intacta — nada é reescrito, só realocado).
 
 O corte existe porque este arquivo chegou a 157 KB (~39k tokens) e era relido no arranque de quase todo subagent, dominando o custo em tokens do pipeline. Ao fechar uma SPEC: adicione a entrada nova no topo do Registro e mova a mais antiga das 6 para o arquivo.
 
@@ -72,6 +72,24 @@ Lições que se repetiram em três ou mais SPECs. Este índice existe para sobre
 
 
 # Registro
+
+## [SPEC-0049](specs/SPEC-0049-desktop-ask-form-serialization-and-error-surfacing.md) — `#ask-form` na serialização de gestos (ask × ask e chat → ask) e erro de `ask` visível na tela (2026-08-03)
+
+**Descobrimos que...**
+
+A justificativa original de D4 desta própria SPEC ("o botão já está cinza, então o caminho normal do usuário não chega aqui; a guarda serve só para submissão implícita/programática") era **falsa**, achado do gate arquitetural (A1) dentro da mesma SPEC, antes de chegar ao `spec-validator`: como D3 mantém `#objective` habilitado (mesma decisão da SPEC-0048 para `#chat-input`) e um `<form>` com `<input type="text">` submete por Enter, o caminho implícito **é** o caminho normal aqui — diferente de `#chat-form`, onde `#chat-input` é desabilitado durante o turno (`renderer.js:1275`), tornando o Enter de fato inalcançável. A decisão (recusa silenciosa) seguiu válida pela razão certa (preservar o `#ask-result` em curso); só a premissa morreu. Descobrimos também, na verificação, um precedente novo: um teste pré-existente ("não-regressão do `.finally` do turno de chat") ficou estruturalmente irreprodutível com os dois guardas em pé (`#chat-form` da SPEC-0048 e `#ask-form` desta) — `askInFlight` nunca chega a `true` na ordem que o caso original descrevia — e foi **reescrito**, não removido, com comentário explícito no arquivo.
+
+**A arquitetura ajudou porque...**
+
+O molde inteiro (origem única de cálculo em `refreshAskControls()`, chamada por `refreshPermissionsPanelState()`; guarda no manipulador logo após `preventDefault()`) já vinha pronto da SPEC-0048/D1-D2 — generalizar para o painel que tinha ficado de fora foi aplicação literal, sem desenho novo. O harness `jsdom` da SPEC-0045/0047, com promessas controláveis de `ask`/`chatSend`, tornou os quatro casos novos (ask × ask, chat → ask, `.catch`, não-regressão de `#objective`) triviais de escrever RED antes da correção.
+
+**A arquitetura atrapalhou porque...**
+
+Nada de estrutural. O atrito ficou em precisão de registro — a mesma classe já catalogada em "Garantia em prosa absoluta tende a estar incompleta" (Padrões Recorrentes), agora na variante "justificativa de uma decisão, não só a garantia", pega pelo gate dentro da própria SPEC antes de chegar ao fechamento.
+
+**Precisamos mudar...**
+
+(1) A premissa original de D4 ("botão cinza ⇒ caminho normal não chega aqui") não pode ser propagada às docs vivas — já corrigida nesta própria SPEC/nesta entrada e em `apps/desktop/CLAUDE.md`, sem necessidade de ADR. (2) Resíduos deixados abertos por decisão, todos já registrados em `apps/desktop/CLAUDE.md`/`NEXT_CONTEXT.md`: **(a)** `micBusy()` fora da condição de `#ask-submit` (D5) segue sem prova mecânica — encaminhamento: candidato para a próxima SPEC que tocar a serialização de voz do painel `ask`; **(b)** o `.catch` também captura exceções lançadas dentro do próprio `.then` (pintura do traço de `steps`), efeito colateral benigno e não coberto por CA — encaminhamento: nenhum, registrado como observação; **(c)** "Esquecer" (memória) e `chat.open()` seguem sem `.catch` (D6) — encaminhamento: candidato registrado, escopo aberto por natureza, sem SPEC própria ainda; **(d)** `sendChatTurn`/`resolveAskSnapshot` seguem fora de `inFlightOperations` no `core-bridge` (D7) — a serialização continua garantia do renderer, não estrutural no main process — encaminhamento: candidato a SPEC própria, registrado em `apps/desktop/CLAUDE.md`. (3) Achado do gate (A3), não pedido: sem cancelamento de um `ask`/turno de chat em voo, um turno que não assenta (Core travado) deixa a app sem gesto de escape até ser reaberta — encaminhamento: candidato novo, registrado em `apps/desktop/CLAUDE.md`/`NEXT_CONTEXT.md` para avaliação de UX própria numa fatia futura.
 
 ## [SPEC-0048](specs/SPEC-0048-desktop-chat-send-ask-serialization.md) — `#chat-send` na serialização de `ask` e comentário desatualizado de `computeDefaultPiperVoiceURI` (2026-08-03)
 
@@ -145,24 +163,6 @@ Nada de estrutural. O atrito ficou em precisão de registro (a avaliação de "e
 
 O gate mecânico cobre hoje só um eixo — export novo de `speech-output.ts` não classificado; uma réplica vinda de outro módulo (ex.: `piper-tts.ts`) ou lógica nova escrita direto no renderer sem contraparte em TS segue protegida só por convenção documentada, achado 3 do `architecture-reviewer` registrado como limite conhecido, não assumido em silêncio. Encaminhamento: candidato registrado em `docs/05-context/NEXT_CONTEXT.md` (aplicar o mesmo gate aos exports de `piper-tts.ts`, sem diff em `src/`, custo baixo com o harness já pronto), junto da cobertura comportamental ampla dos painéis (SPEC-0045/D7).
 
-## [SPEC-0044](specs/SPEC-0044-cli-persona-crud.md) — CLI: `atlas persona list|show|create|edit|delete`, equivalente de terminal do CRUD de Personas custom da SPEC-0039 (2026-07-31)
-
-**Descobrimos que...**
-
-O 1º veto do `architecture-reviewer` não foi por redesenho — foi por três lacunas de **registro** na própria SPEC, todas na fronteira entre "decisão razoável" e "decisão com custo não declarado", corrigidas na 2ª rodada sem mudar a forma da solução: (1) a D10 (injetar `personaStorage` em todo `createAtlas`) tinha uma contrapartida que o rascunho não nomeava — `createAtlas` nunca tocava `personas.json` antes desta SPEC, e a injeção faz **todo** comando lê-lo no arranque, com o fail-high da SPEC-0039/A6 passando a derrubar `ask`/`chat`/`status` também, não só `atlas persona`; (2) a D8 (`--voice-uri` opaco) justificava a opacidade só com "preserva a interoperabilidade" — verdadeiro para **preservar** uma voz vinda da janela, mas enganoso para **autorar** uma voz pela CLI sob a política Piper-only (SPEC-0041), onde só `piper:<id>` de fato soa; (3) §3 descrevia um contrato inexistente (`list()` devolvendo objetos `Persona`, campo `Persona.builtin`), o que teria levado o implementer a tocar `@atlas/contracts` — proibido pela própria SPEC. O bloco de veto é o que um humano lê para exercer override; decisão sem custo declarado é, na prática, um veto.
-
-**A arquitetura ajudou porque...**
-
-O molde D12 da SPEC-0039 (composição delimitada de `createPersonaService({ storage })` dentro do app, exceção nomeada ao ADR-0003) generalizou sem ajuste nenhum para um 2º consumidor real — o próprio gatilho que o ADR-0007 exige para promover algo a contrato público, e aqui a resposta correta foi a oposta: manter tudo local a `apps/cli`, porque nada precisou subir. O desvio pré-Core dos subcomandos de `persona` (D5) reusou, sem reabrir investigação, a mesma correção já provada pela SPEC-0039/D17 para o deadlock circular B1 — a mesma classe de problema (achar o arquivo não pode depender de a Persona ativa ser válida) apareceu num consumidor novo e a solução já documentada bastou.
-
-**A arquitetura atrapalhou porque...**
-
-Nada de estrutural; o atrito ficou em precisão de registro na própria SPEC — um custo real (D10) e uma justificativa parcial (D8) sobreviveram ao rascunho até o gate, o mesmo tipo de imprecisão textual já visto no 2º veto da SPEC-0041 (B1), mas aqui pego e corrigido na 1ª rodada, sem precisar escalar ao usuário.
-
-**Precisamos mudar...**
-
-O `spec-validator` sinalizou que `packages/persona/tests/persona-storage.test.ts:84` usa `chmod 0o500` para simular `EACCES` na escrita atômica — o que só funciona em processo **não-root**; verdadeiro hoje no runner `ubuntu-latest` do GitHub Actions (usuário `runner`), então não é flake em CI, mas é um pressuposto de ambiente não documentado. Encaminhamento: registrado aqui como nota; se a suíte algum dia rodar localmente como root (container root, sandbox elevado) ou migrar de runner, esse caso precisa de um teste alternativo de falha injetada (fake de `fs`/`rename`, não permissão real do SO).
-
 ---
 
-**Entradas anteriores (SPEC-0043 e mais antigas):** `LESSONS_LEARNED-ARCHIVE.md`.
+**Entradas anteriores (SPEC-0044 e mais antigas):** `LESSONS_LEARNED-ARCHIVE.md`.

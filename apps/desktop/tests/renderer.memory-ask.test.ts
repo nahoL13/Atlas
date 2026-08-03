@@ -246,4 +246,20 @@ describe('round-trip ask', () => {
 
     expect(askCalls).toBe(0);
   });
+
+  it('atlas.ask rejeitando escreve ⚠️ e a mensagem do erro em #ask-result, sem lançar e sem congelar em "Perguntando…" (SPEC-0049)', async () => {
+    const f = await open({
+      atlas: {
+        ask: () => Promise.reject(new Error('falha no ask')),
+      },
+    });
+
+    setValue(f, 'objective', 'faça algo');
+    await expect(submit(f, 'ask-form')).resolves.toBeUndefined();
+
+    const result = f.document.getElementById('ask-result')?.textContent ?? '';
+    expect(result).toContain('⚠️');
+    expect(result).toContain('falha no ask');
+    expect(result).not.toContain('Perguntando…');
+  });
 });

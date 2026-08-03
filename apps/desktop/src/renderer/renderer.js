@@ -53,6 +53,23 @@ function refreshPermissionsPanelState() {
   // duas direções da serialização de gestos entre voz e chat.
   refreshMicButtons();
   refreshChatControlsForMic();
+  // SPEC-0049: `#ask-submit` ganha a mesma origem única de cálculo dos
+  // demais controles serializados.
+  refreshAskControls();
+}
+
+// SPEC-0049: `#ask-form` entra na mesma serialização de gestos já em vigor
+// para `#chat-send`/painel de permissões/Persona — desabilitado enquanto
+// houver turno de chat OU um `ask` em voo (D2: um turno de chat mantém um
+// Core vivo executando Tools; a mesma classe de risco que motivou a
+// SPEC-0048 na direção inversa). `#objective` fica deliberadamente fora
+// (D3) — digitar não dispara gesto contra o Core.
+function refreshAskControls() {
+  const disabled = chatTurnInFlight || askInFlight;
+  const submitButton = document.getElementById('ask-submit');
+  if (submitButton !== null) {
+    submitButton.disabled = disabled;
+  }
 }
 
 // Placeholder até a definição real mais abaixo (o painel de Persona é
@@ -135,6 +152,14 @@ function refreshPersonaSurfaces() {
 // plano); este renderer só pinta, sem conhecer `ExecutedStep`/contratos.
 document.getElementById('ask-form').addEventListener('submit', (event) => {
   event.preventDefault();
+  // SPEC-0049/D2 e D4: guarda explícita, além do atributo `disabled` de
+  // `#ask-submit` — um `submit` despachado programaticamente ou por
+  // submissão implícita do `<form>` (Enter em `#objective`, que fica
+  // deliberadamente habilitado — D3) contorna o botão. Recusa silenciosa:
+  // não escreve em `#ask-result`, não limpa `#objective` (D4).
+  if (chatTurnInFlight || askInFlight) {
+    return;
+  }
   const objective = document.getElementById('objective').value.trim();
   if (objective === '') {
     return;
@@ -159,6 +184,11 @@ document.getElementById('ask-form').addEventListener('submit', (event) => {
         lines.push(`💡 lembrado: ${fact}`);
       }
       resultEl.textContent = lines.join('\n');
+    })
+    .catch((error) => {
+      // SPEC-0049/Frente 3: sem isto, uma falha de `atlas.ask` virava
+      // unhandled rejection e o painel ficava congelado em "Perguntando…".
+      resultEl.textContent = `⚠️ ${error.message ?? error}`;
     })
     .finally(() => {
       askInFlight = false;

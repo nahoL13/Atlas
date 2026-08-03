@@ -1022,3 +1022,22 @@ A distinção "política × ambiente", codificada como uma função pura compost
 **Precisamos mudar...**
 
 O risco estrutural da 7ª réplica (e da 2ª deriva por acidente) foi registrado pelo `architecture-reviewer` como candidato a decisão de arquitetura — cobrir `renderer.js` por teste automatizado exigiria mudar a stack do renderer (ADR-0019), portanto ADR novo e escalação humana (Emenda v1.1); não é decisão desta sessão. Encaminhamento: candidato registrado em `docs/05-context/NEXT_CONTEXT.md`, para que a próxima SPEC de voz ou de Persona avalie se já é hora de pagar essa dívida antes de abrir uma 8ª réplica.
+
+
+## [SPEC-0044](specs/SPEC-0044-cli-persona-crud.md) — CLI: `atlas persona list|show|create|edit|delete`, equivalente de terminal do CRUD de Personas custom da SPEC-0039 (2026-07-31)
+
+**Descobrimos que...**
+
+O 1º veto do `architecture-reviewer` não foi por redesenho — foi por três lacunas de **registro** na própria SPEC, todas na fronteira entre "decisão razoável" e "decisão com custo não declarado", corrigidas na 2ª rodada sem mudar a forma da solução: (1) a D10 (injetar `personaStorage` em todo `createAtlas`) tinha uma contrapartida que o rascunho não nomeava — `createAtlas` nunca tocava `personas.json` antes desta SPEC, e a injeção faz **todo** comando lê-lo no arranque, com o fail-high da SPEC-0039/A6 passando a derrubar `ask`/`chat`/`status` também, não só `atlas persona`; (2) a D8 (`--voice-uri` opaco) justificava a opacidade só com "preserva a interoperabilidade" — verdadeiro para **preservar** uma voz vinda da janela, mas enganoso para **autorar** uma voz pela CLI sob a política Piper-only (SPEC-0041), onde só `piper:<id>` de fato soa; (3) §3 descrevia um contrato inexistente (`list()` devolvendo objetos `Persona`, campo `Persona.builtin`), o que teria levado o implementer a tocar `@atlas/contracts` — proibido pela própria SPEC. O bloco de veto é o que um humano lê para exercer override; decisão sem custo declarado é, na prática, um veto.
+
+**A arquitetura ajudou porque...**
+
+O molde D12 da SPEC-0039 (composição delimitada de `createPersonaService({ storage })` dentro do app, exceção nomeada ao ADR-0003) generalizou sem ajuste nenhum para um 2º consumidor real — o próprio gatilho que o ADR-0007 exige para promover algo a contrato público, e aqui a resposta correta foi a oposta: manter tudo local a `apps/cli`, porque nada precisou subir. O desvio pré-Core dos subcomandos de `persona` (D5) reusou, sem reabrir investigação, a mesma correção já provada pela SPEC-0039/D17 para o deadlock circular B1 — a mesma classe de problema (achar o arquivo não pode depender de a Persona ativa ser válida) apareceu num consumidor novo e a solução já documentada bastou.
+
+**A arquitetura atrapalhou porque...**
+
+Nada de estrutural; o atrito ficou em precisão de registro na própria SPEC — um custo real (D10) e uma justificativa parcial (D8) sobreviveram ao rascunho até o gate, o mesmo tipo de imprecisão textual já visto no 2º veto da SPEC-0041 (B1), mas aqui pego e corrigido na 1ª rodada, sem precisar escalar ao usuário.
+
+**Precisamos mudar...**
+
+O `spec-validator` sinalizou que `packages/persona/tests/persona-storage.test.ts:84` usa `chmod 0o500` para simular `EACCES` na escrita atômica — o que só funciona em processo **não-root**; verdadeiro hoje no runner `ubuntu-latest` do GitHub Actions (usuário `runner`), então não é flake em CI, mas é um pressuposto de ambiente não documentado. Encaminhamento: registrado aqui como nota; se a suíte algum dia rodar localmente como root (container root, sandbox elevado) ou migrar de runner, esse caso precisa de um teste alternativo de falha injetada (fake de `fs`/`rename`, não permissão real do SO).
