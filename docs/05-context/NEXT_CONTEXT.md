@@ -2,7 +2,7 @@
 
 > **Project Atlas — Contexto de Retomada para a Próxima Sessão**
 
-Atualizado em: 2026-08-03 (SPEC-0049)
+Atualizado em: 2026-08-04 (SPEC-0050)
 
 Este documento responde a uma pergunta só: **o que fazer agora**. Ele é lido no arranque de toda sessão e de todo subagent, então é mantido curto por design — teto de ~8 KB.
 
@@ -21,11 +21,11 @@ Este documento responde a uma pergunta só: **o que fazer agora**. Ele é lido n
 
 Últimas três fatias (detalhe completo em `PLATFORM_STATE.md` e na SPEC de cada uma):
 
-- **SPEC-0049** `Done` (2026-08-03) — fecha as duas direções residuais da SPEC-0048: `#ask-form` entra na serialização de gestos (`id="ask-submit"` + `refreshAskControls()`, `disabled = chatTurnInFlight || askInFlight`, guarda equivalente no manipulador de `submit`, recusa silenciosa — D4) e ganha `.catch`, pintando `⚠️ <mensagem>` no `#ask-result` em vez de deixar a rejeição de `atlas.ask` virar unhandled rejection. `#objective` fica deliberadamente fora (D3). Único resíduo remanescente da lista da SPEC-0048: rastrear `sendChatTurn`/`resolveAskSnapshot` em `inFlightOperations` no `core-bridge` (D7, fora de escopo, candidato a SPEC própria). Zero diff em `packages/*`/`apps/cli`/`core-bridge.ts`.
+- **SPEC-0050** `Done` (2026-08-04) — fecha o resíduo D7 da SPEC-0049: `resolveAskSnapshot` e `sendChatTurn` no `core-bridge` passam a **ler** `hasInFlightOperation()` como guarda de entrada, tornando "um round-trip contra o Core por vez" estrutural no main process (antes garantia exclusiva do renderer). `hasInFlightOperation()` tem agora quatro consumidores nominais / cinco chamadas (`updatePersona`, `selectPermissionRoots` ×2, `resolveAskSnapshot`, `sendChatTurn`); `selectPersona` segue com condição parcial (D12, candidato). As guardas do renderer permanecem intactas como caminho normal. Zero diff em `packages/*`/`apps/cli`/renderer/`main.ts`/`preload.cjs`.
+- **SPEC-0049** `Done` (2026-08-03) — fecha as duas direções residuais da SPEC-0048: `#ask-form` entra na serialização de gestos (`id="ask-submit"` + `refreshAskControls()`, `disabled = chatTurnInFlight || askInFlight`, guarda equivalente no manipulador de `submit`, recusa silenciosa — D4) e ganha `.catch`, pintando `⚠️ <mensagem>` no `#ask-result` em vez de deixar a rejeição de `atlas.ask` virar unhandled rejection. `#objective` fica deliberadamente fora (D3). Zero diff em `packages/*`/`apps/cli`/`core-bridge.ts`.
 - **SPEC-0048** `Done` (2026-08-03) — fecha os dois resíduos da SPEC-0047 no renderer: `#chat-send` passa a somar `askInFlight` ao `disabled` (`refreshChatControlsForMic()`), com guarda equivalente no manipulador de `submit` de `#chat-form` (`disabled` não impede submissão implícita/programática) e o `.finally` do turno de chat deixando de recalcular o estado por conta própria; `#chat-input` fica deliberadamente fora (D3). O comentário de `computeDefaultPiperVoiceURI` volta a descrever o estado real (aponta `renderer.speech-parity.test.ts`), corpo byte-idêntico. Zero diff em `packages/*`/`apps/cli`/`core-bridge.ts`/`piper-tts.ts`/`stt-engine.ts`/`speech-output.ts`.
-- **SPEC-0047** `Done` (2026-08-03) — generaliza o gate de paridade renderer↔módulo (SPEC-0045) para três módulos-fonte vigiados (`speech-output.ts`, `piper-tts.ts`, `stt-engine.ts`, exports enumerados em runtime), amarrando a 10ª réplica antes sem cobertura (`resolveDefaultPiperVoiceURI` ↔ `computeDefaultPiperVoiceURI`); entrega cobertura comportamental dos cinco painéis do desktop (Persona, permissões, memória, `ask`, serialização de gestos) sobre o harness da SPEC-0045. Zero diff em `apps/desktop/src/`/`packages/*`; ADR-0019/0021/0022 intactos.
 
-Suíte atual: **978 testes / 74 arquivos**. `lint`/`typecheck`/`test`/`format:check` verdes.
+Suíte atual: **983 testes / 74 arquivos**. `lint`/`typecheck`/`test`/`format:check` verdes.
 
 ---
 
@@ -36,7 +36,7 @@ Suíte atual: **978 testes / 74 arquivos**. `lint`/`typecheck`/`test`/`format:ch
 ## Candidatos abertos
 
 - **Wake word / ativação por voz.** Único candidato direto restante da Fase 2 (item 2.3, "candidato, não comprometido" desde o Roadmap). **Exige decisão humana + ADR novo antes de qualquer SPEC** (registrado em [ADR-0022](../06-adr/ADR-0022-whisper-cpp-local-stt-engine.md), "Candidatos futuros"): microfone permanentemente ligado, motor de detecção distinto do de transcrição, decisão de privacidade de natureza própria. **Começar por brainstorming humano, não pelo `spec-drafter`.**
-- **Sobre a SPEC-0049** (resíduo remanescente da lista da SPEC-0048, ver D7): rastrear `sendChatTurn`/`resolveAskSnapshot` em `inFlightOperations` no `core-bridge` — a serialização de gestos das SPECs 0048/0049 é garantia do **renderer**, não estrutural no main process; mudaria a garantia documentada em "Rastreio de operação em voo" e afetaria recusas de `selectPermissionRoots` (candidato a SPEC própria). Outros dois candidatos nomeados pelo gate arquitetural da SPEC-0049 (A2/A3, não pedidos): **cancelamento de um `ask`/turno de chat em voo** (sem ele, um turno que não assenta deixa a app sem gesto de escape até ser reaberta); **pinar `micBusy()` fora da condição de `#ask-submit` por teste explícito** (D5, hoje só decisão documentada).
+- **Sobre a SPEC-0050**: dois candidatos permanecem abertos, nomeados pelo gate arquitetural das SPECs 0049/0050 (não pedidos): **cancelamento de um `ask`/turno de chat em voo** (sem ele, um turno que não assenta deixa a app sem gesto de escape até ser reaberta — mais relevante desde a SPEC-0050, que estendeu a mesma exposição ao main process); **pinar `micBusy()` fora da condição de `#ask-submit` por teste explícito** (D5 da SPEC-0049, hoje só decisão documentada). Candidato novo (D12 da SPEC-0050): **uniformizar `selectPersona` para `hasInFlightOperation()`** em vez da condição parcial atual (`busySessions` inline) — hoje um `ask` em voo não bloqueia a troca de Persona, embora bloqueie a edição da Persona ativa; mudaria comportamento de um caminho de configuração não pedido, merece aferição de UX própria.
 - **Sobre a SPEC-0046** (locais à porta injetada): ditado ao vivo (transcrição incremental) e processo de longa duração para STT; catálogo multi-modelo (`base`/`small`/`medium`).
 - **Fase 1, itens `candidato`** (não são gates, todos os gates fecharam):
   - **Memória** — retenção/curadoria de fatos aprendidos, relações entre informações, teto por bytes (resíduo da SPEC-0030), `/lembrar` e `/esquecer` ao vivo numa sessão de chat.

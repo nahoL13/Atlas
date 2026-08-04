@@ -2,7 +2,7 @@
 
 > **Project Atlas — Log de Custo de Token por SPEC**
 
-Atualizado em: 2026-08-03 (regenerado por `python3 scripts/claude-usage-report.py`)
+Atualizado em: 2026-08-04 (regenerado por `python3 scripts/claude-usage-report.py`)
 
 Este documento existe para responder, antes de começar a implementar uma SPEC, à pergunta: *"cabe numa sessão, ou é melhor esperar a próxima janela?"*. Os totais são derivados automaticamente dos transcripts locais (heurística: sessão é atribuída à SPEC mais citada nela — uma sessão que tocou mais de uma SPEC entra só na dominante). Regenere após encerrar ou retomar trabalho em uma SPEC rodando o script acima; **não edite esta tabela manualmente**.
 
@@ -60,7 +60,9 @@ Este documento existe para responder, antes de começar a implementar uma SPEC, 
 | SPEC-0045 | Cobertura automatizada de `apps/desktop/src/renderer/renderer.js` e gate mecânico contra a deriva das réplicas renderer↔`speech-output.ts` | Done | 2 | 2026-08-01 | 37.499.121 | 7.238.269 |
 | SPEC-0046 | Entrada por voz (STT) no chat do `apps/desktop`: captura por push-to-talk, transcrição por `whisper.cpp` local no main process, texto entregue ao campo de entrada para revisão do usuário | Done | 3 | 2026-08-02 | 87.177.539 | 14.470.028 |
 | SPEC-0047 | Extensão do gate mecânico de paridade renderer↔módulo aos exports de `apps/desktop/src/piper-tts.ts` (e `stt-engine.ts`) e cobertura comportamental dos painéis sobre o harness jsdom da SPEC-0045 | Done | 2 | 2026-08-03 | 50.894.804 | 8.941.222 |
-| SPEC-0048 | Fechamento dos dois resíduos da SPEC-0047 no renderer do desktop: `#chat-send` passa a considerar `askInFlight` na serialização de gestos (com guarda no manipulador de envio), e o comentário sobre `computeDefaultPiperVoiceURI` volta a descrever o estado real de cobertura | Done | 2 | 2026-08-03 | 22.162.939 | 4.061.915 |
+| SPEC-0048 | Fechamento dos dois resíduos da SPEC-0047 no renderer do desktop: `#chat-send` passa a considerar `askInFlight` na serialização de gestos (com guarda no manipulador de envio), e o comentário sobre `computeDefaultPiperVoiceURI` volta a descrever o estado real de cobertura | Done | 2 | 2026-08-03 | 24.788.975 | 4.859.006 |
+| SPEC-0049 | Fechamento das duas direções residuais de serialização de gestos registradas pela SPEC-0048 (DoD-d): o painel `ask` do desktop passa a recusar um 2º `ask` concorrente e um `ask` disparado durante um turno de chat em voo, e a falha de `atlas.ask` deixa de virar unhandled rejection para aparecer no `#ask-result` | Done | 2 | 2026-08-04 | 20.345.139 | 3.913.578 |
+| SPEC-0050 | Fechamento do resíduo D7 da SPEC-0049: o rastreio de operação em voo do `core-bridge` (`busySessions`/`inFlightOperations`) passa a ser guarda de entrada também de `resolveAskSnapshot` e `sendChatTurn` — somando-se aos consumidores que já existem (`updatePersona`, `selectPermissionRoots`) —, tornando o invariante "um round-trip contra o Core por vez" estrutural no main process, e não mais garantia exclusiva do renderer | Draft | 1 | 2026-08-04 | 6.672.441 | 2.435.954 |
 
 ## Detalhamento por fase
 
@@ -114,7 +116,9 @@ Fase = qual agente fez o trabalho. **Criação/Decisão** é o que roda no **fio
 | SPEC-0045 | 690.243 | 1.700.671 | 396.721 | 2.104.535 | 772.901 | 1.573.198 | 0 |
 | SPEC-0046 | 3.691.564 | 0 | 913.037 | 7.537.297 | 892.737 | 1.435.393 | 0 |
 | SPEC-0047 | 1.097.228 | 657.378 | 1.016.949 | 3.615.034 | 860.872 | 1.693.761 | 0 |
-| SPEC-0048 | 488.508 | 0 | 577.471 | 768.961 | 557.359 | 1.669.616 | 0 |
+| SPEC-0048 | 555.980 | 729.619 | 577.471 | 768.961 | 557.359 | 1.669.616 | 0 |
+| SPEC-0049 | 677.295 | 0 | 439.408 | 1.052.170 | 415.004 | 1.329.701 | 0 |
+| SPEC-0050 | 285.392 | 1.569.100 | 581.462 | 0 | 0 | 0 | 0 |
 
 ## Eficiência de processo (overhead ÷ implementação)
 
@@ -157,11 +161,12 @@ Razão entre o custo de **processo** (todas as fases exceto Implementação — 
 | SPEC-0045 | 2.104.535 | 5.133.734 | 2.4× |
 | SPEC-0046 | 7.537.297 | 6.932.731 | 0.9× |
 | SPEC-0047 | 3.615.034 | 5.326.188 | 1.5× |
-| SPEC-0048 | 768.961 | 3.292.954 | 4.3× |
+| SPEC-0048 | 768.961 | 4.090.045 | 5.3× |
+| SPEC-0049 | 1.052.170 | 2.861.408 | 2.7× |
 
 ## Como estimar antes de começar uma SPEC nova
 
-- SPECs concluídas (`Done`) até agora: 45. Custo médio: **9.005.721 tokens efetivos**. Faixa observada: 2.795.790 – 35.026.030 tokens efetivos.
+- SPECs concluídas (`Done`) até agora: 46. Custo médio: **8.912.350 tokens efetivos**. Faixa observada: 2.795.790 – 35.026.030 tokens efetivos.
 
 - Compare a SPEC que você está prestes a começar com as mais parecidas em tamanho na tabela acima (número de itens em "Escopo"/"Critérios de Aceitação", quantidade de "Arquivos Esperados"). Uma SPEC do porte de uma linha já concluída tende a custar perto do que ela custou.
 - Se o consumo já acumulado na sessão atual (rode o relatório detalhado, `.claude/usage-report.md`) mais a estimativa da próxima SPEC passar perto do seu limite de janela, prefira parar num ponto de commit limpo e retomar na próxima sessão em vez de começar e arriscar cortar a implementação pela metade.

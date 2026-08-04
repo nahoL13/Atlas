@@ -125,4 +125,112 @@ describe('resolveAskSnapshot', () => {
       resolveAskSnapshot('oi', { configOverride: baseOverride({ dataDir: '' }) }),
     ).rejects.toBeInstanceOf(InvalidConfigError);
   });
+
+  it('SPEC-0050: com um ask em voo, um segundo resolveAskSnapshot rejeita com a mensagem pinada; o 1º conclui íntegro; depois de assentar, um novo resolveAskSnapshot é aceito', async () => {
+    const originalFetch = globalThis.fetch;
+    let callCount = 0;
+    let releaseFirstCall: () => void = () => {};
+    const firstCallGate = new Promise<void>((resolve) => {
+      releaseFirstCall = resolve;
+    });
+
+    function ollamaResponse(content: string): Response {
+      return new Response(JSON.stringify({ message: { content } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    globalThis.fetch = vi.fn(async () => {
+      callCount += 1;
+      if (callCount === 1) {
+        await firstCallGate;
+        return ollamaResponse('oi, tudo bem?');
+      }
+      return ollamaResponse('[]');
+    }) as typeof fetch;
+
+    try {
+      const { resolveAskSnapshot } = await import('../src/core-bridge.js');
+
+      const firstAsk = resolveAskSnapshot('oi', {
+        configOverride: baseOverride({ model: { provider: 'local', model: 'test-model' } }),
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      await expect(resolveAskSnapshot('outro', { configOverride: baseOverride() })).rejects.toThrow(
+        'Não é possível iniciar uma pergunta: há uma operação em andamento.',
+      );
+
+      releaseFirstCall();
+      const first = await firstAsk;
+      expect(first.text).toBe('oi, tudo bem?');
+
+      const after = await resolveAskSnapshot('depois', { configOverride: baseOverride() });
+      expect(after.text).toBe('[fake] depois');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('SPEC-0050: com um turno de chat em voo, resolveAskSnapshot rejeita com a mensagem pinada e nenhum Core é criado; após o turno assentar, é aceito', async () => {
+    const originalFetch = globalThis.fetch;
+    let callCount = 0;
+    let releaseTurnCall: () => void = () => {};
+    const turnGate = new Promise<void>((resolve) => {
+      releaseTurnCall = resolve;
+    });
+
+    function ollamaResponse(content: string): Response {
+      return new Response(JSON.stringify({ message: { content } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    globalThis.fetch = vi.fn(async () => {
+      callCount += 1;
+      if (callCount === 1) {
+        await turnGate;
+        return ollamaResponse('oi, tudo bem?');
+      }
+      return ollamaResponse('[]');
+    }) as typeof fetch;
+
+    const spyModule = await import('@atlas/core');
+    const original = spyModule.createAtlas;
+    const spy = vi.spyOn(spyModule, 'createAtlas').mockImplementation(async (...args) => {
+      return original(...args);
+    });
+
+    try {
+      const { openChatSession, sendChatTurn, closeChatSession, resolveAskSnapshot } =
+        await import('../src/core-bridge.js');
+
+      const session = await openChatSession({
+        configOverride: baseOverride({ model: { provider: 'local', model: 'test-model' } }),
+      });
+      spy.mockClear();
+
+      const turnPromise = sendChatTurn(session, 'oi');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      await expect(resolveAskSnapshot('outro', { configOverride: baseOverride() })).rejects.toThrow(
+        'Não é possível iniciar uma pergunta: há uma operação em andamento.',
+      );
+      expect(spy).not.toHaveBeenCalled();
+
+      releaseTurnCall();
+      const turn = await turnPromise;
+      expect(turn.reply).toBe('oi, tudo bem?');
+
+      const after = await resolveAskSnapshot('depois', { configOverride: baseOverride() });
+      expect(after.text).toBe('[fake] depois');
+
+      await closeChatSession(session);
+    } finally {
+      globalThis.fetch = originalFetch;
+      spy.mockRestore();
+    }
+  });
 });

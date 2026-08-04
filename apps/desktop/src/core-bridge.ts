@@ -125,13 +125,29 @@ let selectedPermissions: PermissionRoots | undefined;
 /**
  * Rastreio generalizado de operação em voo (SPEC-0038, Decisão D10):
  * contador de operações que sobem um Core **fora** do `Map` de sessões de
- * chat vivas — hoje `resolveAskSnapshot` e o intervalo de abertura de
+ * chat vivas — `resolveAskSnapshot` e o intervalo de abertura de
  * `openChatSession` (correção A6 do gate: entre o `createAtlas` e o
  * registro em `chatSessions`, a sessão nova ainda não está no `busySessions`
  * nem em `chatSessions`, então precisa do próprio rastreio). Cada operação
  * incrementa antes do primeiro `await` e decrementa em `finally`.
- * `selectPermissionRoots` recusa a aplicação enquanto este contador ou
- * `busySessions` forem não-vazios/positivos.
+ *
+ * `hasInFlightOperation()` tem **quatro consumidores / cinco chamadas**
+ * (SPEC-0050): `updatePersona` (SPEC-0039, editar a Persona ativa),
+ * `selectPermissionRoots` (2 chamadas — a checagem original e a rechecagem
+ * A7 imediatamente antes de aplicar), `resolveAskSnapshot` e `sendChatTurn`
+ * (ambos recusam a entrada contra si mesmos e um contra o outro). Todos
+ * consultam a mesma condição — nenhum reescreve inline.
+ *
+ * `selectPersona` (`:215`) usa uma condição **parcial**: só
+ * `busySessions.size > 0`, inline, sem `inFlightOperations`. Consequência:
+ * um `ask` em voo **não** bloqueia a troca de Persona, embora bloqueie a
+ * edição da Persona ativa — assimetria pré-existente, registrada e não
+ * alterada por esta SPEC (D12).
+ *
+ * `openChatSession` **marca** este contador, mas não é guardada por ele
+ * (D5): segue abrindo sessão mesmo com operação em voo.
+ * `resolveStatusSnapshot`, `resolveMemorySnapshot` e `forgetFact` seguem
+ * sem marcar e sem recusar (SPEC-0038/D10) — não executam Tools.
  */
 let inFlightOperations = 0;
 
@@ -548,12 +564,23 @@ const fallbackConfirm: ConfirmPort = {
  * que permite `selectPermissionRoots` recusar a aplicação de uma política
  * nova enquanto este `ask` ainda estiver rodando, sem alterar o resultado
  * nem o fluxo do `ask` em si.
+ *
+ * Desde a SPEC-0050, também **lê** essa mesma condição em guarda de entrada
+ * (`hasInFlightOperation()`, antes do incremento e de qualquer `await`): um
+ * `ask` disparado durante outro `ask`, durante um turno de chat, ou durante
+ * a janela de abertura de `openChatSession`, é recusado com `Error`
+ * estruturado — sem subir Core, sem tocar o contador e sem efeito colateral.
  */
 export async function resolveAskSnapshot(
   objective: string,
   deps: { confirm?: ConfirmPort; configOverride?: AtlasConfigOverride } = {},
 ): Promise<AskSnapshot> {
   const { confirm = fallbackConfirm, configOverride = {} } = deps;
+  // Guarda de entrada (SPEC-0050): recusa ANTES do incremento e de qualquer
+  // `await` — uma recusa não altera o contador nem deixa resíduo de estado.
+  if (hasInFlightOperation()) {
+    throw new Error('Não é possível iniciar uma pergunta: há uma operação em andamento.');
+  }
   inFlightOperations += 1;
   try {
     const atlas = await createAtlas(
@@ -649,9 +676,25 @@ export async function openChatSession(
  * IPC. **Não** desliga o Core nem fecha a sessão — mantém tudo vivo para o
  * próximo turno. Se o turno falhar (ex.: `ATLAS_MODEL_GATEWAY`), a sessão
  * permanece aberta (paridade com a resiliência do `runChat`).
+ *
+ * Desde a SPEC-0050, guarda a entrada por `hasInFlightOperation()` — depois
+ * de validar o handle (`mustGetChatSession`, erro de estrutura antes de
+ * erro de estado, D4) e antes de marcar `busySessions`: um turno disparado
+ * durante um `ask`, durante outro turno, ou durante a abertura de uma
+ * sessão, é recusado com `Error` estruturado, sem chamar
+ * `atlas.cognitive.respond`, sem marcar `busySessions` e sem derrubar a
+ * sessão — que segue viva e utilizável no turno seguinte.
  */
 export async function sendChatTurn(session: SessionId, input: string): Promise<TurnSnapshot> {
   const { atlas } = mustGetChatSession(session);
+  // Guarda de entrada (SPEC-0050, D4): o handle é validado ANTES (erro de
+  // estrutura antes de erro de estado) — um handle desconhecido durante uma
+  // operação em voo produz o erro de sessão desconhecida, não o de operação
+  // em andamento. A recusa por operação em voo não marca `busySessions`, não
+  // toca o Core e não derruba a sessão, que segue viva e utilizável.
+  if (hasInFlightOperation()) {
+    throw new Error('Não é possível enviar o turno: há uma operação em andamento.');
+  }
   // Marca a sessão como ocupada ANTES do primeiro `await` (Decisão D9): é o
   // que faz `selectPersona` ver o turno em voo mesmo se disparado logo em
   // seguida, sem janela de corrida.

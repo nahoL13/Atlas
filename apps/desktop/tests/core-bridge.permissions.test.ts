@@ -338,7 +338,10 @@ describe('configuração de permissões (selectPermissionRoots/selectedPermissio
       expect(selectedPermissionRoots()).toBeUndefined();
 
       releaseAskCall();
-      await askPromise;
+      // SPEC-0050 (CA 11): o ask disparado dentro do confirmGrant sobe com o
+      // Map de sessões ocioso e inFlightOperations em zero — não é recusado
+      // pela guarda nova de resolveAskSnapshot; resolve normalmente.
+      await expect(askPromise).resolves.toMatchObject({ text: 'oi, tudo bem?' });
 
       // Nenhuma sessão foi encerrada pela aplicação recusada.
       const { sendChatTurn } = await import('../src/core-bridge.js');

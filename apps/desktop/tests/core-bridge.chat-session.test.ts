@@ -109,4 +109,146 @@ describe('chat vivo (openChatSession/sendChatTurn/closeChatSession)', () => {
     await expect(closeChatSession('sessao-inexistente')).rejects.toThrow();
     await expect(closeChatSession('sessao-inexistente')).rejects.not.toBeInstanceOf(TypeError);
   });
+
+  it('SPEC-0050: com um ask em voo, sendChatTurn rejeita com a mensagem pinada, atlas.cognitive.respond não é chamado e a conversa fica inalterada; ao assentar o ask, o mesmo turno é aceito e a sessão nunca foi derrubada', async () => {
+    const originalFetch = globalThis.fetch;
+    let callCount = 0;
+    let releaseAskCall: () => void = () => {};
+    const askGate = new Promise<void>((resolve) => {
+      releaseAskCall = resolve;
+    });
+
+    function ollamaResponse(content: string): Response {
+      return new Response(JSON.stringify({ message: { content } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    globalThis.fetch = vi.fn(async () => {
+      callCount += 1;
+      if (callCount === 1) {
+        await askGate;
+        return ollamaResponse('oi, tudo bem?');
+      }
+      return ollamaResponse('[]');
+    }) as typeof fetch;
+
+    try {
+      const { openChatSession, sendChatTurn, closeChatSession, resolveAskSnapshot } =
+        await import('../src/core-bridge.js');
+      const session = await openChatSession({ configOverride: baseOverride() });
+
+      const askPromise = resolveAskSnapshot('ask concorrente', {
+        configOverride: baseOverride({ model: { provider: 'local', model: 'test-model' } }),
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      await expect(sendChatTurn(session, 'oi')).rejects.toThrow(
+        'Não é possível enviar o turno: há uma operação em andamento.',
+      );
+
+      releaseAskCall();
+      await askPromise;
+
+      // A sessão nunca foi derrubada — o mesmo turno agora é aceito.
+      const turn = await sendChatTurn(session, 'oi');
+      expect(turn).toEqual({ reply: '[fake] oi', steps: [], learned: [] });
+
+      await closeChatSession(session);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('SPEC-0050: com um turno em voo na mesma sessão, um segundo sendChatTurn rejeita com a mensagem pinada e o 1º conclui íntegro', async () => {
+    const originalFetch = globalThis.fetch;
+    let callCount = 0;
+    let releaseFirstCall: () => void = () => {};
+    const firstCallGate = new Promise<void>((resolve) => {
+      releaseFirstCall = resolve;
+    });
+
+    function ollamaResponse(content: string): Response {
+      return new Response(JSON.stringify({ message: { content } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    globalThis.fetch = vi.fn(async () => {
+      callCount += 1;
+      if (callCount === 1) {
+        await firstCallGate;
+        return ollamaResponse('oi, tudo bem?');
+      }
+      return ollamaResponse('[]');
+    }) as typeof fetch;
+
+    try {
+      const { openChatSession, sendChatTurn, closeChatSession } =
+        await import('../src/core-bridge.js');
+      const session = await openChatSession({
+        configOverride: baseOverride({ model: { provider: 'local', model: 'test-model' } }),
+      });
+
+      const firstTurn = sendChatTurn(session, 'oi');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      await expect(sendChatTurn(session, 'de novo')).rejects.toThrow(
+        'Não é possível enviar o turno: há uma operação em andamento.',
+      );
+
+      releaseFirstCall();
+      const turn = await firstTurn;
+      expect(turn.reply).toBe('oi, tudo bem?');
+
+      await closeChatSession(session);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('SPEC-0050 (D4, ordem das guardas): sendChatTurn sobre um handle desconhecido durante um ask em voo rejeita com o erro de sessão desconhecida, não com o de operação em voo', async () => {
+    const originalFetch = globalThis.fetch;
+    let callCount = 0;
+    let releaseAskCall: () => void = () => {};
+    const askGate = new Promise<void>((resolve) => {
+      releaseAskCall = resolve;
+    });
+
+    function ollamaResponse(content: string): Response {
+      return new Response(JSON.stringify({ message: { content } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    globalThis.fetch = vi.fn(async () => {
+      callCount += 1;
+      if (callCount === 1) {
+        await askGate;
+        return ollamaResponse('oi, tudo bem?');
+      }
+      return ollamaResponse('[]');
+    }) as typeof fetch;
+
+    try {
+      const { resolveAskSnapshot, sendChatTurn } = await import('../src/core-bridge.js');
+
+      const askPromise = resolveAskSnapshot('ask concorrente', {
+        configOverride: baseOverride({ model: { provider: 'local', model: 'test-model' } }),
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      await expect(sendChatTurn('sessao-nunca-aberta', 'oi')).rejects.toThrow(
+        /Sessão de chat desconhecida ou já encerrada/,
+      );
+
+      releaseAskCall();
+      await askPromise;
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });

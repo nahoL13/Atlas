@@ -1041,3 +1041,21 @@ Nada de estrutural; o atrito ficou em precisão de registro na própria SPEC —
 **Precisamos mudar...**
 
 O `spec-validator` sinalizou que `packages/persona/tests/persona-storage.test.ts:84` usa `chmod 0o500` para simular `EACCES` na escrita atômica — o que só funciona em processo **não-root**; verdadeiro hoje no runner `ubuntu-latest` do GitHub Actions (usuário `runner`), então não é flake em CI, mas é um pressuposto de ambiente não documentado. Encaminhamento: registrado aqui como nota; se a suíte algum dia rodar localmente como root (container root, sandbox elevado) ou migrar de runner, esse caso precisa de um teste alternativo de falha injetada (fake de `fs`/`rename`, não permissão real do SO).
+
+## [SPEC-0045](specs/SPEC-0045-renderer-automated-coverage.md) — Cobertura automatizada de `renderer.js` e gate mecânico contra a deriva das réplicas renderer↔`speech-output.ts` (2026-08-01)
+
+**Descobrimos que...**
+
+A avaliação registrada no fechamento da SPEC-0043 ("cobrir `renderer.js` exige mudar a stack do renderer, portanto ADR novo") pressupunha uma única rota — modularizar/empacotar o renderer para poder importá-lo — e essa premissa nunca foi questionada antes de propagar por `NEXT_CONTEXT.md` e `apps/desktop/CLAUDE.md`. A rota que de fato resolveu o problema é outra: carregar `renderer.js` **como texto**, do disco, num DOM de teste (`jsdom` instanciado programaticamente), deixando o ADR-0019 literal e o diff de produção vazio. Descobrimos também dois erros factuais menores que sobreviveram ao rascunho: a contagem de réplicas renderer↔módulo registrada como "7 ocorrências" estava incompleta (são 8 funções + a constante `PIPER_VOICE_PREFIX`), e a própria SPEC-0045 errou a origem dessa constante (afirmou que `speech-output.ts` a reexporta; na verdade só a importa de `piper-tts.ts`) — corrigido na implementação com um campo `moduleSource` no registro de paridade, sem o qual o par ficaria com o teste de referência errado.
+
+**A arquitetura ajudou porque...**
+
+`jsdom` como `devDependency` só de `apps/desktop`, sem tocar `environment` do `vitest.config.ts` raiz, preservou intacta a condição de validade D12 da SPEC-0042 (equivalência entre verificação escopada e CI depende da config raiz conter só `include`). O epílogo de teste concatenado na avaliação (em vez de qualquer `export` no renderer) manteve o Critério de Aceitação 1 (diff de produção vazio) estruturalmente garantido, não por disciplina de revisão. E a tabela de casos única aplicada às duas implementações (nenhum literal esperado escrito por lado) é o que torna o gate capaz de pegar exatamente o defeito histórico — divergência silenciosa entre cópias internamente coerentes, não incorreção isolada.
+
+**A arquitetura atrapalhou porque...**
+
+Nada de estrutural. O atrito ficou em precisão de registro (a avaliação de "exige ADR" da SPEC-0043, corrigida só agora) e em uma lição de ferramenta: `pnpm exec prettier --check <arquivos>` fora da raiz passou enquanto `pnpm format:check` na raiz reprovou 3 dos mesmos arquivos — só o comando da raiz tem paridade real com a CI, e a suíte de 59 testes novos com uma janela `jsdom` por caso mediu um custo real, ainda que pequeno (`pnpm test` na raiz de ~1.8s para ~2.1s), pelo isolamento por caso que o Critério de Aceitação 9 exige.
+
+**Precisamos mudar...**
+
+O gate mecânico cobre hoje só um eixo — export novo de `speech-output.ts` não classificado; uma réplica vinda de outro módulo (ex.: `piper-tts.ts`) ou lógica nova escrita direto no renderer sem contraparte em TS segue protegida só por convenção documentada, achado 3 do `architecture-reviewer` registrado como limite conhecido, não assumido em silêncio. Encaminhamento: candidato registrado em `docs/05-context/NEXT_CONTEXT.md` (aplicar o mesmo gate aos exports de `piper-tts.ts`, sem diff em `src/`, custo baixo com o harness já pronto), junto da cobertura comportamental ampla dos painéis (SPEC-0045/D7).
