@@ -118,10 +118,17 @@ export type RendererSttResult =
   | { readonly ok: true; readonly text: string; readonly durationMs: number }
   | { readonly ok: false; readonly reason: string; readonly detail?: string };
 
+/** Espelho de `CancelOutcome` (`src/core-bridge.ts`, SPEC-0051). */
+export interface RendererCancelOutcome {
+  readonly cancelled: boolean;
+}
+
 /** Superfície IPC completa exposta em `window.atlas` (espelho de `src/preload.cjs`). */
 export interface AtlasDouble {
   getStatus(): Promise<RendererStatusSnapshot>;
   ask(objective: string): Promise<RendererAskSnapshot>;
+  /** SPEC-0051 — gesto de escape, espelho de `window.atlas.cancel` em `src/preload.cjs`. */
+  cancel(): Promise<RendererCancelOutcome>;
   chat: {
     open(): Promise<string>;
     send(session: string, input: string): Promise<RendererTurnSnapshot>;
@@ -168,6 +175,8 @@ type AtlasOverrides = {
 };
 
 export interface RendererCalls {
+  /** SPEC-0051 — gesto de escape: nº de vezes que `window.atlas.cancel()` foi chamado. */
+  cancelCalls: number;
   readonly chatSend: Array<{ session: string; input: string }>;
   readonly personaSelect: string[];
   readonly personaCreate: unknown[];
@@ -196,6 +205,7 @@ export interface RendererCalls {
 
 function createCalls(): RendererCalls {
   return {
+    cancelCalls: 0,
     chatSend: [],
     personaSelect: [],
     personaCreate: [],
@@ -229,6 +239,8 @@ export interface RendererFixtureOptions {
   readonly piperVoices?: readonly RendererPiperVoice[];
   readonly piperAvailable?: boolean;
   readonly chatOpenSessionId?: string;
+  /** SPEC-0051 — desfecho devolvido por `window.atlas.cancel()` (default `{cancelled:false}`), contado em `calls.cancelCalls`. */
+  readonly cancelOutcome?: RendererCancelOutcome | Promise<RendererCancelOutcome>;
   readonly chatSend?: (
     session: string,
     input: string,
@@ -292,6 +304,10 @@ function buildAtlasDouble(options: RendererFixtureOptions, calls: RendererCalls)
   const base: AtlasDouble = {
     getStatus: () => Promise.resolve(status),
     ask: () => Promise.resolve({ text: '', steps: [], learned: [] }),
+    cancel: () => {
+      calls.cancelCalls += 1;
+      return Promise.resolve(options.cancelOutcome ?? { cancelled: false });
+    },
     chat: {
       open: () => Promise.resolve(chatOpenSessionId),
       send: (session, input) => {
@@ -425,6 +441,7 @@ function buildAtlasDouble(options: RendererFixtureOptions, calls: RendererCalls)
   return {
     getStatus: overrides.getStatus ?? base.getStatus,
     ask: overrides.ask ?? base.ask,
+    cancel: overrides.cancel ?? base.cancel,
     chat: { ...base.chat, ...overrides.chat },
     memory: { ...base.memory, ...overrides.memory },
     persona: { ...base.persona, ...overrides.persona },

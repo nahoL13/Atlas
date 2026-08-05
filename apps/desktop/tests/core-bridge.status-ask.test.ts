@@ -67,20 +67,25 @@ describe('resolveAskSnapshot', () => {
     expect(JSON.parse(JSON.stringify(snapshot))).toEqual(snapshot);
   });
 
-  it('repassa o confirm injetado ao Core via CreateAtlasDeps.confirm', async () => {
-    const confirm = { request: async () => true };
+  it('repassa o confirm injetado ao Core via CreateAtlasDeps.confirm (SPEC-0051: envolvido por wrapConfirmForAsk, D8 — delegação comportamental, não mais identidade de objeto)', async () => {
+    const confirm = { request: vi.fn(async () => true) };
     const spyModule = await import('@atlas/core');
     const original = spyModule.createAtlas;
-    let receivedConfirm: unknown;
+    let receivedConfirm: { request: (action: unknown) => Promise<boolean> } | undefined;
     const spy = vi.spyOn(spyModule, 'createAtlas').mockImplementation(async (config, deps) => {
-      receivedConfirm = deps?.confirm;
+      receivedConfirm = deps?.confirm as typeof receivedConfirm;
       return original(config, deps);
     });
 
     const { resolveAskSnapshot } = await import('../src/core-bridge.js');
     await resolveAskSnapshot('oi', { confirm, configOverride: baseOverride() });
 
-    expect(receivedConfirm).toBe(confirm);
+    // Desde a SPEC-0051, o Core recebe o envelope de contenção (D8), não a
+    // porta injetada diretamente — a prova de propagação passa a ser
+    // comportamental: chamar a porta recebida delega ao `confirm` original.
+    expect(receivedConfirm).not.toBe(confirm);
+    await expect(receivedConfirm?.request({} as never)).resolves.toBe(true);
+    expect(confirm.request).toHaveBeenCalledTimes(1);
     spy.mockRestore();
   });
 
@@ -231,6 +236,54 @@ describe('resolveAskSnapshot', () => {
     } finally {
       globalThis.fetch = originalFetch;
       spy.mockRestore();
+    }
+  });
+
+  it('SPEC-0051 (Frente 6.2, D3): guarda de entrada lê hasActiveOperation() — um ask ABANDONADO e ainda não assentado não bloqueia um ask novo', async () => {
+    const originalFetch = globalThis.fetch;
+    let callCount = 0;
+    let releaseFirstCall: () => void = () => {};
+    const firstCallGate = new Promise<void>((resolve) => {
+      releaseFirstCall = resolve;
+    });
+
+    function ollamaResponse(content: string): Response {
+      return new Response(JSON.stringify({ message: { content } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    globalThis.fetch = vi.fn(async () => {
+      callCount += 1;
+      if (callCount === 1) {
+        await firstCallGate;
+        return ollamaResponse('oi, tudo bem?');
+      }
+      return ollamaResponse('[]');
+    }) as typeof fetch;
+
+    try {
+      const { cancelInFlightOperation, resolveAskSnapshot } = await import('../src/core-bridge.js');
+
+      const firstAsk = resolveAskSnapshot('oi', {
+        configOverride: baseOverride({ model: { provider: 'local', model: 'test-model' } }),
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(cancelInFlightOperation()).toEqual({ cancelled: true });
+      await expect(firstAsk).rejects.toThrow('Pergunta cancelada pelo usuário.');
+
+      // Devolve o direito de perguntar de novo IMEDIATAMENTE, mesmo com o
+      // primeiro ask ainda vivo em segundo plano (D3: `hasActiveOperation()`
+      // ignora as abandonadas).
+      const second = await resolveAskSnapshot('outro', { configOverride: baseOverride() });
+      expect(second.text).toBe('[fake] outro');
+
+      releaseFirstCall();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    } finally {
+      globalThis.fetch = originalFetch;
     }
   });
 });

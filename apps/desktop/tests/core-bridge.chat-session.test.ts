@@ -22,13 +22,13 @@ describe('chat vivo (openChatSession/sendChatTurn/closeChatSession)', () => {
     spy.mockRestore();
   });
 
-  it('openChatSession repassa confirm e configOverride ao Core (paridade com resolveAskSnapshot)', async () => {
-    const confirm = { request: async () => true };
+  it('openChatSession repassa confirm e configOverride ao Core (paridade com resolveAskSnapshot; SPEC-0051: envolvido por wrapConfirmForChatSession, D8 — delegação comportamental, não mais identidade de objeto)', async () => {
+    const confirm = { request: vi.fn(async () => true) };
     const spyModule = await import('@atlas/core');
     const original = spyModule.createAtlas;
-    let receivedConfirm: unknown;
+    let receivedConfirm: { request: (action: unknown) => Promise<boolean> } | undefined;
     const spy = vi.spyOn(spyModule, 'createAtlas').mockImplementation(async (config, deps) => {
-      receivedConfirm = deps?.confirm;
+      receivedConfirm = deps?.confirm as typeof receivedConfirm;
       return original(config, deps);
     });
 
@@ -38,7 +38,13 @@ describe('chat vivo (openChatSession/sendChatTurn/closeChatSession)', () => {
       configOverride: baseOverride({ logLevel: 'debug' }),
     });
 
-    expect(receivedConfirm).toBe(confirm);
+    // Desde a SPEC-0051, o Core recebe o envelope de contenção pegajosa por
+    // sessão (D8), não a porta injetada diretamente — a prova de propagação
+    // passa a ser comportamental: chamar a porta recebida delega ao
+    // `confirm` original enquanto não houver turno abandonado na sessão.
+    expect(receivedConfirm).not.toBe(confirm);
+    await expect(receivedConfirm?.request({} as never)).resolves.toBe(true);
+    expect(confirm.request).toHaveBeenCalledTimes(1);
 
     await closeChatSession(session);
     spy.mockRestore();
@@ -247,6 +253,60 @@ describe('chat vivo (openChatSession/sendChatTurn/closeChatSession)', () => {
 
       releaseAskCall();
       await askPromise;
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('SPEC-0051 (Frente 6.2, ordem das guardas D15): sendChatTurn sobre um handle desconhecido durante a quarentena de OUTRA sessão rejeita com o erro de sessão desconhecida, não com o de quarentena', async () => {
+    const originalFetch = globalThis.fetch;
+    let callCount = 0;
+    let releaseFirstCall: () => void = () => {};
+    const firstCallGate = new Promise<void>((resolve) => {
+      releaseFirstCall = resolve;
+    });
+
+    function ollamaResponse(content: string): Response {
+      return new Response(JSON.stringify({ message: { content } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    globalThis.fetch = vi.fn(async () => {
+      callCount += 1;
+      if (callCount === 1) {
+        await firstCallGate;
+        return ollamaResponse('oi, tudo bem?');
+      }
+      return ollamaResponse('[]');
+    }) as typeof fetch;
+
+    try {
+      const { cancelInFlightOperation, openChatSession, sendChatTurn, closeChatSession } =
+        await import('../src/core-bridge.js');
+
+      const session = await openChatSession({
+        configOverride: baseOverride({ model: { provider: 'local', model: 'test-model' } }),
+      });
+      const t1 = sendChatTurn(session, 'oi');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(cancelInFlightOperation()).toEqual({ cancelled: true });
+      await expect(t1).rejects.toThrow('Turno cancelado pelo usuário.');
+
+      // `mustGetChatSession` roda ANTES de `hasAbandonedTurnForSession` — um
+      // handle nunca aberto rejeita com o erro de estrutura, mesmo havendo
+      // uma sessão (outra) em quarentena no momento.
+      await expect(sendChatTurn('sessao-nunca-aberta', 'oi')).rejects.toThrow(
+        /Sessão de chat desconhecida ou já encerrada/,
+      );
+
+      releaseFirstCall();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      await closeChatSession(session);
     } finally {
       globalThis.fetch = originalFetch;
     }

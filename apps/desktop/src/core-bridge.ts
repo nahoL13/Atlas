@@ -106,12 +106,35 @@ export interface PermissionRootsSelection extends PermissionRoots {
 let selectedPersona: string | undefined;
 
 /**
- * Rastreio de turno em voo (Decisão D9): `sendChatTurn` marca a sessão como
- * ocupada ao entrar e desmarca em `finally`. É o que permite `selectPersona`
- * recusar a troca sem destruir um turno em andamento nem perder os `learned`
- * daquele turno.
+ * Registro único de operações em voo (SPEC-0051, Decisão D4): substitui o
+ * par `busySessions`/`inFlightOperations` (SPEC-0038/0050) por um `Set` com
+ * identidade — é o que torna possível distinguir uma operação ABANDONADA de
+ * uma ativa, o que um contador não sustentava (o `finally` de um turno
+ * abandonado apagaria a marca de um turno novo na mesma `SessionId`).
+ *
+ * Alimentado por `resolveAskSnapshot` (`'ask'`), `sendChatTurn`
+ * (`'chat-turn'`, com `session`) e `openChatSession` (`'open-session'`, não
+ * cancelável — D5 da SPEC-0050 — nem guardada por `hasActiveOperation()`,
+ * mas conta para `hasInFlightOperation()`, correção A6 da SPEC-0038). Cada
+ * função adiciona o registro antes do primeiro `await` e o remove no
+ * `finally` do trabalho REAL — nunca no da promessa devolvida ao chamador,
+ * que pode assentar antes por abandono (Frente 2).
+ *
+ * `record.reject` é o `reject` do *deferred* de abandono daquela operação:
+ * `cancelInFlightOperation()` (D7) o invoca, marcando `abandoned = true` e
+ * fazendo a promessa do gesto rejeitar imediatamente com a mensagem pinada
+ * do `kind`.
  */
-const busySessions = new Set<SessionId>();
+type OperationKind = 'ask' | 'chat-turn' | 'open-session';
+
+interface OperationRecord {
+  readonly kind: OperationKind;
+  readonly session?: SessionId;
+  abandoned: boolean;
+  reject: (error: Error) => void;
+}
+
+const operations = new Set<OperationRecord>();
 
 /**
  * Seleção de permissões em runtime (SPEC-0038, Decisão D2): estado de módulo
@@ -123,36 +146,70 @@ const busySessions = new Set<SessionId>();
 let selectedPermissions: PermissionRoots | undefined;
 
 /**
- * Rastreio generalizado de operação em voo (SPEC-0038, Decisão D10):
- * contador de operações que sobem um Core **fora** do `Map` de sessões de
- * chat vivas — `resolveAskSnapshot` e o intervalo de abertura de
- * `openChatSession` (correção A6 do gate: entre o `createAtlas` e o
- * registro em `chatSessions`, a sessão nova ainda não está no `busySessions`
- * nem em `chatSessions`, então precisa do próprio rastreio). Cada operação
- * incrementa antes do primeiro `await` e decrementa em `finally`.
- *
- * `hasInFlightOperation()` tem **quatro consumidores / cinco chamadas**
- * (SPEC-0050): `updatePersona` (SPEC-0039, editar a Persona ativa),
- * `selectPermissionRoots` (2 chamadas — a checagem original e a rechecagem
- * A7 imediatamente antes de aplicar), `resolveAskSnapshot` e `sendChatTurn`
- * (ambos recusam a entrada contra si mesmos e um contra o outro). Todos
- * consultam a mesma condição — nenhum reescreve inline.
- *
- * `selectPersona` (`:215`) usa uma condição **parcial**: só
- * `busySessions.size > 0`, inline, sem `inFlightOperations`. Consequência:
- * um `ask` em voo **não** bloqueia a troca de Persona, embora bloqueie a
- * edição da Persona ativa — assimetria pré-existente, registrada e não
- * alterada por esta SPEC (D12).
- *
- * `openChatSession` **marca** este contador, mas não é guardada por ele
- * (D5): segue abrindo sessão mesmo com operação em voo.
- * `resolveStatusSnapshot`, `resolveMemorySnapshot` e `forgetFact` seguem
- * sem marcar e sem recusar (SPEC-0038/D10) — não executam Tools.
+ * Predicado de SEGURANÇA (SPEC-0038/0050, preservado pela SPEC-0051, D3):
+ * registro não vazio — **inclui** operações abandonadas ainda não
+ * assentadas. Consumidores inalterados: `updatePersona` (1×),
+ * `selectPermissionRoots` (2× — checagem original e rechecagem A7
+ * imediatamente antes de aplicar). Cancelar não destrava política de
+ * permissões nem edição da Persona ativa enquanto um Core abandonado ainda
+ * estiver vivo — o buraco que as correções A6/A7 da SPEC-0038 fecharam
+ * (ADR-0013) não é reaberto por esta SPEC.
  */
-let inFlightOperations = 0;
-
 function hasInFlightOperation(): boolean {
-  return busySessions.size > 0 || inFlightOperations > 0;
+  return operations.size > 0;
+}
+
+/**
+ * Predicado de CONVERSAÇÃO (SPEC-0051, D3, novo): existe registro com
+ * `abandoned === false` — ignora as abandonadas. Guarda de entrada de
+ * `resolveAskSnapshot`/`sendChatTurn` (no lugar de `hasInFlightOperation()`,
+ * SPEC-0050): é o que devolve ao usuário o direito de perguntar de novo logo
+ * após cancelar. Um registro `'open-session'` nunca é marcado abandonado —
+ * conta como ativo enquanto durar, preservando o comportamento da
+ * SPEC-0050 durante a janela de abertura de `openChatSession` (D5 intacta).
+ */
+function hasActiveOperation(): boolean {
+  for (const record of operations) {
+    if (!record.abandoned) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Predicado de SESSÃO (SPEC-0051, D15, novo): existe um registro
+ * `'chat-turn'` daquela `session`, abandonado e ainda não assentado. Governa
+ * a QUARENTENA de `sendChatTurn` (recusa turno novo na mesma sessão —
+ * nenhum documento sustenta reentrância de `respond` no mesmo Core/
+ * `SessionId`, invariante 8) e a negação PEGAJOSA do `ConfirmPort` daquela
+ * sessão (D8) — os dois caem juntos quando o registro é removido no
+ * `finally` do trabalho abandonado.
+ */
+function hasAbandonedTurnForSession(session: SessionId): boolean {
+  for (const record of operations) {
+    if (record.kind === 'chat-turn' && record.session === session && record.abandoned) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Predicado PARCIAL de `selectPersona` (SPEC-0050/D12, nomeado pela
+ * SPEC-0051/D5 sem mudar comportamento): existe um registro `'chat-turn'` —
+ * **inclui** as abandonadas, mesma assimetria pré-existente (um `ask` em voo
+ * não bloqueia a troca de Persona, embora bloqueie a edição da Persona ativa
+ * via `hasInFlightOperation()`). Candidato de uniformização segue aberto
+ * (D12 da SPEC-0050), não fechado por esta SPEC.
+ */
+function hasChatTurnOperation(): boolean {
+  for (const record of operations) {
+    if (record.kind === 'chat-turn') {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -228,7 +285,7 @@ export async function selectPersona(id: string, deps: PersonaDeps = {}): Promise
   if (!personaService.has(id)) {
     throw new Error(`Persona desconhecida: ${id}`);
   }
-  if (busySessions.size > 0) {
+  if (hasChatTurnOperation()) {
     throw new Error('Não é possível trocar de Persona: há um turno de chat em andamento.');
   }
 
@@ -365,13 +422,13 @@ function withSelections(configOverride: AtlasConfigOverride): AtlasConfigOverrid
 /**
  * Reset explícito do estado de módulo do bridge — uso exclusivo dos testes
  * (isolamento entre casos): Persona selecionada, permissões selecionadas e
- * os dois rastreios de operação em voo (`busySessions`/`inFlightOperations`).
+ * o registro único de operações em voo (SPEC-0051). Segue **não** fechando
+ * sessões vivas (SPEC-0042/D15, aberto).
  */
 export function __resetBridgeStateForTests(): void {
   selectedPersona = undefined;
   selectedPermissions = undefined;
-  busySessions.clear();
-  inFlightOperations = 0;
+  operations.clear();
 }
 
 /**
@@ -550,63 +607,149 @@ const fallbackConfirm: ConfirmPort = {
 };
 
 /**
+ * Envelope do `ConfirmPort` de um `ask` (SPEC-0051, D8/Frente 3): o Core de
+ * um `ask` é exclusivo daquela operação, então o alcance da contenção é o
+ * próprio `OperationRecord`. Nega **sem** chamar a porta injetada se já
+ * abandonado; se a porta já estava pendente quando o abandono ocorreu, a
+ * resposta que chegar depois é descartada e o resultado é `false`. Sem
+ * abandono, transparente — delega e devolve o valor tal e qual.
+ */
+function wrapConfirmForAsk(confirm: ConfirmPort, record: OperationRecord): ConfirmPort {
+  return {
+    request: async (action) => {
+      if (record.abandoned) {
+        return false;
+      }
+      const granted = await confirm.request(action);
+      return record.abandoned ? false : granted;
+    },
+  };
+}
+
+/**
+ * Envelope do `ConfirmPort` de uma sessão de chat (SPEC-0051, D8, achado A1
+ * do gate): a porta é injetada **uma vez**, em `openChatSession`, e vive
+ * pela sessão inteira — o alcance da contenção é portanto a SESSÃO, **não**
+ * o turno. Enquanto `hasAbandonedTurnForSession(session)` for verdadeiro,
+ * nega tudo sem chamar a porta injetada, independentemente de qual turno
+ * originou o pedido (nenhuma ação destrutiva é aprovada em nome de um turno
+ * abandonado). `getSession` é uma leitura tardia (R1): no momento em que
+ * este envelope é construído, dentro de `openChatSession`, a `SessionId`
+ * ainda não existe (`createAtlas` precede `atlas.context.openSession`) — a
+ * caixa mutável é preenchida logo depois; antes disso o envelope é
+ * transparente por construção (não pode haver turno abandonado de uma
+ * sessão que ainda não existe).
+ */
+function wrapConfirmForChatSession(
+  confirm: ConfirmPort,
+  getSession: () => SessionId | undefined,
+): ConfirmPort {
+  return {
+    request: async (action) => {
+      const before = getSession();
+      if (before !== undefined && hasAbandonedTurnForSession(before)) {
+        return false;
+      }
+      const granted = await confirm.request(action);
+      const after = getSession();
+      if (after !== undefined && hasAbandonedTurnForSession(after)) {
+        return false;
+      }
+      return granted;
+    },
+  };
+}
+
+/**
  * Round-trip stateless com o Core (espelho de `resolveStatusSnapshot` e do
  * `runAsk` da CLI): sobe a plataforma via `createAtlas` injetando o
- * `ConfirmPort` recebido, chama `atlas.cognitive.ask`, grava os fatos
- * aprendidos (`atlas.memory.remember(fact, 'learned')`, paridade com
- * `runAsk` — nunca gravação silenciosa), desliga (`finally`) e devolve um
- * `AskSnapshot` plano serializável por IPC. Não mantém a plataforma nem uma
- * `Conversation` viva entre chamadas (isso é 2.2).
+ * `ConfirmPort` recebido (envolvido por `wrapConfirmForAsk`, SPEC-0051),
+ * chama `atlas.cognitive.ask`, grava os fatos aprendidos
+ * (`atlas.memory.remember(fact, 'learned')`, paridade com `runAsk` — nunca
+ * gravação silenciosa), desliga (`finally`) e devolve um `AskSnapshot` plano
+ * serializável por IPC. Não mantém a plataforma nem uma `Conversation` viva
+ * entre chamadas (isso é 2.2).
  *
- * Entra no rastreio generalizado de operação em voo (SPEC-0038, D10): marca
- * `inFlightOperations` **antes do primeiro `await`** e desmarca em
- * `finally`, ao lado do `busySessions` que `sendChatTurn` já alimenta — é o
- * que permite `selectPermissionRoots` recusar a aplicação de uma política
- * nova enquanto este `ask` ainda estiver rodando, sem alterar o resultado
- * nem o fluxo do `ask` em si.
+ * Entra no registro único de operações em voo (SPEC-0051, D4; SPEC-0038,
+ * D10 original): adiciona um `OperationRecord` **antes do primeiro `await`**
+ * e o remove no `finally` do trabalho real — é o que permite
+ * `selectPermissionRoots`/`updatePersona` recusar enquanto este `ask` ainda
+ * estiver rodando (`hasInFlightOperation()`, inclui abandonadas).
  *
- * Desde a SPEC-0050, também **lê** essa mesma condição em guarda de entrada
- * (`hasInFlightOperation()`, antes do incremento e de qualquer `await`): um
- * `ask` disparado durante outro `ask`, durante um turno de chat, ou durante
- * a janela de abertura de `openChatSession`, é recusado com `Error`
- * estruturado — sem subir Core, sem tocar o contador e sem efeito colateral.
+ * Desde a SPEC-0050, também **lê** `hasActiveOperation()` (SPEC-0051, D3 —
+ * ignora abandonadas) em guarda de entrada, antes de registrar e de
+ * qualquer `await`: um `ask` disparado durante outro `ask` ATIVO, durante um
+ * turno de chat ATIVO, ou durante a janela de abertura de `openChatSession`,
+ * é recusado com `Error` estruturado — sem subir Core, sem registrar nada e
+ * sem efeito colateral. Um `ask`/turno **abandonado** não bloqueia mais um
+ * `ask` novo (é exatamente o direito que cancelar devolve).
+ *
+ * Desde a SPEC-0051 (Frente 2, D6/D7): a promessa devolvida ao chamador
+ * assenta pelo **primeiro** de dois desfechos — o trabalho real, ou o
+ * abandono via `cancelInFlightOperation()` (rejeição imediata com a
+ * mensagem pinada `Pergunta cancelada pelo usuário.`). O trabalho real segue
+ * destacado e, se abandonado, descarta o resultado (nenhum
+ * `atlas.memory.remember` é chamado) — mas o `atlas.shutdown()` do `finally`
+ * continua acontecendo (D9).
  */
 export async function resolveAskSnapshot(
   objective: string,
   deps: { confirm?: ConfirmPort; configOverride?: AtlasConfigOverride } = {},
 ): Promise<AskSnapshot> {
   const { confirm = fallbackConfirm, configOverride = {} } = deps;
-  // Guarda de entrada (SPEC-0050): recusa ANTES do incremento e de qualquer
-  // `await` — uma recusa não altera o contador nem deixa resíduo de estado.
-  if (hasInFlightOperation()) {
+  // Guarda de entrada (SPEC-0050, refinada pela SPEC-0051/D3): recusa ANTES
+  // de registrar e de qualquer `await` — uma recusa não deixa resíduo de
+  // estado. Só operações ATIVAS bloqueiam (D3): uma abandonada não conta.
+  if (hasActiveOperation()) {
     throw new Error('Não é possível iniciar uma pergunta: há uma operação em andamento.');
   }
-  inFlightOperations += 1;
-  try {
-    const atlas = await createAtlas(
-      { config: withSelections(configOverride) },
-      { confirm, personaStorage: personaStorageFor(configOverride) },
-    );
+
+  const record: OperationRecord = { kind: 'ask', abandoned: false, reject: () => {} };
+  const abandonPromise = new Promise<never>((_resolve, reject) => {
+    record.reject = reject;
+  });
+  operations.add(record);
+
+  const work = (async (): Promise<AskSnapshot> => {
     try {
-      const result = await atlas.cognitive.ask(objective);
-      const learned: string[] = [];
-      for (const fact of result.learned ?? []) {
-        const { created } = await atlas.memory.remember(fact, 'learned');
-        if (created) {
-          learned.push(fact);
+      const atlas = await createAtlas(
+        { config: withSelections(configOverride) },
+        {
+          confirm: wrapConfirmForAsk(confirm, record),
+          personaStorage: personaStorageFor(configOverride),
+        },
+      );
+      try {
+        const result = await atlas.cognitive.ask(objective);
+        // Contenção (D9): resultado do trabalho ABANDONADO é descartado por
+        // inteiro — nenhum `remember` é chamado. A promessa devolvida ao
+        // chamador já assentou por abandono; este valor nunca é observado.
+        if (record.abandoned) {
+          return { text: '', steps: [], learned: [] };
         }
+        const learned: string[] = [];
+        for (const fact of result.learned ?? []) {
+          const { created } = await atlas.memory.remember(fact, 'learned');
+          if (created) {
+            learned.push(fact);
+          }
+        }
+        return {
+          text: result.text,
+          steps: formatSteps(result.steps),
+          learned,
+        };
+      } finally {
+        // O `shutdown` de um `ask` abandonado continua acontecendo (D9) —
+        // higiene de recurso, não efeito de domínio.
+        await atlas.shutdown();
       }
-      return {
-        text: result.text,
-        steps: formatSteps(result.steps),
-        learned,
-      };
     } finally {
-      await atlas.shutdown();
+      operations.delete(record);
     }
-  } finally {
-    inFlightOperations -= 1;
-  }
+  })();
+
+  return Promise.race([work, abandonPromise]);
 }
 
 export interface TurnSnapshot {
@@ -643,29 +786,45 @@ function mustGetChatSession(session: SessionId): ChatSessionEntry {
  * `closeChatSession` — diferente de `resolveAskSnapshot`, que sobe e
  * desliga por chamada.
  *
- * Entra no rastreio generalizado de operação em voo (SPEC-0038, correção A6
- * do gate): entre o `createAtlas` e o registro em `chatSessions` a sessão
- * nova ainda não está no `busySessions` nem no `Map` de sessões vivas — sem
- * marcar aqui, `selectPermissionRoots` poderia aplicar uma política nova
- * bem no meio da abertura, sob um Core que nasceria com a política antiga e
+ * Entra no registro único de operações em voo (SPEC-0051, D4; SPEC-0038,
+ * correção A6 do gate original): entre o `createAtlas` e o registro em
+ * `chatSessions` a sessão nova ainda não está rastreável por
+ * `hasAbandonedTurnForSession` nem no `Map` de sessões vivas — sem marcar
+ * aqui, `selectPermissionRoots` poderia aplicar uma política nova bem no
+ * meio da abertura, sob um Core que nasceria com a política antiga e
  * sobreviveria (uma sessão de chat inteira) sem ser rastreado nem
- * encerrado. Marca antes do primeiro `await` e desmarca em `finally`.
+ * encerrado. Adiciona um `OperationRecord` `'open-session'` (não cancelável,
+ * D5 da SPEC-0050) antes do primeiro `await` e o remove em `finally`.
+ *
+ * O `ConfirmPort` recebido é envolvido por `wrapConfirmForChatSession`
+ * (SPEC-0051, D8): é este o **único** ponto de injeção da porta para toda a
+ * vida da sessão — `sendChatTurn` nunca injeta porta alguma —, por isso a
+ * contenção pegajosa de consentimento é por SESSÃO, não por turno (achado
+ * A1 do gate). `getSession` lê uma caixa mutável (`session`, R1) preenchida
+ * logo após `atlas.context.openSession`, porque a `SessionId` ainda não
+ * existe no momento em que `createAtlas` é chamado.
  */
 export async function openChatSession(
   deps: { confirm?: ConfirmPort; configOverride?: AtlasConfigOverride } = {},
 ): Promise<SessionId> {
   const { confirm = fallbackConfirm, configOverride = {} } = deps;
-  inFlightOperations += 1;
+  const record: OperationRecord = { kind: 'open-session', abandoned: false, reject: () => {} };
+  operations.add(record);
   try {
+    // Caixa mutável (R1): a `SessionId` ainda não existe quando `createAtlas`
+    // é chamado — `wrapConfirmForChatSession` lê `sessionBox.current` tardiamente.
+    const sessionBox: { current?: SessionId } = {};
+    const wrappedConfirm = wrapConfirmForChatSession(confirm, () => sessionBox.current);
     const atlas = await createAtlas(
       { config: withSelections(configOverride) },
-      { confirm, personaStorage: personaStorageFor(configOverride) },
+      { confirm: wrappedConfirm, personaStorage: personaStorageFor(configOverride) },
     );
     const session = atlas.context.openSession(atlas.cognitive.startConversation());
+    sessionBox.current = session;
     chatSessions.set(session, { atlas });
     return session;
   } finally {
-    inFlightOperations -= 1;
+    operations.delete(record);
   }
 }
 
@@ -677,46 +836,124 @@ export async function openChatSession(
  * próximo turno. Se o turno falhar (ex.: `ATLAS_MODEL_GATEWAY`), a sessão
  * permanece aberta (paridade com a resiliência do `runChat`).
  *
- * Desde a SPEC-0050, guarda a entrada por `hasInFlightOperation()` — depois
- * de validar o handle (`mustGetChatSession`, erro de estrutura antes de
- * erro de estado, D4) e antes de marcar `busySessions`: um turno disparado
- * durante um `ask`, durante outro turno, ou durante a abertura de uma
- * sessão, é recusado com `Error` estruturado, sem chamar
- * `atlas.cognitive.respond`, sem marcar `busySessions` e sem derrubar a
- * sessão — que segue viva e utilizável no turno seguinte.
+ * Ordem exata das três guardas de entrada (SPEC-0051, Escopo/D15):
+ * 1. `mustGetChatSession` — erro de estrutura antes de erro de estado (D4 da
+ *    SPEC-0050, preservada);
+ * 2. `hasAbandonedTurnForSession(session)` — QUARENTENA (D15, achado A2 do
+ *    gate): recusa turno novo enquanto um turno abandonado daquela sessão
+ *    não assentou. Nenhum documento sustenta reentrância de `respond` no
+ *    mesmo Core/`SessionId` (invariante 8) — aceitar o turno novo
+ *    pressuporia exatamente isso, além de reabrir o consentimento cruzado
+ *    do achado A1;
+ * 3. `hasActiveOperation()` (SPEC-0051, D3) — a mensagem pinada da
+ *    SPEC-0050, inalterada; ignora operações abandonadas.
+ *
+ * Nenhuma das três marca o registro nem toca o Core; a sessão segue viva e
+ * utilizável no turno seguinte em qualquer recusa.
+ *
+ * Desde a SPEC-0051 (Frente 2, D6/D7): a promessa devolvida ao chamador
+ * assenta pelo **primeiro** de dois desfechos — o trabalho real, ou o
+ * abandono via `cancelInFlightOperation()` (rejeição imediata com a
+ * mensagem pinada `Turno cancelado pelo usuário.`). O trabalho real segue
+ * destacado e, se abandonado, descarta o resultado por inteiro: nem
+ * `atlas.context.updateConversation` nem `atlas.memory.remember` são
+ * chamados — a conversa da sessão fica exatamente como estava antes do
+ * turno. O `ConfirmPort` da sessão nunca é injetado aqui (D8) — é o mesmo
+ * de `openChatSession`, envolvido por `wrapConfirmForChatSession`.
  */
 export async function sendChatTurn(session: SessionId, input: string): Promise<TurnSnapshot> {
   const { atlas } = mustGetChatSession(session);
-  // Guarda de entrada (SPEC-0050, D4): o handle é validado ANTES (erro de
-  // estrutura antes de erro de estado) — um handle desconhecido durante uma
-  // operação em voo produz o erro de sessão desconhecida, não o de operação
-  // em andamento. A recusa por operação em voo não marca `busySessions`, não
-  // toca o Core e não derruba a sessão, que segue viva e utilizável.
-  if (hasInFlightOperation()) {
+  if (hasAbandonedTurnForSession(session)) {
+    throw new Error(
+      'Não é possível enviar o turno: o turno cancelado desta conversa ainda está encerrando.',
+    );
+  }
+  if (hasActiveOperation()) {
     throw new Error('Não é possível enviar o turno: há uma operação em andamento.');
   }
-  // Marca a sessão como ocupada ANTES do primeiro `await` (Decisão D9): é o
-  // que faz `selectPersona` ver o turno em voo mesmo se disparado logo em
-  // seguida, sem janela de corrida.
-  busySessions.add(session);
-  try {
-    const turn = await atlas.cognitive.respond(atlas.context.getConversation(session), input);
-    atlas.context.updateConversation(session, turn.conversation);
-    const learned: string[] = [];
-    for (const fact of turn.learned ?? []) {
-      const { created } = await atlas.memory.remember(fact, 'learned');
-      if (created) {
-        learned.push(fact);
+
+  const record: OperationRecord = {
+    kind: 'chat-turn',
+    session,
+    abandoned: false,
+    reject: () => {},
+  };
+  const abandonPromise = new Promise<never>((_resolve, reject) => {
+    record.reject = reject;
+  });
+  operations.add(record);
+
+  const work = (async (): Promise<TurnSnapshot> => {
+    try {
+      const turn = await atlas.cognitive.respond(atlas.context.getConversation(session), input);
+      // Contenção (D9): resultado do trabalho ABANDONADO é descartado por
+      // inteiro — nem `updateConversation` nem `remember` são chamados. A
+      // conversa da sessão fica exatamente como estava antes deste turno.
+      if (record.abandoned) {
+        return { reply: '', steps: [], learned: [] };
       }
+      atlas.context.updateConversation(session, turn.conversation);
+      const learned: string[] = [];
+      for (const fact of turn.learned ?? []) {
+        const { created } = await atlas.memory.remember(fact, 'learned');
+        if (created) {
+          learned.push(fact);
+        }
+      }
+      return {
+        reply: turn.reply,
+        steps: formatSteps(turn.steps),
+        learned,
+      };
+    } finally {
+      // Remoção do registro (D9): é o que faz `hasInFlightOperation()` e
+      // `hasAbandonedTurnForSession(session)` voltarem a `false` só quando o
+      // trabalho abandonado de fato encerra — segurança e quarentena caem
+      // juntas.
+      operations.delete(record);
     }
-    return {
-      reply: turn.reply,
-      steps: formatSteps(turn.steps),
-      learned,
-    };
-  } finally {
-    busySessions.delete(session);
+  })();
+
+  return Promise.race([work, abandonPromise]);
+}
+
+export interface CancelOutcome {
+  readonly cancelled: boolean;
+}
+
+/** Mensagens pinadas por CA — texto exato exigido pelos Critérios de Aceitação 6/7. */
+const CANCEL_MESSAGES: Record<'ask' | 'chat-turn', string> = {
+  ask: 'Pergunta cancelada pelo usuário.',
+  'chat-turn': 'Turno cancelado pelo usuário.',
+};
+
+/**
+ * Gesto de escape (SPEC-0051, D7): síncrona, global — marca como
+ * **abandonada** toda operação cancelável (`'ask'` e `'chat-turn'`) ainda
+ * não abandonada, disparando a rejeição pinada de cada uma. Operações
+ * `'open-session'` **não** são canceláveis (D5 da SPEC-0050) e são
+ * ignoradas. Nunca lança, nunca sobe/desliga um Core — só muta estado de
+ * módulo e dispara rejeições já pendentes.
+ *
+ * Devolve `{ cancelled: true }` sse ao menos uma operação foi marcada;
+ * `{ cancelled: false }` sem nada cancelável em voo, ou numa 2ª chamada
+ * imediatamente seguinte (idempotente — nada resta para abandonar).
+ *
+ * Global, não por operação (D7): com a quarentena de sessão (D15), há no
+ * máximo **uma** operação cancelável ativa por vez — um handle por operação
+ * seria superfície sem caso de uso.
+ */
+export function cancelInFlightOperation(): CancelOutcome {
+  let cancelled = false;
+  for (const record of operations) {
+    if (record.kind === 'open-session' || record.abandoned) {
+      continue;
+    }
+    record.abandoned = true;
+    record.reject(new Error(CANCEL_MESSAGES[record.kind]));
+    cancelled = true;
   }
+  return { cancelled };
 }
 
 /**

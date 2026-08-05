@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { createInterface } from 'node:readline';
 import { app, BrowserWindow, dialog, ipcMain, session } from 'electron';
 import {
+  cancelInFlightOperation,
   closeChatSession,
   createPersona,
   deletePersona,
@@ -367,6 +368,11 @@ ipcMain.handle('atlas:stt:capture:begin', () => {
 ipcMain.handle('atlas:stt:capture:end', () => {
   captureWindow.end();
 });
+
+// Gesto de escape (SPEC-0051): canal síncrono na semântica de `handle`
+// (nunca sobe/desliga um Core) — só marca como abandonada toda operação
+// cancelável (`ask`/turno de chat) ainda ativa.
+ipcMain.handle('atlas:cancel', () => cancelInFlightOperation());
 
 ipcMain.handle('atlas:permissions:select', async (_event, roots: PermissionRoots) => {
   const selection = await selectPermissionRoots(roots, { confirmGrant });

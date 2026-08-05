@@ -414,6 +414,60 @@ describe('configuração de permissões (selectPermissionRoots/selectedPermissio
     }
   });
 
+  it('SPEC-0051 (Frente 6.3): uma operação ABANDONADA ainda bloqueia selectPermissionRoots — o predicado de segurança inclui abandonadas; aceito depois de assentar', async () => {
+    const originalFetch = globalThis.fetch;
+    let callCount = 0;
+    let releaseFirstCall: () => void = () => {};
+    const firstCallGate = new Promise<void>((resolve) => {
+      releaseFirstCall = resolve;
+    });
+
+    function ollamaResponse(content: string): Response {
+      return new Response(JSON.stringify({ message: { content } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    globalThis.fetch = vi.fn(async () => {
+      callCount += 1;
+      if (callCount === 1) {
+        await firstCallGate;
+        return ollamaResponse('oi, tudo bem?');
+      }
+      return ollamaResponse('[]');
+    }) as typeof fetch;
+
+    try {
+      const { cancelInFlightOperation, resolveAskSnapshot, selectPermissionRoots } =
+        await import('../src/core-bridge.js');
+
+      const askPromise = resolveAskSnapshot('oi', {
+        configOverride: baseOverride({ model: { provider: 'local', model: 'test-model' } }),
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(cancelInFlightOperation()).toEqual({ cancelled: true });
+      await expect(askPromise).rejects.toThrow('Pergunta cancelada pelo usuário.');
+
+      // O `ask` foi ABANDONADO (não mais ativo) — ainda assim
+      // `selectPermissionRoots` recusa, porque `hasInFlightOperation()`
+      // inclui operações abandonadas ainda não assentadas.
+      await expect(
+        selectPermissionRoots({ readRoots: [tmpDir()], writeRoots: [] }),
+      ).rejects.toThrow(/andamento/);
+
+      releaseFirstCall();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const selection = await selectPermissionRoots({ readRoots: [tmpDir()], writeRoots: [] });
+      expect(selection.readRoots).toEqual([tmpDir()]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('selectPermissionRoots não importa nem depende de Electron', async () => {
     const source = await import('node:fs').then((fs) =>
       fs.promises.readFile(new URL('../src/core-bridge.ts', import.meta.url), 'utf8'),

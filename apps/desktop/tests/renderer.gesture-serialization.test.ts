@@ -320,6 +320,10 @@ function disabledOf(f: RendererFixture, id: string): boolean {
   return (f.document.getElementById(id) as unknown as { disabled: boolean }).disabled;
 }
 
+function hiddenOf(f: RendererFixture, id: string): boolean {
+  return (f.document.getElementById(id) as unknown as { hidden: boolean }).hidden;
+}
+
 describe('serialização de gestos — ask × ask (SPEC-0049)', () => {
   it('um 2º submit com um ask em voo não chama atlas.ask; ao assentar o 1º, o mesmo submit chama', async () => {
     let resolveAsk: ((value: RendererAskSnapshot) => void) | undefined;
@@ -430,5 +434,151 @@ describe('serialização de gestos — #objective fora da serialização (D3, SP
 
     resolveAsk?.({ text: 'pronto', steps: [], learned: [] });
     await f.flush();
+  });
+});
+
+// SPEC-0051: gesto de escape — #ask-cancel/#chat-cancel, CA 20-22. O
+// clique só chama `window.atlas.cancel()` (nunca escreve texto nem mexe em
+// askInFlight/chatTurnInFlight diretamente); o aviso de transparência é
+// escrito pelo `.catch` já existente do gesto correspondente.
+describe('gesto de escape — visibilidade dos botões de cancelamento (CA20)', () => {
+  it('#ask-cancel começa hidden/disabled e fica visível/habilitado sse askInFlight, voltando a hidden ao assentar', async () => {
+    let resolveAsk: ((value: RendererAskSnapshot) => void) | undefined;
+    const askPromise = new Promise<RendererAskSnapshot>((resolve) => {
+      resolveAsk = resolve;
+    });
+    const f = await open({ atlas: { ask: () => askPromise } });
+
+    expect(hiddenOf(f, 'ask-cancel')).toBe(true);
+    expect(disabledOf(f, 'ask-cancel')).toBe(true);
+
+    submitAsk(f, 'faça algo');
+    expect(hiddenOf(f, 'ask-cancel')).toBe(false);
+    expect(disabledOf(f, 'ask-cancel')).toBe(false);
+
+    resolveAsk?.({ text: 'pronto', steps: [], learned: [] });
+    await f.flush();
+
+    expect(hiddenOf(f, 'ask-cancel')).toBe(true);
+    expect(disabledOf(f, 'ask-cancel')).toBe(true);
+  });
+
+  it('#chat-cancel começa hidden/disabled e fica visível/habilitado sse chatTurnInFlight, voltando a hidden ao assentar', async () => {
+    let resolveSend: ((value: RendererTurnSnapshot) => void) | undefined;
+    const sendPromise = new Promise<RendererTurnSnapshot>((resolve) => {
+      resolveSend = resolve;
+    });
+    const f = await open({ chatSend: () => sendPromise });
+
+    expect(hiddenOf(f, 'chat-cancel')).toBe(true);
+    expect(disabledOf(f, 'chat-cancel')).toBe(true);
+
+    await submitChat(f, 'olá');
+    expect(hiddenOf(f, 'chat-cancel')).toBe(false);
+    expect(disabledOf(f, 'chat-cancel')).toBe(false);
+
+    resolveSend?.({ reply: 'oi', steps: [], learned: [] });
+    await f.flush();
+
+    expect(hiddenOf(f, 'chat-cancel')).toBe(true);
+    expect(disabledOf(f, 'chat-cancel')).toBe(true);
+  });
+
+  it('com window.atlas.cancel() devolvendo {cancelled:false}, nenhum aviso é escrito e nenhum estado de botão muda (CA22)', async () => {
+    let resolveSend: ((value: RendererTurnSnapshot) => void) | undefined;
+    const sendPromise = new Promise<RendererTurnSnapshot>((resolve) => {
+      resolveSend = resolve;
+    });
+    const f = await open({
+      chatSend: () => sendPromise,
+      cancelOutcome: { cancelled: false },
+    });
+
+    await submitChat(f, 'olá');
+    f.document
+      .getElementById('chat-cancel')
+      ?.dispatchEvent(new f.window.Event('click', { bubbles: true, cancelable: true }));
+    await f.flush();
+
+    expect(f.calls.cancelCalls).toBe(1);
+    expect(disabledOf(f, 'chat-send')).toBe(true);
+    expect(hiddenOf(f, 'chat-cancel')).toBe(false);
+
+    resolveSend?.({ reply: 'oi', steps: [], learned: [] });
+    await f.flush();
+
+    const transcript = f.document.getElementById('chat-transcript')?.textContent ?? '';
+    expect(transcript).not.toContain('⏳ Cancelado');
+  });
+});
+
+describe('gesto de escape — clique aciona window.atlas.cancel() e o aviso de transparência (CA21)', () => {
+  const CANCEL_NOTICE =
+    '⏳ Cancelado: o trabalho já iniciado continua encerrando em segundo plano — ' +
+    'ações de arquivo já autorizadas ainda podem concluir; até ele assentar, esta ' +
+    'conversa não aceita turnos novos e os painéis de configuração podem recusar.';
+
+  it('#chat-cancel: chama cancel() uma vez; ao a promessa do turno rejeitar, o transcript recebe ⚠️ seguido do aviso, uma única vez', async () => {
+    let rejectSend: ((error: Error) => void) | undefined;
+    const sendPromise = new Promise<RendererTurnSnapshot>((_resolve, reject) => {
+      rejectSend = reject;
+    });
+    const f = await open({
+      chatSend: () => sendPromise,
+      cancelOutcome: { cancelled: true },
+    });
+
+    await submitChat(f, 'olá');
+    f.document
+      .getElementById('chat-cancel')
+      ?.dispatchEvent(new f.window.Event('click', { bubbles: true, cancelable: true }));
+    await f.flush();
+
+    expect(f.calls.cancelCalls).toBe(1);
+
+    rejectSend?.(new Error('Turno cancelado pelo usuário.'));
+    await f.flush();
+
+    const transcript = f.document.getElementById('chat-transcript')?.textContent ?? '';
+    expect(transcript).toContain('⚠️ Turno cancelado pelo usuário.');
+    expect(transcript).toContain(CANCEL_NOTICE);
+
+    // Uma rejeição NÃO-cancelada seguinte não repete o aviso.
+    let rejectSecond: ((error: Error) => void) | undefined;
+    const secondSendPromise = new Promise<RendererTurnSnapshot>((_resolve, reject) => {
+      rejectSecond = reject;
+    });
+    const f2 = await open({ chatSend: () => secondSendPromise });
+    await submitChat(f2, 'de novo');
+    rejectSecond?.(new Error('falha qualquer'));
+    await f2.flush();
+    const secondTranscript = f2.document.getElementById('chat-transcript')?.textContent ?? '';
+    expect(secondTranscript).not.toContain('⏳ Cancelado');
+  });
+
+  it('#ask-cancel: chama cancel() uma vez; ao a promessa do ask rejeitar, #ask-result recebe ⚠️ seguido do aviso, uma única vez', async () => {
+    let rejectAsk: ((error: Error) => void) | undefined;
+    const askPromise = new Promise<RendererAskSnapshot>((_resolve, reject) => {
+      rejectAsk = reject;
+    });
+    const f = await open({
+      atlas: { ask: () => askPromise },
+      cancelOutcome: { cancelled: true },
+    });
+
+    submitAsk(f, 'faça algo');
+    f.document
+      .getElementById('ask-cancel')
+      ?.dispatchEvent(new f.window.Event('click', { bubbles: true, cancelable: true }));
+    await f.flush();
+
+    expect(f.calls.cancelCalls).toBe(1);
+
+    rejectAsk?.(new Error('Pergunta cancelada pelo usuário.'));
+    await f.flush();
+
+    const result = f.document.getElementById('ask-result')?.textContent ?? '';
+    expect(result).toContain('⚠️ Pergunta cancelada pelo usuário.');
+    expect(result).toContain(CANCEL_NOTICE);
   });
 });

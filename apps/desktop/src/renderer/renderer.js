@@ -64,11 +64,20 @@ function refreshPermissionsPanelState() {
 // Core vivo executando Tools; a mesma classe de risco que motivou a
 // SPEC-0048 na direção inversa). `#objective` fica deliberadamente fora
 // (D3) — digitar não dispara gesto contra o Core.
+//
+// SPEC-0051 (Frente 5): `#ask-cancel` (gesto de escape) é calculado aqui —
+// origem única — visível/habilitado SSE `askInFlight`. Nenhum `.finally` do
+// gesto atribui `hidden`/`disabled` deste botão diretamente (D10).
 function refreshAskControls() {
   const disabled = chatTurnInFlight || askInFlight;
   const submitButton = document.getElementById('ask-submit');
   if (submitButton !== null) {
     submitButton.disabled = disabled;
+  }
+  const cancelButton = document.getElementById('ask-cancel');
+  if (cancelButton !== null) {
+    cancelButton.hidden = !askInFlight;
+    cancelButton.disabled = !askInFlight;
   }
 }
 
@@ -147,6 +156,18 @@ function refreshPersonaSurfaces() {
   });
 }
 
+// Gesto de escape (SPEC-0051): aviso de transparência ÚNICO, acrescentado
+// pelos dois `.catch` (ask/chat) logo após a linha `⚠️ <mensagem>` sempre
+// que a rejeição vier de um cancelamento bem-sucedido — nunca repetido numa
+// rejeição não-cancelada seguinte (a flag é lida e limpa no mesmo `.catch`).
+// Texto pinado exato (CA 21/D11): declara os três efeitos reais do trabalho
+// abandonado — o que ele ainda pode concluir e o que ele bloqueia.
+const CANCEL_NOTICE =
+  '⏳ Cancelado: o trabalho já iniciado continua encerrando em segundo plano — ' +
+  'ações de arquivo já autorizadas ainda podem concluir; até ele assentar, esta ' +
+  'conversa não aceita turnos novos e os painéis de configuração podem recusar.';
+let cancelNoticePending = false;
+
 // Round-trip `ask` de tiro único (stateless — o Core sobe e desliga a cada
 // chamada). O traço de `steps` chega já formatado (`StepLine[]`, dado
 // plano); este renderer só pinta, sem conhecer `ExecutedStep`/contratos.
@@ -189,11 +210,29 @@ document.getElementById('ask-form').addEventListener('submit', (event) => {
       // SPEC-0049/Frente 3: sem isto, uma falha de `atlas.ask` virava
       // unhandled rejection e o painel ficava congelado em "Perguntando…".
       resultEl.textContent = `⚠️ ${error.message ?? error}`;
+      // SPEC-0051: se a rejeição veio de um cancelamento bem-sucedido,
+      // acrescenta o aviso de transparência DEPOIS — uma única vez.
+      if (cancelNoticePending) {
+        resultEl.textContent += `\n${CANCEL_NOTICE}`;
+        cancelNoticePending = false;
+      }
     })
     .finally(() => {
       askInFlight = false;
       refreshPermissionsPanelState();
     });
+});
+
+// Gesto de escape do `ask` (SPEC-0051): visível/habilitado só enquanto
+// `askInFlight` (`refreshAskControls`). O clique só chama `window.atlas.cancel()`
+// e marca a flag — nunca escreve texto nem mexe em `askInFlight` diretamente,
+// que cai sozinho pelo `.finally` acima quando a promessa do `ask` rejeitar.
+document.getElementById('ask-cancel').addEventListener('click', () => {
+  window.atlas.cancel().then((outcome) => {
+    if (outcome && outcome.cancelled === true) {
+      cancelNoticePending = true;
+    }
+  });
 });
 
 // Chat visual multi-turno (item 2.2): o Core é mantido vivo no main process
@@ -997,6 +1036,11 @@ function micBusy() {
 // SPEC-0048, `#chat-send` soma também `askInFlight`: um `ask` em voo passa a
 // bloquear o envio de um turno de chat, fechando o achado registrado pela
 // SPEC-0047 (`#chat-input` fica deliberadamente fora — D3 da SPEC-0048).
+//
+// SPEC-0051 (Frente 5): `#chat-cancel` (gesto de escape) é calculado aqui —
+// origem única — visível/habilitado SSE `chatTurnInFlight` (não entra em
+// `micBusy()`: o gesto cancela o round-trip cognitivo, não a transcrição
+// local — `#mic-cancel-button` segue intacto e separado).
 function refreshChatControlsForMic() {
   const disabled = chatTurnInFlight || askInFlight || micBusy();
   const sendButton = document.getElementById('chat-send');
@@ -1005,6 +1049,11 @@ function refreshChatControlsForMic() {
   }
   if (personaSelect !== undefined && personaSelect !== null) {
     personaSelect.disabled = disabled;
+  }
+  const cancelButton = document.getElementById('chat-cancel');
+  if (cancelButton !== null) {
+    cancelButton.hidden = !chatTurnInFlight;
+    cancelButton.disabled = !chatTurnInFlight;
   }
 }
 
@@ -1320,6 +1369,12 @@ document.getElementById('chat-form').addEventListener('submit', (event) => {
     })
     .catch((error) => {
       appendTranscriptLine(`⚠️ ${error.message ?? error}`);
+      // SPEC-0051: se a rejeição veio de um cancelamento bem-sucedido,
+      // acrescenta o aviso de transparência DEPOIS — uma única vez.
+      if (cancelNoticePending) {
+        appendTranscriptLine(CANCEL_NOTICE);
+        cancelNoticePending = false;
+      }
     })
     .finally(() => {
       inputEl.disabled = false;
@@ -1333,6 +1388,19 @@ document.getElementById('chat-form').addEventListener('submit', (event) => {
       refreshPermissionsPanelState();
       inputEl.focus();
     });
+});
+
+// Gesto de escape do turno de chat (SPEC-0051): visível/habilitado só
+// enquanto `chatTurnInFlight` (`refreshChatControlsForMic`). O clique só
+// chama `window.atlas.cancel()` e marca a flag — nunca escreve texto nem
+// mexe em `chatTurnInFlight` diretamente, que cai sozinho pelo `.finally`
+// acima quando a promessa do turno rejeitar.
+document.getElementById('chat-cancel').addEventListener('click', () => {
+  window.atlas.cancel().then((outcome) => {
+    if (outcome && outcome.cancelled === true) {
+      cancelNoticePending = true;
+    }
+  });
 });
 
 // Painel de memória (item 2.4): lista os fatos memorizados e permite
