@@ -1,0 +1,9 @@
+[deep-reasoning]
+claude_model = "opus"
+codex_model = "gpt-5.6-sol"
+codex_reasoning_effort = "high"
+
+[balanced-execution]
+claude_model = "sonnet"
+codex_model = "gpt-5.6-terra"
+codex_reasoning_effort = "high"

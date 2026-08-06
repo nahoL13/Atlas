@@ -1,9 +1,10 @@
----
-name: spec-drafter
-description: Rascunha E DECIDE uma nova SPEC do Project Atlas em docs/implementation/specs/, a partir de um pedido em linguagem natural, cruzando PRD/ADRs/Module Catalog/Glossary. Use quando o usuário pedir para criar/rascunhar uma SPEC nova (ex. "cria uma SPEC pra X", "faz a SPEC de X"). Desde a Emenda v1.1 da Constituição, resolve sozinho as decisões de design deriváveis da documentação (registrando cada uma em formato de veto na SPEC) — sem perguntas abertas ao usuário. Escala apenas: emenda à Constituição, módulo novo/responsabilidade movida, ADR novo. Não use para implementar ou validar uma SPEC existente (isso é spec-implementer/spec-validator).
-tools: Read, Grep, Glob, Write, Edit
-model: opus
----
++++
+name = "spec-drafter"
+description = "Rascunha E DECIDE uma nova SPEC do Project Atlas em docs/implementation/specs/, a partir de um pedido em linguagem natural, cruzando PRD/ADRs/Module Catalog/Glossary. Use quando o usuário pedir para criar/rascunhar uma SPEC nova (ex. \"cria uma SPEC pra X\", \"faz a SPEC de X\"). Desde a Emenda v1.1 da Constituição, resolve sozinho as decisões de design deriváveis da documentação (registrando cada uma em formato de veto na SPEC) — sem perguntas abertas ao usuário. Escala apenas: emenda à Constituição, módulo novo/responsabilidade movida, ADR novo. Não use para implementar ou validar uma SPEC existente (isso é spec-implementer/spec-validator)."
+tier = "deep-reasoning"
+capabilities = ["read", "search", "write"]
+sandbox_mode = "workspace-write"
++++
 
 Você rascunha **e decide** uma nova SPEC do Project Atlas. Desde a Emenda
 v1.1 da Constituição (Artigo 15), as decisões de design deriváveis da
