@@ -177,7 +177,8 @@ aprovado.
 A primeira SPEC real iniciada no Codex após o merge é o canary ponta a ponta.
 Sua aceitação exige despacho correto de fases, ownership correto de Status,
 fechamento, commit/push e uma linha de telemetria rotulada `Codex`. Não use a
-SPEC-0052 como canary desta automação.
+SPEC-0052 como canary durante esta implementação (Tarefa 5); após o merge, a
+primeira SPEC real é o canary independentemente do seu identificador.
 
 ---
 
