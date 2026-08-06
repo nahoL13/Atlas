@@ -99,6 +99,20 @@ class UsageTests(unittest.TestCase):
             record = parse_claude_session(transcript)
         self.assertEqual(record.telemetry_status, "incomplete")
 
+    def test_claude_false_usage_value_is_incomplete(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            transcript = Path(temp) / "claude-false-usage.jsonl"
+            transcript.write_text('{"message":{"usage":{"input_tokens":false}}}\n', encoding="utf-8")
+            record = parse_claude_session(transcript)
+        self.assertEqual(record.telemetry_status, "incomplete")
+
+    def test_claude_true_usage_value_is_incomplete(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            transcript = Path(temp) / "claude-true-usage.jsonl"
+            transcript.write_text('{"message":{"usage":{"input_tokens":true}}}\n', encoding="utf-8")
+            record = parse_claude_session(transcript)
+        self.assertEqual(record.telemetry_status, "incomplete")
+
     def test_codex_discovery_filters_sessions_outside_repo(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp) / "Atlas"

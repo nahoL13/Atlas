@@ -91,7 +91,7 @@ def _top_spec(mentions: Counter[str]) -> str | None:
 
 
 def _int(value: object) -> int | None:
-    return value if isinstance(value, int) and value >= 0 else None
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
 
 
 def _effective_total(input_tokens: int, cache_write_input: int, cached_input: int, output_tokens: int) -> int:
