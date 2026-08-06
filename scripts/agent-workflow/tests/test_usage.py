@@ -85,6 +85,20 @@ class UsageTests(unittest.TestCase):
             record = parse_claude_session(transcript)
         self.assertEqual(record.telemetry_status, "incomplete")
 
+    def test_claude_empty_usage_schema_is_incomplete(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            transcript = Path(temp) / "claude-empty-usage.jsonl"
+            transcript.write_text('{"message":{"usage":{}}}\n', encoding="utf-8")
+            record = parse_claude_session(transcript)
+        self.assertEqual(record.telemetry_status, "incomplete")
+
+    def test_claude_invalid_usage_values_are_incomplete(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            transcript = Path(temp) / "claude-invalid-usage.jsonl"
+            transcript.write_text('{"message":{"usage":{"input_tokens":"not-a-number"}}}\n', encoding="utf-8")
+            record = parse_claude_session(transcript)
+        self.assertEqual(record.telemetry_status, "incomplete")
+
     def test_codex_discovery_filters_sessions_outside_repo(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp) / "Atlas"
@@ -116,6 +130,23 @@ class UsageTests(unittest.TestCase):
         self.assertIn("| SPEC-0052 | Codex |", merged)
         self.assertIn("| SPEC-0052 | Codex | (SPEC não encontrada em docs/implementation/specs/) | ? | 2 | 2026-08-05 | 300 | N/D | complete |", merged)
         self.assertIn("| SPEC-0052 | Codex | N/D | N/D |", merged)
+
+    def test_reprocessing_same_session_is_idempotent(self) -> None:
+        record = UsageRecord("Codex", "same", "Criação/Decisão", None, (), 100, 0, 0, 0, 0, 100, None, "SPEC-0052", "2026-08-05T10:00:00Z", "2026-08-05T10:00:00Z", "complete", "/repo/Atlas")
+        once = merge_spec_log(build_spec_log([record]), [record])
+        self.assertIn("| SPEC-0052 | Codex | (SPEC não encontrada em docs/implementation/specs/) | ? | 1 | 2026-08-05 | 100 | N/D | complete |", once)
+
+    def test_later_snapshot_replaces_same_session_contribution(self) -> None:
+        first = UsageRecord("Codex", "same", "Criação/Decisão", None, (), 100, 0, 0, 0, 0, 100, None, "SPEC-0052", "2026-08-05T10:00:00Z", "2026-08-05T10:00:00Z", "complete", "/repo/Atlas")
+        later = UsageRecord("Codex", "same", "Criação/Decisão", None, (), 180, 0, 0, 0, 0, 180, None, "SPEC-0052", "2026-08-05T10:05:00Z", "2026-08-05T10:05:00Z", "complete", "/repo/Atlas")
+        merged = merge_spec_log(build_spec_log([first]), [later])
+        self.assertIn("| SPEC-0052 | Codex | (SPEC não encontrada em docs/implementation/specs/) | ? | 1 | 2026-08-05 | 180 | N/D | complete |", merged)
+
+    def test_distinct_sessions_accumulate_after_idempotent_merge(self) -> None:
+        first = UsageRecord("Codex", "one", "Criação/Decisão", None, (), 100, 0, 0, 0, 0, 100, None, "SPEC-0052", "2026-08-05T10:00:00Z", "2026-08-05T10:00:00Z", "complete", "/repo/Atlas")
+        second = UsageRecord("Codex", "two", "Criação/Decisão", None, (), 200, 0, 0, 0, 0, 200, None, "SPEC-0052", "2026-08-05T10:01:00Z", "2026-08-05T10:01:00Z", "complete", "/repo/Atlas")
+        merged = merge_spec_log(build_spec_log([first]), [second])
+        self.assertIn("| SPEC-0052 | Codex | (SPEC não encontrada em docs/implementation/specs/) | ? | 2 | 2026-08-05 | 300 | N/D | complete |", merged)
 
     def test_all_executor_report_keeps_top_record_for_each_executor(self) -> None:
         source = WORKFLOW_DIR.parent / "agent-usage-report.py"

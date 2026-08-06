@@ -4,7 +4,7 @@ import datetime as dt
 import json
 import re
 from collections import Counter, defaultdict
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +42,7 @@ PHASE_COLUMN_ORDER = [
     "Fechamento",
     PHASE_OTHER_AGENTS,
 ]
+SESSION_LEDGER_RE = re.compile(r"<!-- ATLAS-USAGE-SESSION-LEDGER: (?P<data>.*?) -->", re.DOTALL)
 
 
 @dataclass(frozen=True)
@@ -127,6 +128,15 @@ def parse_claude_session(path: Path, metadata: dict[str, object] | None = None) 
             mentions.update(SPEC_RE.findall(_extract_text(message.get("content"))))
             usage = message.get("usage")
             if not isinstance(usage, dict):
+                continue
+            usage_keys = (
+                "input_tokens",
+                "output_tokens",
+                "cache_read_input_tokens",
+                "cache_creation_input_tokens",
+            )
+            present_values = [usage[key] for key in usage_keys if key in usage]
+            if not present_values or any(_int(value) is None for value in present_values):
                 continue
             valid_usage_count += 1
             model = message.get("model")
@@ -406,7 +416,71 @@ def merge_aggregates(existing: dict[tuple[str, str], SpecLogAggregate], incoming
     return merged
 
 
-def render_spec_log(aggregates: dict[tuple[str, str], SpecLogAggregate]) -> str:
+def parse_session_ledger(source: str) -> dict[tuple[str, str], UsageRecord]:
+    match = SESSION_LEDGER_RE.search(source)
+    if match is None:
+        return {}
+    try:
+        raw_records = json.loads(match.group("data"))
+    except json.JSONDecodeError:
+        return {}
+    records: dict[tuple[str, str], UsageRecord] = {}
+    if not isinstance(raw_records, list):
+        return records
+    for raw in raw_records:
+        if not isinstance(raw, dict):
+            continue
+        try:
+            raw["models"] = tuple(raw.get("models", ()))
+            record = UsageRecord(**raw)
+        except (TypeError, ValueError):
+            continue
+        records[(record.executor, record.session)] = record
+    return records
+
+
+def _subtract_record(aggregates: dict[tuple[str, str], SpecLogAggregate], record: UsageRecord, remaining: list[UsageRecord]) -> None:
+    if record.spec_tag is None:
+        return
+    key = (record.spec_tag, record.executor)
+    aggregate = aggregates.get(key)
+    if aggregate is None:
+        return
+    aggregate.sessions -= 1
+    aggregate.raw_total -= record.raw_total
+    if aggregate.effective_total is not None and record.effective_total is not None:
+        aggregate.effective_total -= record.effective_total
+    same_phase_remains = any(
+        other.spec_tag == record.spec_tag and other.executor == record.executor and other.phase == record.phase
+        for other in remaining
+    )
+    if aggregate.executor == "Codex":
+        if not same_phase_remains:
+            aggregate.phases.pop(record.phase, None)
+    elif isinstance(aggregate.phases.get(record.phase), int) and record.effective_total is not None:
+        aggregate.phases[record.phase] = int(aggregate.phases[record.phase] or 0) - record.effective_total
+        if aggregate.phases[record.phase] == 0 and not same_phase_remains:
+            aggregate.phases.pop(record.phase, None)
+    if aggregate.sessions <= 0:
+        aggregates.pop(key, None)
+
+
+def _merge_session_records(aggregates: dict[tuple[str, str], SpecLogAggregate], ledger: dict[tuple[str, str], UsageRecord], records: list[UsageRecord]) -> tuple[dict[tuple[str, str], SpecLogAggregate], dict[tuple[str, str], UsageRecord]]:
+    merged = merge_aggregates({}, aggregates)
+    sessions = dict(ledger)
+    for record in records:
+        if record.spec_tag is None:
+            continue
+        identity = (record.executor, record.session)
+        previous = sessions.pop(identity, None)
+        if previous is not None:
+            _subtract_record(merged, previous, list(sessions.values()))
+        sessions[identity] = record
+        merged = merge_aggregates(merged, aggregate_records([record]))
+    return merged, sessions
+
+
+def render_spec_log(aggregates: dict[tuple[str, str], SpecLogAggregate], ledger: dict[tuple[str, str], UsageRecord] | None = None) -> str:
     lines = ["# Log de uso de tokens por SPEC\n", "> **Project Atlas — Log de Custo de Token por SPEC**\n"]
     lines.append(f"Atualizado em: {dt.date.today().isoformat()} (regenerado por `python3 scripts/agent-usage-report.py --executor all`)\n")
     lines.append("As métricas são separadas por executor. Tokens efetivos Claude usam os pesos históricos; Codex fica `N/D` até existir uma métrica comparável documentada. Snapshots de Codex são cumulativos e só o último total de cada transcript é lido.\n")
@@ -446,15 +520,20 @@ def render_spec_log(aggregates: dict[tuple[str, str], SpecLogAggregate]) -> str:
     for executor, totals in sorted(done_totals.items()):
         average = sum(totals) // len(totals)
         lines.append(f"- {executor}: SPECs concluídas: {len(totals)}. Custo médio: **{_fmt(average)} tokens efetivos**. Faixa: {_fmt(min(totals))} – {_fmt(max(totals))}.\n")
+    if ledger:
+        records = [asdict(record) for _identity, record in sorted(ledger.items())]
+        lines.append("<!-- ATLAS-USAGE-SESSION-LEDGER: " + json.dumps(records, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + " -->\n")
     return "\n".join(lines)
 
 
 def build_spec_log(records: list[UsageRecord]) -> str:
-    return render_spec_log(aggregate_records(records))
+    aggregates, ledger = _merge_session_records({}, {}, records)
+    return render_spec_log(aggregates, ledger)
 
 
 def merge_spec_log(existing: str, records: list[UsageRecord]) -> str:
-    return render_spec_log(merge_aggregates(parse_spec_log(existing), aggregate_records(records)))
+    aggregates, ledger = _merge_session_records(parse_spec_log(existing), parse_session_ledger(existing), records)
+    return render_spec_log(aggregates, ledger)
 
 
 def migrate_legacy_log(source: str) -> str:
