@@ -34,6 +34,12 @@ export default tseslint.config(
         AudioContext: 'readonly',
         setTimeout: 'readonly',
         clearTimeout: 'readonly',
+        // SPEC-0052 — modo hands-free: rearme periódico da janela de captura
+        // (setInterval/clearInterval) e submissão sintética de `#chat-form`
+        // (Event).
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
+        Event: 'readonly',
       },
     },
   },

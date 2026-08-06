@@ -56,6 +56,9 @@ function refreshPermissionsPanelState() {
   // SPEC-0049: `#ask-submit` ganha a mesma origem única de cálculo dos
   // demais controles serializados.
   refreshAskControls();
+  // SPEC-0052: o toggle do modo hands-free entra na MESMA serialização —
+  // desabilitado enquanto houver turno de chat/`ask` em voo.
+  refreshHandsFreeToggle();
 }
 
 // SPEC-0049: `#ask-form` entra na mesma serialização de gestos já em vigor
@@ -246,18 +249,35 @@ let chatSession = null;
 // navegador, não testado em unidade — não coberto pelo Vitest, que roda sem
 // sessão gráfica/DOM).
 //
+// `synth` é a IMPLEMENTAÇÃO DA PORTA `SpeechSynthesisPort` (molde de
+// `speech-output.ts`) sobre `window.speechSynthesis` — adaptador de
+// navegador, NUNCA uma réplica registrada no gate de paridade (R4, achado
+// do 2º passe do `architecture-reviewer` na SPEC-0052: o comentário anterior
+// descrevia o bloco inteiro abaixo, incluindo `synth`, como réplica — mas o
+// registro de `renderer.speech-parity.test.ts` só cobre as funções PURAS
+// declaradas depois deste objeto, nunca `synth` em si). A RÉPLICA
+// propriamente dita — o mesmo algoritmo testado em
+// `tests/speech-output.test.ts` (`createSpeechOutput`): normaliza o texto,
+// no-op em vazio, filtra vozes para só `localService === true`, seleciona
+// deterministicamente a primeira, cancela a fala anterior antes de iniciar a
+// próxima, fail-safe (nunca lança), `isAvailable` sse existir ≥1 voz local,
+// sem voz local ⇒ no-op, jamais fallback para voz de rede — vive em
+// `createSpeechOutputGlue`/`selectVoiceURI`/`selectLocalVoiceURI`, mais
+// abaixo. Qualquer mudança de comportamento das funções replicadas deve ser
+// espelhada nos dois lugares (`renderer.js` ↔ `speech-output.ts`).
+//
 // Nota de arquitetura: `renderer.js` é um `<script>` clássico carregado por
 // `window.loadFile` (sem `type="module"`, sem bundler — ADR-0019), não pode
 // `import` o módulo TypeScript `src/speech-output.ts` (que só é consumido
-// pelo Vitest, via o mesmo hook `tsx` usado pelo main process). Por isso a
-// função abaixo replica deliberadamente, em JS puro, o mesmo algoritmo
-// testado em `tests/speech-output.test.ts` (`createSpeechOutput`):
-// normaliza o texto, no-op em vazio, filtra vozes para só `localService ===
-// true`, seleciona deterministicamente a primeira, cancela a fala anterior
-// antes de iniciar a próxima, fail-safe (nunca lança), `isAvailable` sse
-// existir ≥1 voz local. Sem voz local ⇒ no-op, jamais fallback para voz de
-// rede. Qualquer mudança de comportamento deve ser espelhada nos dois
-// lugares.
+// pelo Vitest, via o mesmo hook `tsx` usado pelo main process).
+//
+// Observador de fim de fala do SO (D20/SPEC-0052) — setado pelo modo
+// hands-free ANTES de uma chamada que pode criar um `SpeechSynthesisUtterance`,
+// consumido (e zerado) aqui mesmo, no ÚNICO ponto de criação do utterance.
+// `null`/no-op fora do modo hands-free. Nunca vive em `createSpeechOutputGlue`
+// (réplica vigiada) nem em `speech-output.ts` (diff vazio, D16/D20).
+let handsFreeUtteranceObserver = null;
+
 const synth = {
   speak(spec) {
     const voices = window.speechSynthesis.getVoices();
@@ -267,10 +287,24 @@ const synth = {
     if (voice === undefined) {
       // Voz local sumiu entre a seleção e a fala: fail-closed, não fala
       // (jamais fallback para a voz padrão/de rede do Chromium).
+      // R3 (SPEC-0052): nenhum utterance é criado — o observador pendente
+      // (se houver) é resolvido AQUI, senão o modo hands-free ficaria preso
+      // em `speaking` até o watchdog (mínimo de 8s de microfone fechado).
+      if (handsFreeUtteranceObserver !== null) {
+        const observer = handsFreeUtteranceObserver;
+        handsFreeUtteranceObserver = null;
+        observer();
+      }
       return;
     }
     const utterance = new SpeechSynthesisUtterance(spec.text);
     utterance.voice = voice;
+    if (handsFreeUtteranceObserver !== null) {
+      const observer = handsFreeUtteranceObserver;
+      handsFreeUtteranceObserver = null;
+      utterance.addEventListener('end', observer);
+      utterance.addEventListener('error', observer);
+    }
     window.speechSynthesis.speak(utterance);
   },
   cancel() {
@@ -522,17 +556,28 @@ function currentVoiceBackend() {
 
 // Playback do WAV devolvido pelo Piper (D5): `Blob`/`URL.createObjectURL`
 // num `<audio>` (via `Audio`), buffer completo, `objectURL` revogado ao fim.
-function playPiperAudio(audio) {
+// `onDone` (SPEC-0052/D16) — opcional, chamado exatamente uma vez em `ended`
+// ou `error`; ausente para os chamadores que não precisam saber o fim (botão
+// "Testar voz").
+function playPiperAudio(audio, onDone) {
+  const done = onDone || (() => {});
   try {
     const blob = new Blob([audio.wav], { type: 'audio/wav' });
     const url = URL.createObjectURL(blob);
     const player = new Audio(url);
     const revoke = () => URL.revokeObjectURL(url);
-    player.addEventListener('ended', revoke);
-    player.addEventListener('error', revoke);
+    player.addEventListener('ended', () => {
+      revoke();
+      done();
+    });
+    player.addEventListener('error', () => {
+      revoke();
+      done();
+    });
     void player.play();
   } catch {
     // fail-safe: nunca propaga
+    done();
   }
 }
 
@@ -540,25 +585,72 @@ function playPiperAudio(audio) {
 // com a voz da Persona ativa: decide a origem e fala por ela; se o backend
 // Piper devolver ausência de áudio (indisponível/erro/timeout), cai no
 // `speechOutput` do SO — fallback fail-closed (ADR-0021(c)).
-function speakText(text) {
+//
+// `onDone` (SPEC-0052/D16, opcional): chamado EXATAMENTE UMA VEZ, em
+// `ended`/`error` do `<audio>` Piper, `end`/`error` do utterance do SO,
+// imediatamente quando o backend é `none` ou quando nenhum utterance chega a
+// ser criado (R3), OU por watchdog `clamp(8_000 + 80 × caracteres, 8_000,
+// 120_000)` — armado só quando um `onDone` real é passado (o modo
+// hands-free usa isto para saber quando reabrir o microfone; os demais
+// chamadores, como o botão "🔊 Ouvir", seguem sem passar `onDone` e sem
+// nenhum timer criado).
+function speakText(text, onDone) {
+  const done = onDone || (() => {});
+  let settled = false;
+  let watchdogTimer;
+  const finish = () => {
+    if (settled) {
+      return;
+    }
+    settled = true;
+    if (watchdogTimer !== undefined) {
+      clearTimeout(watchdogTimer);
+    }
+    done();
+  };
+  if (onDone !== undefined) {
+    watchdogTimer = setTimeout(finish, speakingWatchdogMs(text));
+  }
+
   const backend = currentVoiceBackend();
+  if (backend.backend === 'none') {
+    finish();
+    return;
+  }
   if (backend.backend === 'piper') {
     window.atlas.tts
       .speak(text, backend.voiceURI)
       .then((audio) => {
         if (audio === undefined) {
+          handsFreeUtteranceObserver = finish;
           speechOutput.speak(text);
+          if (handsFreeUtteranceObserver !== null) {
+            // Nenhum utterance foi criado (createSpeechOutputGlue.speak fez
+            // no-op) — o observador nunca seria consumido: resolve aqui.
+            handsFreeUtteranceObserver = null;
+            finish();
+          }
           return;
         }
-        playPiperAudio(audio);
+        playPiperAudio(audio, finish);
       })
       .catch(() => {
+        handsFreeUtteranceObserver = finish;
         speechOutput.speak(text);
+        if (handsFreeUtteranceObserver !== null) {
+          handsFreeUtteranceObserver = null;
+          finish();
+        }
       });
     return;
   }
   if (backend.backend === 'os') {
+    handsFreeUtteranceObserver = finish;
     speechOutput.speak(text);
+    if (handsFreeUtteranceObserver !== null) {
+      handsFreeUtteranceObserver = null;
+      finish();
+    }
   }
 }
 
@@ -608,6 +700,9 @@ function loadPiperVoices() {
       refreshSpeakButton(button);
     }
     populatePersonaVoiceSelect();
+    // SPEC-0052 (D9/achado A6): a disponibilidade de saída de voz é um dos
+    // três fatores do toggle hands-free — reavaliado no MESMO gatilho.
+    refreshHandsFreeToggle();
   });
 }
 
@@ -617,6 +712,8 @@ if (window.speechSynthesis !== undefined) {
       refreshSpeakButton(button);
     }
     populatePersonaVoiceSelect();
+    // SPEC-0052 (D9/achado A6): mesmo gatilho reavalia o toggle hands-free.
+    refreshHandsFreeToggle();
   });
 }
 
@@ -1360,12 +1457,20 @@ document.getElementById('chat-form').addEventListener('submit', (event) => {
   // O painel de permissões entra na mesma serialização (SPEC-0038): também
   // desabilitado durante um turno de chat, além de um `ask` em voo.
   chatTurnInFlight = true;
+  // SPEC-0052/D23: gancho de início confirmado — chamado IMEDIATAMENTE após
+  // marcar o turno em voo e ANTES de `window.atlas.chat.send`. `dispatchEvent`
+  // é síncrono, então o modo hands-free lê a flag logo depois de despachar o
+  // `submit` (nesta mesma função, para o caminho de auto-envio) e sabe, sem
+  // tick/timer/promessa, se o manipulador chegou até aqui. No-op fora do
+  // modo hands-free.
+  notifyHandsFreeTurnStarted();
   refreshPermissionsPanelState();
   window.atlas.chat
     .send(chatSession, input)
     .then((snapshot) => {
       appendTurn(input, snapshot);
       inputEl.value = '';
+      notifyHandsFreeTurnSettled(snapshot);
     })
     .catch((error) => {
       appendTranscriptLine(`⚠️ ${error.message ?? error}`);
@@ -1375,6 +1480,7 @@ document.getElementById('chat-form').addEventListener('submit', (event) => {
         appendTranscriptLine(CANCEL_NOTICE);
         cancelNoticePending = false;
       }
+      notifyHandsFreeTurnFailed(error);
     })
     .finally(() => {
       inputEl.disabled = false;
@@ -1540,3 +1646,757 @@ document.getElementById('permissions-apply').addEventListener('click', () => {
       return loadStatus();
     });
 });
+
+// ============================================================================
+// Modo hands-free (conversa por voz contínua) — SPEC-0052, ADR-0023.
+//
+// Réplica deliberada de `apps/desktop/src/hands-free.ts` (D10, mesmo padrão
+// de duplicação renderer↔módulo das SPECs 0035/0036/0039/0040/0041/0043/0047
+// — comentário explícito, teste de referência `tests/hands-free.test.ts`).
+// Qualquer mudança de comportamento deve ser espelhada nos dois lugares.
+// ============================================================================
+
+const HF_FRAME_SAMPLES = 512;
+const HF_FRAME_MS = 32;
+const HF_SPEECH_ENTER = 0.5;
+const HF_SPEECH_EXIT = 0.35;
+const HF_MIN_SPEECH_MS = 320;
+const HF_PRE_ROLL_FRAMES = 10;
+const HF_SILENCE_CLOSE_MS = 3000;
+const HF_MAX_UTTERANCE_MS = 30000;
+const HF_CAPTURE_REARM_MS = 15000;
+const HF_VAD_QUEUE_LIMIT = 32;
+const HF_THINKING_WATCHDOG_MS = 180000;
+const HF_SPEAKING_WATCHDOG_BASE_MS = 8000;
+const HF_SPEAKING_WATCHDOG_PER_CHAR_MS = 80;
+const HF_SPEAKING_WATCHDOG_MAX_MS = 120000;
+
+// Réplica de `TRANSITIONS`/`GLOBAL_TRANSITIONS`/`nextHandsFreeState`
+// (`hands-free.ts`) — mesma tabela, mesma regra de fecho.
+const HF_TRANSITIONS = {
+  off: { enable: 'arming' },
+  arming: { armed: 'listening', armFailed: 'off' },
+  listening: { speechStart: 'capturing' },
+  capturing: { speechEnd: 'transcribing', utteranceCap: 'transcribing' },
+  transcribing: {
+    transcriptReady: 'sending',
+    transcriptEmpty: 'listening',
+    transcriptFailed: 'off',
+  },
+  sending: { turnStarted: 'thinking', turnRefused: 'off' },
+  thinking: { turnDone: 'speaking', turnFailed: 'off', thinkingTimeout: 'off' },
+  speaking: { speechDone: 'arming' },
+  unavailable: {},
+};
+
+const HF_GLOBAL_TRANSITIONS = { disable: 'off', vadOverrun: 'off', unavailable: 'unavailable' };
+
+function nextHandsFreeState(state, event) {
+  const globalNext = HF_GLOBAL_TRANSITIONS[event];
+  if (globalNext !== undefined) {
+    return globalNext;
+  }
+  const forState = HF_TRANSITIONS[state];
+  const specific = forState !== undefined ? forState[event] : undefined;
+  return specific !== undefined ? specific : state;
+}
+
+function handsFreeMicrophoneOpen(state) {
+  return state === 'listening' || state === 'capturing';
+}
+
+function speakingWatchdogMs(text) {
+  const raw = HF_SPEAKING_WATCHDOG_BASE_MS + HF_SPEAKING_WATCHDOG_PER_CHAR_MS * text.length;
+  return Math.min(Math.max(raw, HF_SPEAKING_WATCHDOG_BASE_MS), HF_SPEAKING_WATCHDOG_MAX_MS);
+}
+
+// Réplica de `createTurnSegmenter` (`hands-free.ts`) — consome só
+// probabilidades (D19); pre-roll e fila são propriedades DESTE glue, abaixo.
+function createTurnSegmenter(config) {
+  const { speechEnter, speechExit, minSpeechMs, silenceCloseMs, maxUtteranceMs, frameMs } = config;
+  let inSpeech = false;
+  let voiceMs = 0;
+  let silenceMs = 0;
+  let utteranceMs = 0;
+
+  function reset() {
+    inSpeech = false;
+    voiceMs = 0;
+    silenceMs = 0;
+    utteranceMs = 0;
+  }
+
+  function push(probability) {
+    if (!inSpeech) {
+      if (probability >= speechEnter) {
+        inSpeech = true;
+        voiceMs = frameMs;
+        silenceMs = 0;
+        utteranceMs = frameMs;
+        return { kind: 'speechStart' };
+      }
+      return { kind: 'none' };
+    }
+
+    utteranceMs += frameMs;
+    if (probability >= speechExit) {
+      voiceMs += frameMs;
+      silenceMs = 0;
+    } else {
+      silenceMs += frameMs;
+    }
+
+    if (utteranceMs >= maxUtteranceMs) {
+      reset();
+      return { kind: 'utteranceCap' };
+    }
+
+    if (silenceMs >= silenceCloseMs) {
+      const discarded = voiceMs < minSpeechMs;
+      const event = { kind: 'speechEnd', speechMs: voiceMs, discarded };
+      reset();
+      return event;
+    }
+
+    return { kind: 'none' };
+  }
+
+  return { push, reset };
+}
+
+// --- Estado do modo (glue) --------------------------------------------------
+
+const handsFreeToggleEl = document.getElementById('hands-free-toggle');
+const handsFreeIndicatorEl = document.getElementById('hands-free-indicator');
+const handsFreeStatusEl = document.getElementById('hands-free-status');
+
+let handsFreeState = 'off';
+let handsFreeSttAvailable = false;
+let handsFreeVadAvailable = false;
+let handsFreeSegmenter = null;
+let handsFreeDetector = null;
+let handsFreeCapture = null;
+let handsFreeRearmTimer = null;
+let handsFreeThinkingTimer = null;
+let handsFreeSpeakingWatchdogTimer = null;
+let handsFreeTurnStartConfirmed = false;
+let handsFreePreRollRing = [];
+let handsFreeUtteranceChunks = [];
+let handsFreeFrameQueue = [];
+let handsFreeProcessingQueue = false;
+
+// Ponto de criação ÚNICO do detector (CA 23/24, ADR-0023(c)) — a chamada de
+// criação da sessão de inferência do runtime só pode aparecer DENTRO desta
+// função em todo o arquivo. `handsFreeDetectorFactory` é uma referência
+// SUBSTITUÍVEL (nunca `const`): é por ela que o harness de teste injeta um
+// dublê sem precisar do runtime real (D21) — `setHandsFreeDetectorFactory`
+// existe só para isso.
+async function createHandsFreeDetector() {
+  const availability = await window.atlas.vad.available();
+  if (availability === undefined || availability.available !== true) {
+    return null;
+  }
+  if (window.ort === undefined) {
+    return null;
+  }
+  const resources = await window.atlas.vad.resources();
+  if (resources === undefined || resources.ok !== true) {
+    return null;
+  }
+  window.ort.env.wasm.numThreads = 1;
+  window.ort.env.wasm.proxy = false;
+  window.ort.env.wasm.wasmBinary = new Uint8Array(resources.wasm);
+  const session = await window.ort.InferenceSession.create(resources.model);
+  let state = new Float32Array(2 * 1 * 128);
+  return {
+    async probe(frame) {
+      const inputTensor = new window.ort.Tensor('float32', frame, [1, HF_FRAME_SAMPLES]);
+      const stateTensor = new window.ort.Tensor('float32', state, [2, 1, 128]);
+      const srTensor = new window.ort.Tensor('int64', BigInt64Array.from([16000n]));
+      const results = await session.run({ input: inputTensor, state: stateTensor, sr: srTensor });
+      state = results.stateN.data;
+      return results.output.data[0];
+    },
+    reset() {
+      state = new Float32Array(2 * 1 * 128);
+    },
+  };
+}
+
+let handsFreeDetectorFactory;
+
+/**
+ * Único ponto de ESCRITA da referência substituível (D21/CA24): usado pela
+ * própria produção para a fiação inicial abaixo, e é a MESMA função que o
+ * harness de teste chama (via `internals`) para injetar um dublê sem
+ * precisar do runtime real.
+ */
+function setHandsFreeDetectorFactory(factory) {
+  handsFreeDetectorFactory = factory;
+}
+
+setHandsFreeDetectorFactory(createHandsFreeDetector);
+
+function handsFreeActive() {
+  return handsFreeState !== 'off' && handsFreeState !== 'unavailable';
+}
+
+function setHandsFreeStatus(text) {
+  handsFreeStatusEl.textContent = text;
+}
+
+function handsFreeIndicatorText(state) {
+  switch (state) {
+    case 'off':
+      return '';
+    case 'unavailable':
+      return '';
+    // R2 (SPEC-0052): `arming` pode durar minutos no macOS (primeiro
+    // `getUserMedia` abre o diálogo nativo de permissão) — o indicador
+    // precisa dizer explicitamente que está esperando o SISTEMA, não travado.
+    case 'arming':
+      return '⏳ Aguardando permissão do sistema…';
+    case 'listening':
+      return '🎙️ Ouvindo…';
+    case 'capturing':
+      return '🗣️ Capturando fala…';
+    case 'transcribing':
+      return '⌛ Transcrevendo…';
+    case 'sending':
+      return '📤 Enviando…';
+    case 'thinking':
+      return '🤔 Pensando…';
+    case 'speaking':
+      return '🔊 Falando…';
+    default:
+      return '';
+  }
+}
+
+function refreshHandsFreeIndicator() {
+  handsFreeIndicatorEl.textContent = handsFreeIndicatorText(handsFreeState);
+}
+
+function handsFreeVoiceOutputAvailable() {
+  return currentVoiceBackend().backend !== 'none';
+}
+
+function computeHandsFreeUnavailableReason() {
+  if (!handsFreeSttAvailable) {
+    return 'entrada por voz (STT) indisponível';
+  }
+  if (!handsFreeVadAvailable) {
+    return 'detector de voz (VAD) indisponível';
+  }
+  if (!handsFreeVoiceOutputAvailable()) {
+    return 'nenhuma voz de saída disponível';
+  }
+  return '';
+}
+
+// Origem única de habilitação/desenho do toggle — reavaliada nos gatilhos
+// assíncronos (`voiceschanged`, chegada do catálogo/disponibilidade Piper,
+// resposta de `atlas:vad:available`), NUNCA resolvida point-in-time no load
+// (D9/apps/desktop/CLAUDE.md). Também recalcula a serialização de gestos
+// (SPEC-0038 e segs.): o toggle fica desabilitado enquanto houver turno de
+// chat/`ask` em voo, para que o modo não nasça num estado que a guarda de
+// `sending` recusaria.
+function refreshHandsFreeToggle() {
+  const reason = computeHandsFreeUnavailableReason();
+  if (reason !== '') {
+    if (handsFreeActive()) {
+      handsFreeForceOff('vadOverrun', reason);
+    }
+    handsFreeState = 'unavailable';
+    handsFreeToggleEl.disabled = true;
+    handsFreeToggleEl.title = reason;
+    setHandsFreeStatus(reason);
+    refreshHandsFreeIndicator();
+    return;
+  }
+  if (handsFreeState === 'unavailable') {
+    handsFreeState = 'off';
+  }
+  const busy = chatTurnInFlight || askInFlight;
+  handsFreeToggleEl.disabled = busy && handsFreeState === 'off';
+  handsFreeToggleEl.title =
+    busy && handsFreeState === 'off' ? 'turno de chat/ask em andamento' : '';
+  handsFreeToggleEl.textContent =
+    handsFreeState === 'off' ? '🎙️ Ligar conversa contínua' : '⏹️ Desligar conversa contínua';
+  refreshHandsFreeIndicator();
+}
+
+// Serialização de gestos (Interação com o resto do desktop, SPEC-0052):
+// enquanto o modo está ativo, `#ask-submit` e `#mic-button` ficam
+// desabilitados com motivo.
+function refreshChatControlsForHandsFree() {
+  if (!handsFreeActive()) {
+    return;
+  }
+  const askSubmit = document.getElementById('ask-submit');
+  if (askSubmit !== null) {
+    askSubmit.disabled = true;
+    askSubmit.title = 'modo hands-free ligado';
+  }
+  micButton.disabled = true;
+  micButton.title = 'modo hands-free ligado';
+}
+
+function handsFreeDispatch(event) {
+  handsFreeState = nextHandsFreeState(handsFreeState, event);
+  refreshHandsFreeIndicator();
+  refreshHandsFreeToggle();
+  refreshAskControls();
+  refreshMicButtons();
+  refreshChatControlsForHandsFree();
+  return handsFreeState;
+}
+
+function handsFreeStartRearmTimer() {
+  handsFreeStopRearmTimer();
+  handsFreeRearmTimer = setInterval(() => {
+    // R2: o rearme fica limitado a listening/capturing — nunca corre em
+    // `arming` (a SPEC exige que o diálogo nativo de permissão não seja
+    // "rearmado" por engano).
+    if (handsFreeMicrophoneOpen(handsFreeState)) {
+      window.atlas.stt.captureBegin();
+    }
+  }, HF_CAPTURE_REARM_MS);
+}
+
+function handsFreeStopRearmTimer() {
+  if (handsFreeRearmTimer !== null) {
+    clearInterval(handsFreeRearmTimer);
+    handsFreeRearmTimer = null;
+  }
+}
+
+function handsFreeStartThinkingWatchdog() {
+  handsFreeStopThinkingWatchdog();
+  handsFreeThinkingTimer = setTimeout(() => {
+    handsFreeThinkingTimer = null;
+    handsFreeDispatch('thinkingTimeout');
+    setHandsFreeStatus('O turno demorou demais — modo desligado.');
+  }, HF_THINKING_WATCHDOG_MS);
+}
+
+function handsFreeStopThinkingWatchdog() {
+  if (handsFreeThinkingTimer !== null) {
+    clearTimeout(handsFreeThinkingTimer);
+    handsFreeThinkingTimer = null;
+  }
+}
+
+function handsFreeStopSpeakingWatchdog() {
+  if (handsFreeSpeakingWatchdogTimer !== null) {
+    clearTimeout(handsFreeSpeakingWatchdogTimer);
+    handsFreeSpeakingWatchdogTimer = null;
+  }
+}
+
+function releaseHandsFreeCaptureResources() {
+  if (handsFreeCapture === null) {
+    return;
+  }
+  releaseCaptureResources(handsFreeCapture);
+  handsFreeCapture = null;
+}
+
+/** Freio (D14): fecha o microfone IMEDIATAMENTE, em qualquer um dos 9 estados. */
+function handsFreeForceOff(reason, statusText) {
+  const wasThinking = handsFreeState === 'thinking';
+  handsFreeStopRearmTimer();
+  handsFreeStopThinkingWatchdog();
+  handsFreeStopSpeakingWatchdog();
+  releaseHandsFreeCaptureResources();
+  handsFreeFrameQueue = [];
+  handsFreePreRollRing = [];
+  handsFreeUtteranceChunks = [];
+  handsFreeDetector = null;
+  handsFreeSegmenter = null;
+  void window.atlas.stt.captureEnd();
+  if (wasThinking) {
+    window.atlas.cancel();
+  }
+  handsFreeDispatch(reason || 'disable');
+  if (statusText !== undefined) {
+    setHandsFreeStatus(statusText);
+  }
+}
+
+function handsFreeHandleOverrun() {
+  handsFreeForceOff('vadOverrun', 'O detector de voz não acompanhou o áudio — modo desligado.');
+}
+
+function handsFreeStartCaptureGraph(stream) {
+  const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+  const audioContext = new AudioContextCtor({ sampleRate: 16000 });
+  const source = audioContext.createMediaStreamSource(stream);
+  const processor = audioContext.createScriptProcessor(4096, 1, 1);
+  const gain = audioContext.createGain();
+  gain.gain.value = 0;
+  processor.onaudioprocess = (event) => {
+    const channelData = event.inputBuffer.getChannelData(0);
+    for (let offset = 0; offset < channelData.length; offset += HF_FRAME_SAMPLES) {
+      handsFreeEnqueueFrame(channelData.slice(offset, offset + HF_FRAME_SAMPLES));
+    }
+  };
+  source.connect(processor);
+  processor.connect(gain);
+  gain.connect(audioContext.destination);
+  handsFreeCapture = { stream, audioContext, source, processor, gain, chunks: [] };
+}
+
+function handsFreeEnqueueFrame(frame) {
+  if (handsFreeFrameQueue.length >= HF_VAD_QUEUE_LIMIT) {
+    handsFreeHandleOverrun();
+    return;
+  }
+  handsFreeFrameQueue.push(frame);
+  void handsFreeDrainQueue();
+}
+
+async function handsFreeDrainQueue() {
+  if (handsFreeProcessingQueue) {
+    return;
+  }
+  handsFreeProcessingQueue = true;
+  try {
+    while (handsFreeFrameQueue.length > 0) {
+      const frame = handsFreeFrameQueue.shift();
+      await handsFreeProcessFrame(frame);
+    }
+  } finally {
+    handsFreeProcessingQueue = false;
+  }
+}
+
+async function handsFreeProcessFrame(frame) {
+  if (handsFreeDetector === null || handsFreeSegmenter === null) {
+    return;
+  }
+  let probability;
+  try {
+    probability = await handsFreeDetector.probe(frame);
+  } catch {
+    probability = 0;
+  }
+
+  // CA32 (pre-roll, tamanho EXATO do payload): o segmentador é consultado
+  // ANTES de qualquer mutação do anel/acumulador do glue — senão o frame que
+  // dispara `speechStart` seria contado DUAS vezes (uma no anel, uma no
+  // `[...ring, frame]` abaixo), e o anel perderia justamente o frame mais
+  // antigo que deveria reter. Corrigido durante a validação da SPEC-0052
+  // (CA32 exigia a fórmula exata de bytes, que expôs o off-by-one).
+  const segEvent = handsFreeSegmenter.push(probability);
+
+  if (handsFreeState === 'listening') {
+    if (segEvent.kind === 'speechStart') {
+      handsFreeUtteranceChunks = [...handsFreePreRollRing, frame];
+      handsFreePreRollRing = [];
+      handsFreeDispatch('speechStart');
+      return;
+    }
+    // Ainda não há fala: retém só o anel de pre-roll (D19) — o frame ATUAL
+    // só entra no anel DEPOIS de confirmado que não foi ele quem iniciou a
+    // fala.
+    handsFreePreRollRing.push(frame);
+    if (handsFreePreRollRing.length > HF_PRE_ROLL_FRAMES) {
+      handsFreePreRollRing.shift();
+    }
+    return;
+  }
+
+  if (handsFreeState === 'capturing') {
+    handsFreeUtteranceChunks.push(frame);
+  }
+
+  if (segEvent.kind === 'speechEnd') {
+    if (segEvent.discarded) {
+      // R1 (SPEC-0052): descarte NUNCA despacha 'speechEnd' ao reducer —
+      // ambos os estados envolvidos (capturing/listening) já são de
+      // microfone aberto, então nenhuma leitura desta escolha abre/fecha o
+      // microfone fora do previsto pela tabela.
+      handsFreeUtteranceChunks = [];
+      return;
+    }
+    await handsFreeCloseMicAndTranscribe('speechEnd');
+    return;
+  }
+
+  if (segEvent.kind === 'utteranceCap') {
+    await handsFreeCloseMicAndTranscribe('utteranceCap');
+  }
+}
+
+async function handsFreeCloseMicAndTranscribe(triggerEvent) {
+  const chunks = handsFreeUtteranceChunks;
+  handsFreeUtteranceChunks = [];
+  handsFreeStopRearmTimer();
+  releaseHandsFreeCaptureResources();
+  try {
+    await window.atlas.stt.captureEnd();
+  } catch {
+    // fail-safe: nunca propaga
+  }
+  handsFreeDispatch(triggerEvent); // capturing → transcribing (mic já fechado acima)
+  setHandsFreeStatus('Transcrevendo…');
+
+  const pcm = floatChunksToInt16(chunks);
+  try {
+    const result = await window.atlas.stt.transcribe(pcm.buffer, 16000);
+    if (result && result.ok && result.text.trim() !== '') {
+      handsFreeDispatch('transcriptReady');
+      await handsFreeSendTurn(result.text);
+      return;
+    }
+    if (result && result.ok) {
+      handsFreeDispatch('transcriptEmpty');
+      setHandsFreeStatus('Não entendi — pode repetir?');
+      await handsFreeReopenMic();
+      return;
+    }
+    handsFreeDispatch('transcriptFailed');
+    setHandsFreeStatus(describeSttFailure(result && result.reason));
+  } catch {
+    handsFreeDispatch('transcriptFailed');
+    setHandsFreeStatus('Falha inesperada na transcrição.');
+  }
+}
+
+// Pré-condições de envio (D23) — espelham as três recusas silenciosas do
+// `#chat-form`, com mensagem própria por motivo. Falsa ⇒ `turnRefused`, SEM
+// despachar `submit`.
+async function handsFreeSendTurn(text) {
+  if (chatSession === null) {
+    handsFreeDispatch('turnRefused');
+    setHandsFreeStatus('Conversa não está aberta — modo desligado.');
+    return;
+  }
+  if (chatTurnInFlight || askInFlight) {
+    handsFreeDispatch('turnRefused');
+    setHandsFreeStatus('Já existe um turno em andamento — modo desligado.');
+    return;
+  }
+  // R5 (SPEC-0052, nota de resolução do gate de validação): esta guarda é
+  // hoje INALCANÇÁVEL no fluxo real — `handsFreeCloseMicAndTranscribe` só
+  // chama `handsFreeSendTurn` quando `result.text.trim() !== ''` (senão o
+  // desfecho já foi `transcriptEmpty`, que reabre o microfone). Mantida
+  // como espelho estrutural fiel das três recusas do `#chat-form` — se um
+  // chamador futuro passar a invocar `handsFreeSendTurn` com texto vazio,
+  // ela continua correta.
+  const trimmed = text.trim();
+  if (trimmed === '') {
+    handsFreeDispatch('turnRefused');
+    setHandsFreeStatus('Transcrição vazia — modo desligado.');
+    return;
+  }
+
+  appendTranscription(text);
+  handsFreeTurnStartConfirmed = false;
+  const form = document.getElementById('chat-form');
+  form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+
+  // `dispatchEvent` é síncrono: a esta altura, o manipulador de `#chat-form`
+  // já rodou por inteiro (inclusive suas três recusas silenciosas) — sem
+  // tick/timer/promessa envolvidos (D23).
+  if (!handsFreeTurnStartConfirmed) {
+    handsFreeDispatch('turnRefused');
+    setHandsFreeStatus('O envio foi recusado — modo desligado.');
+    return;
+  }
+  handsFreeDispatch('turnStarted');
+  handsFreeStartThinkingWatchdog();
+}
+
+// Gancho de início confirmado (D23) — chamado pelo manipulador de
+// `#chat-form`, imediatamente após `chatTurnInFlight = true`.
+function notifyHandsFreeTurnStarted() {
+  handsFreeTurnStartConfirmed = true;
+}
+
+function notifyHandsFreeTurnSettled(snapshot) {
+  if (handsFreeState !== 'thinking') {
+    return;
+  }
+  handsFreeStopThinkingWatchdog();
+  handsFreeDispatch('turnDone');
+  void handsFreeSpeakReply(snapshot.reply);
+}
+
+function notifyHandsFreeTurnFailed(error) {
+  if (handsFreeState !== 'thinking') {
+    return;
+  }
+  handsFreeStopThinkingWatchdog();
+  handsFreeDispatch('turnFailed');
+  setHandsFreeStatus(`Turno falhou: ${(error && error.message) || error}`);
+}
+
+async function handsFreeSpeakReply(text) {
+  // O watchdog de fala vive DENTRO de `speakText` (clamp já aplicado lá) —
+  // aqui só reagimos ao `onDone`, que chega por evento OU pelo watchdog.
+  let done = false;
+  const finish = () => {
+    if (done) {
+      return;
+    }
+    done = true;
+    handsFreeDispatch('speechDone');
+    void handsFreeReopenMic();
+  };
+  speakText(text, finish);
+}
+
+async function handsFreeReopenMic() {
+  // speaking→arming ou transcriptEmpty→listening já mudaram o estado; aqui
+  // só reabrimos o hardware quando ainda fazemos sentido no laço (o freio
+  // pode ter desligado o modo enquanto isto estava pendente).
+  if (handsFreeState !== 'arming' && handsFreeState !== 'listening') {
+    return;
+  }
+  const enteringFromArming = handsFreeState === 'arming';
+  await window.atlas.stt.captureBegin();
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch {
+    await window.atlas.stt.captureEnd();
+    handsFreeDispatch('armFailed');
+    setHandsFreeStatus('Permissão de microfone negada ou indisponível.');
+    return;
+  }
+  if (handsFreeState !== 'arming' && handsFreeState !== 'listening') {
+    // Desligado enquanto o diálogo de permissão estava aberto (R2/freio).
+    for (const track of stream.getTracks()) {
+      track.stop();
+    }
+    return;
+  }
+  await window.atlas.stt.captureBegin(); // rearme (molde SPEC-0046/R1)
+  if (enteringFromArming) {
+    handsFreeDispatch('armed');
+  }
+  handsFreeSegmenter = createTurnSegmenter({
+    speechEnter: HF_SPEECH_ENTER,
+    speechExit: HF_SPEECH_EXIT,
+    minSpeechMs: HF_MIN_SPEECH_MS,
+    silenceCloseMs: HF_SILENCE_CLOSE_MS,
+    maxUtteranceMs: HF_MAX_UTTERANCE_MS,
+    frameMs: HF_FRAME_MS,
+  });
+  if (handsFreeDetector !== null) {
+    handsFreeDetector.reset();
+  }
+  handsFreePreRollRing = [];
+  handsFreeUtteranceChunks = [];
+  handsFreeStartCaptureGraph(stream);
+  handsFreeStartRearmTimer();
+  setHandsFreeStatus('');
+}
+
+async function handsFreeEnable() {
+  handsFreeDispatch('enable'); // off → arming
+  setHandsFreeStatus('Aguardando permissão do sistema…');
+  await window.atlas.stt.captureBegin();
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch {
+    await window.atlas.stt.captureEnd();
+    handsFreeDispatch('armFailed');
+    setHandsFreeStatus('Permissão de microfone negada ou indisponível.');
+    return;
+  }
+  if (handsFreeState !== 'arming') {
+    // Freio acionado enquanto o diálogo nativo de permissão estava aberto.
+    for (const track of stream.getTracks()) {
+      track.stop();
+    }
+    return;
+  }
+  await window.atlas.stt.captureBegin(); // rearme (molde SPEC-0046/R1)
+
+  let detector;
+  try {
+    detector = await handsFreeDetectorFactory();
+  } catch {
+    detector = null;
+  }
+  if (detector === null || detector === undefined) {
+    for (const track of stream.getTracks()) {
+      track.stop();
+    }
+    await window.atlas.stt.captureEnd();
+    handsFreeDispatch('armFailed');
+    setHandsFreeStatus('Detector de voz indisponível.');
+    return;
+  }
+
+  handsFreeDetector = detector;
+  handsFreeDetector.reset();
+  handsFreeSegmenter = createTurnSegmenter({
+    speechEnter: HF_SPEECH_ENTER,
+    speechExit: HF_SPEECH_EXIT,
+    minSpeechMs: HF_MIN_SPEECH_MS,
+    silenceCloseMs: HF_SILENCE_CLOSE_MS,
+    maxUtteranceMs: HF_MAX_UTTERANCE_MS,
+    frameMs: HF_FRAME_MS,
+  });
+  handsFreePreRollRing = [];
+  handsFreeUtteranceChunks = [];
+  handsFreeStartCaptureGraph(stream);
+  handsFreeDispatch('armed'); // arming → listening
+  handsFreeStartRearmTimer();
+  setHandsFreeStatus('');
+}
+
+handsFreeToggleEl.addEventListener('click', () => {
+  if (handsFreeState === 'off') {
+    void handsFreeEnable();
+    return;
+  }
+  if (handsFreeState === 'unavailable') {
+    return;
+  }
+  // Freio (D14): fecha o microfone na hora, em qualquer um dos 9 estados;
+  // com turno em voo (`thinking`), aciona o cancelamento da SPEC-0051.
+  handsFreeForceOff('disable');
+  setHandsFreeStatus('');
+});
+
+// Reavaliação nos gatilhos assíncronos (achado A6/D9): disponibilidade do
+// VAD por IPC, além dos dois gatilhos de voz já existentes (voiceschanged,
+// catálogo/disponibilidade Piper) — nenhum deles resolve point-in-time.
+function loadHandsFreeAvailability() {
+  if (window.atlas === undefined || window.atlas.stt === undefined) {
+    handsFreeSttAvailable = false;
+    refreshHandsFreeToggle();
+    return Promise.resolve();
+  }
+  return Promise.all([
+    window.atlas.stt
+      .available()
+      .then((info) => {
+        handsFreeSttAvailable = Boolean(info && info.available === true);
+      })
+      .catch(() => {
+        handsFreeSttAvailable = false;
+      }),
+    window.atlas === undefined || window.atlas.vad === undefined
+      ? Promise.resolve()
+      : window.atlas.vad
+          .available()
+          .then((info) => {
+            handsFreeVadAvailable = Boolean(info && info.available === true);
+          })
+          .catch(() => {
+            handsFreeVadAvailable = false;
+          }),
+  ]).finally(() => {
+    refreshHandsFreeToggle();
+  });
+}
+
+refreshHandsFreeToggle();
+loadHandsFreeAvailability();

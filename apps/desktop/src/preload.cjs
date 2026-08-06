@@ -38,4 +38,8 @@ contextBridge.exposeInMainWorld('atlas', {
     captureBegin: () => ipcRenderer.invoke('atlas:stt:capture:begin'),
     captureEnd: () => ipcRenderer.invoke('atlas:stt:capture:end'),
   },
+  vad: {
+    available: () => ipcRenderer.invoke('atlas:vad:available'),
+    resources: () => ipcRenderer.invoke('atlas:vad:resources'),
+  },
 });

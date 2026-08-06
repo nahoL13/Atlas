@@ -32,3 +32,9 @@ apps/desktop/resources/piper/*
 # versionados — só o contrato de layout (README.md) fica no git.
 apps/desktop/resources/stt/*
 !apps/desktop/resources/stt/README.md
+
+# Silero VAD (SPEC-0052, ADR-0023): runtime onnxruntime-web + binário WASM +
+# modelo não são versionados — só o contrato de layout (README.md) fica no
+# git.
+apps/desktop/src/renderer/vendor/vad/*
+!apps/desktop/src/renderer/vendor/vad/README.md

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; media-src 'self' blob:"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; media-src 'self' blob:"
     />
     <title>Atlas</title>
   </head>
@@ -58,6 +58,11 @@
       <span id="mic-status"></span>
     </form>
     <hr />
+    <h2>Modo hands-free</h2>
+    <button id="hands-free-toggle" type="button">🎙️ Ligar conversa contínua</button>
+    <span id="hands-free-indicator"></span>
+    <span id="hands-free-status"></span>
+    <hr />
     <h2>Memória</h2>
     <button id="memory-refresh" type="button">Atualizar</button>
     <ul id="memory-list"></ul>
@@ -77,6 +82,7 @@
     </div>
     <button id="permissions-apply" type="button">Aplicar</button>
     <span id="permissions-error"></span>
+    <script src="./vendor/vad/ort.min.js"></script>
     <script src="./renderer.js"></script>
   </body>
 </html>

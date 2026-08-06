@@ -17,6 +17,27 @@ import {
 import * as piperTtsModule from '../src/piper-tts.js';
 import { PIPER_VOICE_PREFIX, resolveDefaultPiperVoiceURI } from '../src/piper-tts.js';
 import * as sttEngineModule from '../src/stt-engine.js';
+import * as handsFreeModule from '../src/hands-free.js';
+import {
+  CAPTURE_REARM_MS,
+  FRAME_MS,
+  FRAME_SAMPLES,
+  MAX_UTTERANCE_MS,
+  MIN_SPEECH_MS,
+  PRE_ROLL_FRAMES,
+  SILENCE_CLOSE_MS,
+  SPEAKING_WATCHDOG_BASE_MS,
+  SPEAKING_WATCHDOG_MAX_MS,
+  SPEAKING_WATCHDOG_PER_CHAR_MS,
+  SPEECH_ENTER,
+  SPEECH_EXIT,
+  THINKING_WATCHDOG_MS,
+  VAD_QUEUE_LIMIT,
+  createTurnSegmenter,
+  handsFreeMicrophoneOpen,
+  nextHandsFreeState,
+  speakingWatchdogMs,
+} from '../src/hands-free.js';
 import type { RendererFixture } from './helpers/renderer-harness.js';
 import { loadRenderer } from './helpers/renderer-harness.js';
 
@@ -32,13 +53,14 @@ import { loadRenderer } from './helpers/renderer-harness.js';
 // reexportar) — o lado módulo desta entrada importa diretamente de
 // `piper-tts.js`.
 
-/** Módulos-fonte vigiados pelo gate (SPEC-0047/D1) — a FONTE da enumeração é o `import * as` em runtime, nunca uma lista escrita à mão dos nomes exportados. */
-type WatchedModule = 'speech-output' | 'piper-tts' | 'stt-engine';
+/** Módulos-fonte vigiados pelo gate (SPEC-0047/D1, generalizado a 4 pela SPEC-0052) — a FONTE da enumeração é o `import * as` em runtime, nunca uma lista escrita à mão dos nomes exportados. */
+type WatchedModule = 'speech-output' | 'piper-tts' | 'stt-engine' | 'hands-free';
 
 const WATCHED_MODULES: Readonly<Record<WatchedModule, Record<string, unknown>>> = {
   'speech-output': speechOutputModule as unknown as Record<string, unknown>,
   'piper-tts': piperTtsModule as unknown as Record<string, unknown>,
   'stt-engine': sttEngineModule as unknown as Record<string, unknown>,
+  'hands-free': handsFreeModule as unknown as Record<string, unknown>,
 };
 
 const LOCAL_1: VoiceInfo = { voiceURI: 'local-1', name: 'Local Um', localService: true };
@@ -131,6 +153,136 @@ const REGISTRY: readonly ReplicaEntry[] = [
     rendererSymbol: 'computeDefaultPiperVoiceURI',
     kind: 'direct',
     casesKey: 'resolveDefaultPiperVoiceURI',
+  },
+  // SPEC-0052 — modo hands-free (D10): máquina de estados + segmentador de
+  // turno, réplica em `renderer.js`, teste de referência `hands-free.test.ts`.
+  {
+    moduleSymbol: 'nextHandsFreeState',
+    moduleSource: 'hands-free',
+    rendererSymbol: 'nextHandsFreeState',
+    kind: 'direct',
+    casesKey: 'nextHandsFreeState',
+  },
+  {
+    moduleSymbol: 'handsFreeMicrophoneOpen',
+    moduleSource: 'hands-free',
+    rendererSymbol: 'handsFreeMicrophoneOpen',
+    kind: 'direct',
+    casesKey: 'handsFreeMicrophoneOpen',
+  },
+  {
+    moduleSymbol: 'speakingWatchdogMs',
+    moduleSource: 'hands-free',
+    rendererSymbol: 'speakingWatchdogMs',
+    kind: 'direct',
+    casesKey: 'speakingWatchdogMs',
+  },
+  {
+    moduleSymbol: 'createTurnSegmenter',
+    moduleSource: 'hands-free',
+    rendererSymbol: 'createTurnSegmenter',
+    kind: 'direct',
+    casesKey: 'createTurnSegmenter',
+  },
+  // As 14 constantes pinadas do Contrato (SPEC-0052) — cada uma comparada
+  // por igualdade (mesmo molde de `PIPER_VOICE_PREFIX`).
+  {
+    moduleSymbol: 'FRAME_SAMPLES',
+    moduleSource: 'hands-free',
+    rendererSymbol: 'HF_FRAME_SAMPLES',
+    kind: 'direct',
+    casesKey: 'handsFreeConstant',
+  },
+  {
+    moduleSymbol: 'FRAME_MS',
+    moduleSource: 'hands-free',
+    rendererSymbol: 'HF_FRAME_MS',
+    kind: 'direct',
+    casesKey: 'handsFreeConstant',
+  },
+  {
+    moduleSymbol: 'SPEECH_ENTER',
+    moduleSource: 'hands-free',
+    rendererSymbol: 'HF_SPEECH_ENTER',
+    kind: 'direct',
+    casesKey: 'handsFreeConstant',
+  },
+  {
+    moduleSymbol: 'SPEECH_EXIT',
+    moduleSource: 'hands-free',
+    rendererSymbol: 'HF_SPEECH_EXIT',
+    kind: 'direct',
+    casesKey: 'handsFreeConstant',
+  },
+  {
+    moduleSymbol: 'MIN_SPEECH_MS',
+    moduleSource: 'hands-free',
+    rendererSymbol: 'HF_MIN_SPEECH_MS',
+    kind: 'direct',
+    casesKey: 'handsFreeConstant',
+  },
+  {
+    moduleSymbol: 'PRE_ROLL_FRAMES',
+    moduleSource: 'hands-free',
+    rendererSymbol: 'HF_PRE_ROLL_FRAMES',
+    kind: 'direct',
+    casesKey: 'handsFreeConstant',
+  },
+  {
+    moduleSymbol: 'SILENCE_CLOSE_MS',
+    moduleSource: 'hands-free',
+    rendererSymbol: 'HF_SILENCE_CLOSE_MS',
+    kind: 'direct',
+    casesKey: 'handsFreeConstant',
+  },
+  {
+    moduleSymbol: 'MAX_UTTERANCE_MS',
+    moduleSource: 'hands-free',
+    rendererSymbol: 'HF_MAX_UTTERANCE_MS',
+    kind: 'direct',
+    casesKey: 'handsFreeConstant',
+  },
+  {
+    moduleSymbol: 'CAPTURE_REARM_MS',
+    moduleSource: 'hands-free',
+    rendererSymbol: 'HF_CAPTURE_REARM_MS',
+    kind: 'direct',
+    casesKey: 'handsFreeConstant',
+  },
+  {
+    moduleSymbol: 'VAD_QUEUE_LIMIT',
+    moduleSource: 'hands-free',
+    rendererSymbol: 'HF_VAD_QUEUE_LIMIT',
+    kind: 'direct',
+    casesKey: 'handsFreeConstant',
+  },
+  {
+    moduleSymbol: 'THINKING_WATCHDOG_MS',
+    moduleSource: 'hands-free',
+    rendererSymbol: 'HF_THINKING_WATCHDOG_MS',
+    kind: 'direct',
+    casesKey: 'handsFreeConstant',
+  },
+  {
+    moduleSymbol: 'SPEAKING_WATCHDOG_BASE_MS',
+    moduleSource: 'hands-free',
+    rendererSymbol: 'HF_SPEAKING_WATCHDOG_BASE_MS',
+    kind: 'direct',
+    casesKey: 'handsFreeConstant',
+  },
+  {
+    moduleSymbol: 'SPEAKING_WATCHDOG_PER_CHAR_MS',
+    moduleSource: 'hands-free',
+    rendererSymbol: 'HF_SPEAKING_WATCHDOG_PER_CHAR_MS',
+    kind: 'direct',
+    casesKey: 'handsFreeConstant',
+  },
+  {
+    moduleSymbol: 'SPEAKING_WATCHDOG_MAX_MS',
+    moduleSource: 'hands-free',
+    rendererSymbol: 'HF_SPEAKING_WATCHDOG_MAX_MS',
+    kind: 'direct',
+    casesKey: 'handsFreeConstant',
   },
 ];
 
@@ -351,6 +503,76 @@ const DEFAULT_PIPER_VOICE_CASES: readonly DefaultVoiceCase[] = [
   },
 ];
 
+// --- SPEC-0052: tabelas de casos do modo hands-free ----------------------
+
+const HANDS_FREE_STATES = [
+  'off',
+  'unavailable',
+  'arming',
+  'listening',
+  'capturing',
+  'transcribing',
+  'sending',
+  'thinking',
+  'speaking',
+] as const;
+
+const HANDS_FREE_EVENTS = [
+  'enable',
+  'disable',
+  'unavailable',
+  'armed',
+  'armFailed',
+  'speechStart',
+  'speechEnd',
+  'utteranceCap',
+  'transcriptReady',
+  'transcriptEmpty',
+  'transcriptFailed',
+  'turnStarted',
+  'turnRefused',
+  'turnDone',
+  'turnFailed',
+  'thinkingTimeout',
+  'speechDone',
+  'vadOverrun',
+] as const;
+
+interface StateEventCase {
+  readonly state: (typeof HANDS_FREE_STATES)[number];
+  readonly event: (typeof HANDS_FREE_EVENTS)[number];
+}
+
+const NEXT_HANDS_FREE_STATE_CASES: readonly StateEventCase[] = HANDS_FREE_STATES.flatMap((state) =>
+  HANDS_FREE_EVENTS.map((event) => ({ state, event })),
+);
+
+const MICROPHONE_OPEN_CASES: readonly (typeof HANDS_FREE_STATES)[number][] = [...HANDS_FREE_STATES];
+
+const WATCHDOG_TEXT_CASES: readonly string[] = ['', 'oi', 'a'.repeat(50), 'a'.repeat(5000)];
+
+interface SegmenterCase {
+  readonly name: string;
+  readonly probabilities: readonly number[];
+}
+
+const SEGMENTER_CASES: readonly SegmenterCase[] = [
+  { name: 'silêncio contínuo, nunca entra em fala', probabilities: Array(20).fill(0.1) },
+  {
+    name: 'entra em fala e histerese (0.6, 0.4) não encerra',
+    probabilities: [0.6, 0.4, 0.4, 0.9],
+  },
+  {
+    name: 'fala suficiente + silêncio até fechar',
+    probabilities: [0.9, ...Array(10).fill(0.9), ...Array(100).fill(0.0)],
+  },
+  {
+    name: 'fala curta (descartada) + silêncio até fechar',
+    probabilities: [0.9, ...Array(100).fill(0.0)],
+  },
+  { name: 'teto de fala contínua', probabilities: Array(1000).fill(0.9) },
+];
+
 const CASES_BY_KEY: Record<string, readonly unknown[]> = {
   createSpeechOutput: GLUE_CASES,
   isPiperVoiceURI: PIPER_URI_CASES,
@@ -360,6 +582,11 @@ const CASES_BY_KEY: Record<string, readonly unknown[]> = {
   resolvePersistedVoiceSelection: RESOLVE_PERSISTED_CASES,
   PIPER_VOICE_PREFIX: [{}],
   resolveDefaultPiperVoiceURI: DEFAULT_PIPER_VOICE_CASES,
+  nextHandsFreeState: NEXT_HANDS_FREE_STATE_CASES,
+  handsFreeMicrophoneOpen: MICROPHONE_OPEN_CASES,
+  speakingWatchdogMs: WATCHDOG_TEXT_CASES,
+  createTurnSegmenter: SEGMENTER_CASES,
+  handsFreeConstant: [{}],
 };
 
 // --- Frente 2: execução ---------------------------------------------------
@@ -576,18 +803,130 @@ describe('paridade: resolveDefaultPiperVoiceURI ↔ computeDefaultPiperVoiceURI 
   );
 });
 
-// --- Frente 3 (SPEC-0045) / Frente 1 (SPEC-0047): gate mecânico da próxima
-// réplica, generalizado à lista de módulos-fonte vigiados (D1/D2) ----------
+// --- SPEC-0052: paridade do 4º módulo vigiado (hands-free.ts) -------------
 
-describe('gate mecânico da próxima réplica, generalizado a speech-output/piper-tts/stt-engine (SPEC-0047, Frente 1)', () => {
-  it('a lista de módulos vigiados contém exatamente speech-output, piper-tts e stt-engine', () => {
+describe('paridade: nextHandsFreeState', () => {
+  it.each(NEXT_HANDS_FREE_STATE_CASES.map((c) => [`${c.state}+${c.event}`, c] as const))(
+    '%s',
+    async (_name, testCase) => {
+      const fixture = await loadRenderer();
+      try {
+        const rendererFn = fixture.internals.nextHandsFreeState as (
+          state: string,
+          event: string,
+        ) => string;
+        expect(rendererFn(testCase.state, testCase.event)).toBe(
+          nextHandsFreeState(testCase.state, testCase.event),
+        );
+      } finally {
+        fixture.close();
+      }
+    },
+  );
+});
+
+describe('paridade: handsFreeMicrophoneOpen', () => {
+  it.each(MICROPHONE_OPEN_CASES.map((s) => [s] as const))('%s', async (state) => {
+    const fixture = await loadRenderer();
+    try {
+      const rendererFn = fixture.internals.handsFreeMicrophoneOpen as (s: string) => boolean;
+      expect(rendererFn(state)).toBe(handsFreeMicrophoneOpen(state));
+    } finally {
+      fixture.close();
+    }
+  });
+});
+
+describe('paridade: speakingWatchdogMs', () => {
+  it.each(WATCHDOG_TEXT_CASES.map((t) => [t.length, t] as const))(
+    'texto de %i caracteres',
+    async (_len, text) => {
+      const fixture = await loadRenderer();
+      try {
+        const rendererFn = fixture.internals.speakingWatchdogMs as (t: string) => number;
+        expect(rendererFn(text)).toBe(speakingWatchdogMs(text));
+      } finally {
+        fixture.close();
+      }
+    },
+  );
+});
+
+describe('paridade: createTurnSegmenter', () => {
+  it.each(SEGMENTER_CASES.map((c) => [c.name, c] as const))('%s', async (_name, testCase) => {
+    const fixture = await loadRenderer();
+    try {
+      const rendererFactory = fixture.internals.createTurnSegmenter as (config: {
+        speechEnter: number;
+        speechExit: number;
+        minSpeechMs: number;
+        silenceCloseMs: number;
+        maxUtteranceMs: number;
+        frameMs: number;
+      }) => { push(p: number): unknown; reset(): void };
+      const config = {
+        speechEnter: SPEECH_ENTER,
+        speechExit: SPEECH_EXIT,
+        minSpeechMs: MIN_SPEECH_MS,
+        silenceCloseMs: SILENCE_CLOSE_MS,
+        maxUtteranceMs: MAX_UTTERANCE_MS,
+        frameMs: FRAME_MS,
+      };
+      const moduleSegmenter = createTurnSegmenter(config);
+      const rendererSegmenter = rendererFactory(config);
+      const moduleEvents = testCase.probabilities.map((p) => moduleSegmenter.push(p));
+      const rendererEvents = testCase.probabilities.map((p) => rendererSegmenter.push(p));
+      expect(rendererEvents).toEqual(moduleEvents);
+    } finally {
+      fixture.close();
+    }
+  });
+});
+
+describe('paridade: constantes pinadas de hands-free.ts', () => {
+  const CONSTANT_PAIRS: readonly [string, unknown][] = [
+    ['HF_FRAME_SAMPLES', FRAME_SAMPLES],
+    ['HF_FRAME_MS', FRAME_MS],
+    ['HF_SPEECH_ENTER', SPEECH_ENTER],
+    ['HF_SPEECH_EXIT', SPEECH_EXIT],
+    ['HF_MIN_SPEECH_MS', MIN_SPEECH_MS],
+    ['HF_PRE_ROLL_FRAMES', PRE_ROLL_FRAMES],
+    ['HF_SILENCE_CLOSE_MS', SILENCE_CLOSE_MS],
+    ['HF_MAX_UTTERANCE_MS', MAX_UTTERANCE_MS],
+    ['HF_CAPTURE_REARM_MS', CAPTURE_REARM_MS],
+    ['HF_VAD_QUEUE_LIMIT', VAD_QUEUE_LIMIT],
+    ['HF_THINKING_WATCHDOG_MS', THINKING_WATCHDOG_MS],
+    ['HF_SPEAKING_WATCHDOG_BASE_MS', SPEAKING_WATCHDOG_BASE_MS],
+    ['HF_SPEAKING_WATCHDOG_PER_CHAR_MS', SPEAKING_WATCHDOG_PER_CHAR_MS],
+    ['HF_SPEAKING_WATCHDOG_MAX_MS', SPEAKING_WATCHDOG_MAX_MS],
+  ];
+
+  it.each(CONSTANT_PAIRS.map(([symbol]) => [symbol] as const))(
+    '%s idêntica nos dois lados',
+    async (symbol) => {
+      const fixture = await loadRenderer();
+      try {
+        const expected = CONSTANT_PAIRS.find(([s]) => s === symbol)![1];
+        expect(fixture.internals[symbol]).toBe(expected);
+      } finally {
+        fixture.close();
+      }
+    },
+  );
+});
+
+// --- Frente 3 (SPEC-0045) / Frente 1 (SPEC-0047) / SPEC-0052: gate mecânico
+// da próxima réplica, generalizado à lista de módulos-fonte vigiados -------
+
+describe('gate mecânico da próxima réplica, generalizado a speech-output/piper-tts/stt-engine/hands-free (SPEC-0052)', () => {
+  it('a lista de módulos vigiados contém exatamente speech-output, piper-tts, stt-engine e hands-free', () => {
     expect(Object.keys(WATCHED_MODULES).sort()).toEqual(
-      ['speech-output', 'piper-tts', 'stt-engine'].sort(),
+      ['speech-output', 'piper-tts', 'stt-engine', 'hands-free'].sort(),
     );
   });
 
-  it('registro contém exatamente as 10 entradas (9 da SPEC-0045 + resolveDefaultPiperVoiceURI)', () => {
-    expect(REGISTRY.length).toBe(10);
+  it('registro contém exatamente 28 entradas (10 pré-SPEC-0052 + 4 funções + 14 constantes de hands-free.ts)', () => {
+    expect(REGISTRY.length).toBe(28);
   });
 
   it('todo export de valor de cada módulo vigiado está classificado (registro direto ou NOT_MIRRORED), enumerado em runtime via import * as', () => {

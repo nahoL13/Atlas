@@ -2,7 +2,7 @@
 
 > **Project Atlas — Log de Custo de Token por SPEC**
 
-Atualizado em: 2026-08-05 (regenerado por `python3 scripts/agent-usage-report.py --executor all`)
+Atualizado em: 2026-08-06 (regenerado por `python3 scripts/agent-usage-report.py --executor all`)
 
 As métricas são separadas por executor. Tokens efetivos Claude usam os pesos históricos; Codex fica `N/D` até existir uma métrica comparável documentada. Snapshots de Codex são cumulativos e só o último total de cada transcript é lido.
 
@@ -62,7 +62,7 @@ As métricas são separadas por executor. Tokens efetivos Claude usam os pesos h
 | SPEC-0049 | Claude | Fechamento das duas direções residuais de serialização de gestos registradas pela SPEC-0048 (DoD-d): o painel `ask` do desktop passa a recusar um 2º `ask` concorrente e um `ask` disparado durante um turno de chat em voo, e a falha de `atlas.ask` deixa de virar unhandled rejection para aparecer no `#ask-result` | Done | 2 | 2026-08-04 | 20.345.139 | 3.913.578 | complete |
 | SPEC-0050 | Claude | Fechamento do resíduo D7 da SPEC-0049: o rastreio de operação em voo do `core-bridge` (`busySessions`/`inFlightOperations`) passa a ser guarda de entrada também de `resolveAskSnapshot` e `sendChatTurn` — somando-se aos consumidores que já existem (`updatePersona`, `selectPermissionRoots`) —, tornando o invariante "um round-trip contra o Core por vez" estrutural no main process, e não mais garantia exclusiva do renderer | Done | 2 | 2026-08-04 | 31.029.100 | 8.304.209 | complete |
 | SPEC-0051 | Claude | Cancelamento (desistência) de uma operação em voo no `apps/desktop`: um botão "Cancelar" por painel (`ask` e chat) faz a promessa do gesto assentar imediatamente com mensagem pinada, libera a interface e o main process para um gesto novo, e **contém** os efeitos do trabalho abandonado (nenhum `learned` persistido, nenhuma conversa atualizada, `ConfirmPort` fail-closed **pegajoso por sessão**, conversa afetada em quarentena), sem introduzir cancelamento real dentro do Core. | Done | 2 | 2026-08-05 | 99.432.888 | 13.842.602 | complete |
-| SPEC-0052 | Claude | Modo hands-free no `apps/desktop`: microfone aberto entre turnos sob toggle explícito, fim de fala detectado por VAD Silero em WASM no renderer, auto-envio da transcrição ao chat e resposta falada — com o microfone fechado durante o processamento e durante a fala | Draft | 0 | - | 2.411.152 | 794.333 | complete |
+| SPEC-0052 | Claude | Modo hands-free no `apps/desktop`: microfone aberto entre turnos sob toggle explícito, fim de fala detectado por VAD Silero em WASM no renderer, auto-envio da transcrição ao chat e resposta falada — com o microfone fechado durante o processamento e durante a fala | Draft | 1 | 2026-08-06 | 6.776.693 | 1.484.741 | complete |
 
 ## Detalhamento por fase
 
@@ -120,7 +120,7 @@ Valores em tokens efetivos. Codex não é somado nem comparado a Claude enquanto
 | SPEC-0049 | Claude | 677.295 | 0 | 439.408 | 1.052.170 | 415.004 | 1.329.701 | 0 |
 | SPEC-0050 | Claude | 826.040 | 3.578.699 | 867.789 | 864.266 | 695.112 | 1.472.303 | 0 |
 | SPEC-0051 | Claude | 1.107.198 | 23.450 | 935.085 | 8.915.134 | 1.178.794 | 1.682.941 | 0 |
-| SPEC-0052 | Claude | 0 | 0 | 794.333 | 0 | 0 | 0 | 0 |
+| SPEC-0052 | Claude | 0 | 0 | 794.333 | 0 | 690.408 | 0 | 0 |
 
 ## Eficiência de processo (overhead ÷ implementação)
 

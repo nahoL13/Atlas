@@ -53,6 +53,25 @@ A ausência de atrito também é informação.
 
 # Registro — Arquivo (SPEC-0038 e anteriores)
 
+## [SPEC-0047](specs/SPEC-0047-renderer-parity-gate-and-panel-coverage.md) — Gate de paridade generalizado a `piper-tts.ts`/`stt-engine.ts` e cobertura comportamental dos painéis no harness (2026-08-03)
+
+**Descobrimos que...**
+
+A 1ª passada do `architecture-reviewer` vetou a SPEC só por defeitos mecânicos no **texto normativo**, não de desenho: Critérios de Aceitação escritos como estado absoluto do repositório (`git diff --name-only` sobre o repositório inteiro) reprovariam a SPEC por diff alheio — havia resíduo não commitado da própria correção pós-fecho da SPEC-0046 (`c1b9ba3`) na árvore no momento em que o rascunho foi escrito; a contagem absoluta de testes citada no rascunho ficou obsoleta entre o rascunho e a revisão (938 → 939, por causa de outra sessão); e dois CAs (8/9, as provas negativas) exigiam mutar `src/` para ver o gate ficar vermelho, exatamente o que as Restrições e o Checklist da mesma SPEC proibiam — um texto autocontraditório que teria empurrado o `spec-implementer` a pular a prova ou parar por contradição. Descobrimos também, na execução: a 1ª invocação do `spec-implementer` foi interrompida a meio da tarefa, deixando a maior parte do código já na árvore (não commitado); a 2ª invocação encontrou o trabalho pronto e fez majoritariamente verificação — por isso o `spec-validator` foi instruído a **reproduzir** as três provas negativas ele mesmo, em vez de aceitar o relato, e reproduziu, com as mensagens de falha esperadas batendo.
+
+**A arquitetura ajudou porque...**
+
+O campo `moduleSource` que o registro de paridade já carregava desde a SPEC-0045 (por causa de `PIPER_VOICE_PREFIX`) generalizou para uma lista de três módulos-fonte vigiados sem mudança de forma — só uma lista maior e mais entradas em `NOT_MIRRORED`; o harness `jsdom` da SPEC-0045 absorveu os cinco painéis sem precisar de opção nova além de controlar a resolução de `chat.send`/`ask` a partir do teste (Frente 5). O invariante "em recusa, o estado visível volta do estado real e nada é perdido em silêncio" — já provado em produção pelo `core-bridge` desde as SPECs 0034/0037/0038 — bastou como roteiro para os casos de recusa dos painéis, sem precisar de desenho novo.
+
+**A arquitetura atrapalhou porque...**
+
+Nada de estrutural. O atrito ficou inteiro em precisão de registro dos Critérios de Aceitação, como descrito acima — a mesma classe de defeito ("garantia em prosa incompleta/absoluta") já catalogada nos Padrões Recorrentes, agora manifestada em critério de **verificação**, não de comportamento do produto.
+
+**Precisamos mudar...**
+
+(1) CA de diff e de contagem de testes devem ser ancorados a um commit-base e a delta sobre uma base observada, nunca ao estado absoluto do repositório — encaminhamento: já aplicado nesta própria SPEC (D10, "Convenção de medição") e deve ser o padrão para toda SPEC futura de higiene de teste/verificação; se o padrão se repetir, revisar o `SPEC-TEMPLATE.md`. (2) Toda SPEC com prova negativa obrigatória precisa declarar a mutação temporária de `src/` como exceção sancionada nos três lugares onde a regra de somente-leitura aparece (CA, Restrições, Checklist) — encaminhamento: já aplicado nesta SPEC (D11); registrado aqui para a próxima SPEC de gate mecânico citar o precedente em vez de redescobrir a contradição. (3) Implementação de origem não confirmada (sessão anterior interrompida, trabalho já na árvore sem relato confiável) exige verificação independente reforçada pelo validador — não revisão de relatório — encaminhamento: nenhuma mudança de processo além do já aplicado nesta sessão; registrado como precedente. (4) Resíduo documental deliberado: o comentário em `apps/desktop/src/renderer/renderer.js:415-419` ("resíduo sem cobertura automatizada" sobre `computeDefaultPiperVoiceURI`) ficou factualmente desatualizado por decisão (D5, CA de diff vazio em `src/` prevalece) — encaminhamento: corrigir na próxima fatia que legitimamente toque `renderer.js`. (5) O harness lê **um** `renderer.js` do disco; esta SPEC elevou de 4 para 8 os arquivos de teste dependentes dessa premissa, encarecendo a fatia futura de quebrar `renderer.js` em arquivos menores (SPEC-0042/D8) — encaminhamento: já registrado em `apps/desktop/CLAUDE.md`/`NEXT_CONTEXT.md`, para a SPEC que atacar o D8 orçar esse custo. (6) Achado real, não corrigido por decisão de escopo: `#chat-send` calcula `disabled` sem somar `askInFlight` (`renderer.js:966-975`), então um turno de chat pode ser enviado com um `ask` ainda em voo — encaminhamento: candidato registrado em `apps/desktop/CLAUDE.md`/`NEXT_CONTEXT.md` para uma fatia futura que toque `src/`. (7) O eixo residual de D2 permanece: o gate vigia só três módulos nomeados; réplica de lógica de um módulo fora dessa lista segue protegida só por convenção — encaminhamento: nenhuma ação agora, registrado como limite conhecido nas Observações da própria SPEC e em `apps/desktop/CLAUDE.md`.
+
+
 ## [SPEC-0037](specs/SPEC-0037-desktop-runtime-persona-switch.md) — Desktop: seleção e troca de Persona em runtime pela interface gráfica (2026-07-28)
 
 **Descobrimos que...**

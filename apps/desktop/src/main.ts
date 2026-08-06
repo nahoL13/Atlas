@@ -34,6 +34,7 @@ import type { PiperFsPort, PiperPaths, SpawnPiper } from './piper-tts.js';
 import { createCaptureWindow, decideMediaPermission } from './media-permission.js';
 import { createSttEngine } from './stt-engine.js';
 import type { SttProcess, SpawnStt, SttTranscribeInput } from './stt-engine.js';
+import { createVadResources } from './vad-resources.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -229,6 +230,34 @@ const sttEngine = createSttEngine({
   unlink: (path) => rm(path, { force: true }),
 });
 
+/** Verificação síncrona de presença de arquivo — fail-safe, nunca lança (mesmo molde do STT). */
+function nodeVadStat(): (path: string) => boolean {
+  return (path) => {
+    try {
+      accessSync(path);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+}
+
+/** Lê um arquivo binário como `ArrayBuffer` — cópia própria, nunca o buffer pooled do Node. */
+async function readFileAsArrayBuffer(path: string): Promise<ArrayBuffer> {
+  const buffer = await readFile(path);
+  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+}
+
+// VAD (Silero, SPEC-0052/ADR-0023): diretório canônico ÚNICO, irmão do
+// documento do renderer — sem override por env (D6), diferente dos 3 níveis
+// do Piper/whisper porque o consumidor real do `<script>` é o documento, não
+// um binário invocado pelo main.
+const vadResources = createVadResources({
+  resolveDir: () => join(__dirname, 'renderer', 'vendor', 'vad'),
+  readFile: readFileAsArrayBuffer,
+  stat: nodeVadStat(),
+});
+
 // Janela de captura (SPEC-0046, D9/D17): único estado de `captureInFlight`
 // consumido pelos dois handlers de permissão de mídia abaixo — aberta/
 // rearmada por `'atlas:stt:capture:begin'`, fechada por
@@ -368,6 +397,18 @@ ipcMain.handle('atlas:stt:capture:begin', () => {
 ipcMain.handle('atlas:stt:capture:end', () => {
   captureWindow.end();
 });
+
+// VAD (SPEC-0052): dois canais IPC pinados. Nenhum download — presença de
+// arquivo checada a cada chamada (mesma limitação conhecida de
+// `PiperTts.isAvailable()`/`SttEngine.isAvailable()`: prova presença, não
+// execução).
+ipcMain.handle('atlas:vad:available', () => {
+  if (!vadResources.isAvailable()) {
+    return { available: false, reason: 'resources-missing' };
+  }
+  return { available: true };
+});
+ipcMain.handle('atlas:vad:resources', () => vadResources.load());
 
 // Gesto de escape (SPEC-0051): canal síncrono na semântica de `handle`
 // (nunca sobe/desliga um Core) — só marca como abandonada toda operação

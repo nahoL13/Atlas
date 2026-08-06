@@ -148,13 +148,14 @@ Esse critério não é automático — a decisão de "Fase 1 está madura o bast
 - Exibição visual do traço de execução (Tools rodadas, bloqueadas, negadas) — sem expor a arquitetura interna ao usuário (Artigo 7 da Constituição: uma única Persona percebida).
 - Confirmação de ações destrutivas via diálogo nativo, não prompt de terminal.
 
-## 2.3 Voz — **entregue por inteiro** (2026-07-29, SPEC-0035/0036, saída; 2026-08-01, SPEC-0046, entrada), wake word segue candidato
+## 2.3 Voz — saída, entrada e conversa contínua **entregues** (2026-07-29, SPEC-0035/0036, saída; 2026-08-01, SPEC-0046, entrada; 2026-08-06, SPEC-0052, conversa contínua), wake word segue candidato
 
 Já reservado no PRD ("suporte básico à voz") e no `ProjectStructure.md` ("futura entrada e saída por voz" em `apps/desktop`):
 
 - ~~Saída por voz (TTS).~~ **entregue** — [SPEC-0035](../implementation/specs/SPEC-0035-desktop-voice-output-tts.md)/[SPEC-0036](../implementation/specs/SPEC-0036-desktop-tts-local-voice-only.md) (Web Speech API, vozes locais, fail-closed), estendida pelo Piper neural local ([ADR-0021](../06-adr/ADR-0021-piper-tts-local-voice-engine.md), SPEC-0040/0041/0043).
-- ~~Entrada por voz (STT).~~ **entregue** — [SPEC-0046](../implementation/specs/SPEC-0046-desktop-voice-input-stt.md) (push-to-talk, `whisper.cpp` local, [ADR-0022](../06-adr/ADR-0022-whisper-cpp-local-stt-engine.md)); transcrição só anexa ao campo de entrada, nunca enviada automaticamente.
-- Ativação por voz (wake word) — **candidato, não comprometido**, exige ADR próprio (ADR-0022, "Candidatos futuros"; microfone permanentemente ligado, motor de detecção distinto).
+- ~~Entrada por voz (STT).~~ **entregue** — [SPEC-0046](../implementation/specs/SPEC-0046-desktop-voice-input-stt.md) (push-to-talk, `whisper.cpp` local, [ADR-0022](../06-adr/ADR-0022-whisper-cpp-local-stt-engine.md)); transcrição só anexa ao campo de entrada, nunca enviada automaticamente **fora do modo hands-free** — dentro dele, a cláusula de auto-envio é revertida pelo [ADR-0023](../06-adr/ADR-0023-hands-free-voice-conversation.md) (supersede parcial do ADR-0022).
+- ~~Conversa contínua (modo hands-free).~~ **entregue** — [SPEC-0052](../implementation/specs/SPEC-0052-desktop-hands-free-voice-conversation.md) (microfone aberto entre turnos sob toggle explícito, fim de fala por VAD Silero em WASM no renderer, auto-envio direto ao Core, resposta falada, microfone fechado durante processamento e fala; sem barge-in), consumindo o [ADR-0023](../06-adr/ADR-0023-hands-free-voice-conversation.md) (novo, `Accepted`).
+- Ativação por voz (wake word) — **candidato, não comprometido**, exige ADR próprio (ADR-0022, "Candidatos futuros"; ADR-0023 reafirma a reserva; microfone permanentemente ligado, motor de detecção distinto).
 
 ## 2.4 Persistência e Gerência Local — **entregue por inteiro** (2026-07-28, SPEC-0038), **estendida** (2026-07-29, SPEC-0039)
 

@@ -80,6 +80,8 @@ Custos e riscos:
 
 **Enviar automaticamente ao Core o texto transcrito.** Rejeitada como parte desta decisão, e não apenas como detalhe de UI: transcrição é falível e um turno de chat pode acionar Tools. Auto-envio deixaria um erro de reconhecimento virar instrução ao Cognitive Core sem revisão humana — contra o Artigo 7 e o Artigo 13, e contra a Restrição do PRD de não executar sem autorização adequada. O texto sempre aterrissa no campo de entrada.
 
+> **⚠️ Cláusula parcialmente superseded pelo [ADR-0023](ADR-0023-hands-free-voice-conversation.md) (2026-08-05).** O auto-envio passa a ser permitido **exclusivamente dentro do modo hands-free** ali definido — opt-in explícito, desligado por default, com microfone fechado durante o processamento e a fala. O argumento acima foi revisto num ponto: ele tratou *auto-envio* e *execução não autorizada* como o mesmo risco, e eles não são o mesmo — o `ConfirmPort` (ADR-0013) continua guardando toda Tool destrutiva, então o pior desfecho de uma transcrição errada é uma resposta errada, não um efeito colateral. **Fora do modo hands-free, esta cláusula vale sem alteração:** no push-to-talk da SPEC-0046, o texto continua sempre aterrissando no campo de entrada. Todo o resto deste ADR — Decisões (a)–(d) e as três Decisões de produto — permanece em vigor, intocado.
+
 ---
 
 # Candidatos futuros (fora desta fatia)

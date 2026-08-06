@@ -166,7 +166,23 @@ export interface AtlasDouble {
     captureBegin(): Promise<void>;
     captureEnd(): Promise<void>;
   };
+  /** SPEC-0052 — detector de voz (VAD), espelho de `window.atlas.vad` em `src/preload.cjs`. */
+  vad: {
+    available(): Promise<RendererVadAvailability>;
+    resources(): Promise<RendererVadLoad>;
+  };
 }
+
+/** Espelho de `{ available, reason? }` (canal `'atlas:vad:available'`, SPEC-0052). */
+export interface RendererVadAvailability {
+  readonly available: boolean;
+  readonly reason?: string;
+}
+
+/** Espelho de `VadLoad` (`src/vad-resources.ts`, SPEC-0052). */
+export type RendererVadLoad =
+  | { readonly ok: true; readonly wasm: ArrayBuffer; readonly model: ArrayBuffer }
+  | { readonly ok: false; readonly reason: string };
 
 type AtlasOverrides = {
   readonly [K in keyof AtlasDouble]?: AtlasDouble[K] extends (...args: never[]) => unknown
@@ -201,6 +217,9 @@ export interface RendererCalls {
   audioContextClosed: number;
   readonly audioContextOptions: unknown[];
   readonly scriptProcessorCreated: Array<{ bufferSize: number; numIn: number; numOut: number }>;
+  /** SPEC-0052 — modo hands-free: chamadas de IPC do VAD. */
+  vadAvailableCalls: number;
+  vadResourcesCalls: number;
 }
 
 function createCalls(): RendererCalls {
@@ -221,6 +240,8 @@ function createCalls(): RendererCalls {
     audioContextClosed: 0,
     audioContextOptions: [],
     scriptProcessorCreated: [],
+    vadAvailableCalls: 0,
+    vadResourcesCalls: 0,
     permissionsSelect: [],
     ttsSpeak: [],
     speechSynthesisSpeak: [],
@@ -262,6 +283,11 @@ export interface RendererFixtureOptions {
     readonly getUserMediaDelayMs?: number;
     readonly getUserMediaError?: string;
   };
+  /** SPEC-0052 — disponibilidade padrão de `window.atlas.vad`. */
+  readonly vad?: {
+    readonly available?: boolean;
+    readonly reason?: string;
+  };
 }
 
 function defaultStatus(options: RendererFixtureOptions): RendererStatusSnapshot {
@@ -300,6 +326,8 @@ function buildAtlasDouble(options: RendererFixtureOptions, calls: RendererCalls)
   const sttTranscribe =
     options.stt?.transcribe ??
     ((): RendererSttResult => ({ ok: true, text: 'texto transcrito', durationMs: 500 }));
+  const vadAvailable = options.vad?.available ?? false;
+  const vadReason = options.vad?.reason ?? 'resources-missing';
 
   const base: AtlasDouble = {
     getStatus: () => Promise.resolve(status),
@@ -432,6 +460,22 @@ function buildAtlasDouble(options: RendererFixtureOptions, calls: RendererCalls)
         return Promise.resolve();
       },
     },
+    vad: {
+      available: () => {
+        calls.vadAvailableCalls += 1;
+        return Promise.resolve(
+          vadAvailable ? { available: true } : { available: false, reason: vadReason },
+        );
+      },
+      resources: () => {
+        calls.vadResourcesCalls += 1;
+        return Promise.resolve(
+          vadAvailable
+            ? { ok: true, wasm: new ArrayBuffer(4), model: new ArrayBuffer(8) }
+            : { ok: false, reason: vadReason },
+        );
+      },
+    },
   };
 
   const overrides = options.atlas;
@@ -448,12 +492,16 @@ function buildAtlasDouble(options: RendererFixtureOptions, calls: RendererCalls)
     permissions: { ...base.permissions, ...overrides.permissions },
     tts: { ...base.tts, ...overrides.tts },
     stt: { ...base.stt, ...overrides.stt },
+    vad: { ...base.vad, ...overrides.vad },
   };
 }
 
 export interface SpeechSynthesisDouble {
   setVoices(voices: readonly RendererOsVoice[]): void;
   fireVoicesChanged(): void;
+  /** SPEC-0052 (CA41): dispara `end`/`error` do N-ésimo utterance criado (0-based). */
+  fireUtteranceEvent(index: number, type: 'end' | 'error'): void;
+  utteranceCount(): number;
 }
 
 function installSpeechSynthesisDouble(
@@ -467,7 +515,11 @@ function installSpeechSynthesisDouble(
   interface FakeUtterance {
     text: string;
     voice: RendererOsVoice | null;
+    listeners: Record<string, Array<() => void>>;
+    addEventListener(type: string, listener: () => void): void;
   }
+
+  const utterances: FakeUtterance[] = [];
 
   const synth = {
     getVoices: () => voices,
@@ -491,6 +543,13 @@ function installSpeechSynthesisDouble(
   function FakeSpeechSynthesisUtterance(this: FakeUtterance, text: string): void {
     this.text = text;
     this.voice = null;
+    this.listeners = {};
+    this.addEventListener = (type: string, listener: () => void): void => {
+      const bucket = this.listeners[type] ?? [];
+      bucket.push(listener);
+      this.listeners[type] = bucket;
+    };
+    utterances.push(this);
   }
 
   Object.assign(window, {
@@ -507,23 +566,49 @@ function installSpeechSynthesisDouble(
         listener();
       }
     },
+    fireUtteranceEvent(index: number, type: 'end' | 'error'): void {
+      const utterance = utterances[index];
+      if (utterance === undefined) {
+        return;
+      }
+      for (const listener of utterance.listeners[type] ?? []) {
+        listener();
+      }
+    },
+    utteranceCount(): number {
+      return utterances.length;
+    },
   };
 }
 
-function installAudioDouble(window: DOMWindow, calls: RendererCalls): void {
+export interface AudioDouble {
+  /** SPEC-0052 (CA41): dispara `ended`/`error` do N-ésimo `Audio` criado (0-based). */
+  fireEvent(index: number, type: 'ended' | 'error'): void;
+}
+
+function installAudioDouble(window: DOMWindow, calls: RendererCalls): AudioDouble {
   interface FakeAudio {
     src: string;
+    listeners: Record<string, Array<() => void>>;
     addEventListener(type: string, listener: () => void): void;
     play(): Promise<void>;
   }
 
+  const audios: FakeAudio[] = [];
+
   function FakeAudio(this: FakeAudio, src: string): void {
     this.src = src;
-    this.addEventListener = () => {};
+    this.listeners = {};
+    this.addEventListener = (type: string, listener: () => void): void => {
+      const bucket = this.listeners[type] ?? [];
+      bucket.push(listener);
+      this.listeners[type] = bucket;
+    };
     this.play = () => {
       calls.audioPlayed.push(src);
       return Promise.resolve();
     };
+    audios.push(this);
   }
 
   Object.assign(window, { Audio: FakeAudio });
@@ -534,6 +619,18 @@ function installAudioDouble(window: DOMWindow, calls: RendererCalls): void {
   };
   url.createObjectURL ??= () => 'blob:renderer-harness-test';
   url.revokeObjectURL ??= () => {};
+
+  return {
+    fireEvent(index: number, type: 'ended' | 'error'): void {
+      const audio = audios[index];
+      if (audio === undefined) {
+        return;
+      }
+      for (const listener of audio.listeners[type] ?? []) {
+        listener();
+      }
+    },
+  };
 }
 
 /**
@@ -544,11 +641,18 @@ function installAudioDouble(window: DOMWindow, calls: RendererCalls): void {
  * `GainNode`/`MediaStreamTrack`) — o suficiente para provar fiação e
  * liberação de recursos, sem áudio real algum.
  */
+export interface MediaGraphDouble {
+  /** SPEC-0052 — alimenta o `onaudioprocess` do `ScriptProcessorNode` MAIS RECENTE com um `Float32Array` (tamanho múltiplo de 4096). */
+  feedAudioProcess(channelData: Float32Array): void;
+  /** SPEC-0052 — quantos `ScriptProcessorNode` foram criados até agora. */
+  processorCount(): number;
+}
+
 function installMediaDouble(
   window: DOMWindow,
   calls: RendererCalls,
   options: RendererFixtureOptions['media'],
-): void {
+): MediaGraphDouble {
   const behavior = options?.getUserMediaBehavior ?? 'resolve';
   const delayMs = options?.getUserMediaDelayMs ?? 0;
   const errorMessage = options?.getUserMediaError ?? 'permissão de microfone negada';
@@ -608,6 +712,8 @@ function installMediaDouble(
     onaudioprocess: ((event: FakeAudioProcessEvent) => void) | null = null;
   }
 
+  const processors: FakeScriptProcessorNode[] = [];
+
   class FakeGainNode extends FakeAudioNode {
     gain = { value: 0 };
   }
@@ -628,7 +734,9 @@ function installMediaDouble(
       numOut: number,
     ): FakeScriptProcessorNode {
       calls.scriptProcessorCreated.push({ bufferSize, numIn, numOut });
-      return new FakeScriptProcessorNode();
+      const processor = new FakeScriptProcessorNode();
+      processors.push(processor);
+      return processor;
     }
     createGain(): FakeGainNode {
       return new FakeGainNode();
@@ -640,6 +748,19 @@ function installMediaDouble(
   }
 
   Object.assign(window, { AudioContext: FakeAudioContext });
+
+  return {
+    feedAudioProcess(channelData: Float32Array): void {
+      const processor = processors[processors.length - 1];
+      if (processor?.onaudioprocess === null || processor?.onaudioprocess === undefined) {
+        return;
+      }
+      processor.onaudioprocess({ inputBuffer: { getChannelData: () => channelData } });
+    },
+    processorCount(): number {
+      return processors.length;
+    },
+  };
 }
 
 export interface InjectedClock {
@@ -720,6 +841,10 @@ export interface RendererFixture {
   /** Chamadas registradas pelos dublês de IPC e de voz. */
   readonly calls: RendererCalls;
   readonly speechSynthesis: SpeechSynthesisDouble;
+  /** SPEC-0052 (CA41) — dispara `ended`/`error` do `Audio` (Piper) N-ésimo criado. */
+  readonly audio: AudioDouble;
+  /** SPEC-0052 — alimenta frames de áudio sintéticos no grafo de captura ativo. */
+  readonly media: MediaGraphDouble;
   /** SPEC-0046/D19 — relógio injetável instalado na janela jsdom ANTES do `window.eval`. */
   readonly clock: InjectedClock;
   /** Drena microtarefas/macrotarefas até as promessas do carregamento assentarem. */
@@ -746,6 +871,26 @@ const EPILOGUE = `
   computeDefaultPiperVoiceURI: typeof computeDefaultPiperVoiceURI !== 'undefined' ? computeDefaultPiperVoiceURI : undefined,
   floatChunksToInt16: typeof floatChunksToInt16 !== 'undefined' ? floatChunksToInt16 : undefined,
   describeSttFailure: typeof describeSttFailure !== 'undefined' ? describeSttFailure : undefined,
+  nextHandsFreeState: typeof nextHandsFreeState !== 'undefined' ? nextHandsFreeState : undefined,
+  handsFreeMicrophoneOpen: typeof handsFreeMicrophoneOpen !== 'undefined' ? handsFreeMicrophoneOpen : undefined,
+  speakingWatchdogMs: typeof speakingWatchdogMs !== 'undefined' ? speakingWatchdogMs : undefined,
+  createTurnSegmenter: typeof createTurnSegmenter !== 'undefined' ? createTurnSegmenter : undefined,
+  setHandsFreeDetectorFactory: typeof setHandsFreeDetectorFactory !== 'undefined' ? setHandsFreeDetectorFactory : undefined,
+  speakText: typeof speakText !== 'undefined' ? speakText : undefined,
+  HF_FRAME_SAMPLES: typeof HF_FRAME_SAMPLES !== 'undefined' ? HF_FRAME_SAMPLES : undefined,
+  HF_FRAME_MS: typeof HF_FRAME_MS !== 'undefined' ? HF_FRAME_MS : undefined,
+  HF_SPEECH_ENTER: typeof HF_SPEECH_ENTER !== 'undefined' ? HF_SPEECH_ENTER : undefined,
+  HF_SPEECH_EXIT: typeof HF_SPEECH_EXIT !== 'undefined' ? HF_SPEECH_EXIT : undefined,
+  HF_MIN_SPEECH_MS: typeof HF_MIN_SPEECH_MS !== 'undefined' ? HF_MIN_SPEECH_MS : undefined,
+  HF_PRE_ROLL_FRAMES: typeof HF_PRE_ROLL_FRAMES !== 'undefined' ? HF_PRE_ROLL_FRAMES : undefined,
+  HF_SILENCE_CLOSE_MS: typeof HF_SILENCE_CLOSE_MS !== 'undefined' ? HF_SILENCE_CLOSE_MS : undefined,
+  HF_MAX_UTTERANCE_MS: typeof HF_MAX_UTTERANCE_MS !== 'undefined' ? HF_MAX_UTTERANCE_MS : undefined,
+  HF_CAPTURE_REARM_MS: typeof HF_CAPTURE_REARM_MS !== 'undefined' ? HF_CAPTURE_REARM_MS : undefined,
+  HF_VAD_QUEUE_LIMIT: typeof HF_VAD_QUEUE_LIMIT !== 'undefined' ? HF_VAD_QUEUE_LIMIT : undefined,
+  HF_THINKING_WATCHDOG_MS: typeof HF_THINKING_WATCHDOG_MS !== 'undefined' ? HF_THINKING_WATCHDOG_MS : undefined,
+  HF_SPEAKING_WATCHDOG_BASE_MS: typeof HF_SPEAKING_WATCHDOG_BASE_MS !== 'undefined' ? HF_SPEAKING_WATCHDOG_BASE_MS : undefined,
+  HF_SPEAKING_WATCHDOG_PER_CHAR_MS: typeof HF_SPEAKING_WATCHDOG_PER_CHAR_MS !== 'undefined' ? HF_SPEAKING_WATCHDOG_PER_CHAR_MS : undefined,
+  HF_SPEAKING_WATCHDOG_MAX_MS: typeof HF_SPEAKING_WATCHDOG_MAX_MS !== 'undefined' ? HF_SPEAKING_WATCHDOG_MAX_MS : undefined,
 };
 `;
 
@@ -778,8 +923,8 @@ export async function loadRenderer(options: RendererFixtureOptions = {}): Promis
   Object.assign(window, { atlas: atlasDouble });
 
   const speechSynthesis = installSpeechSynthesisDouble(window, options.osVoices ?? [], calls);
-  installAudioDouble(window, calls);
-  installMediaDouble(window, calls, options.media);
+  const audio = installAudioDouble(window, calls);
+  const media = installMediaDouble(window, calls, options.media);
   // SPEC-0046/D19: instalado ANTES do `window.eval` — `renderer.js` usa os
   // timers DA JANELA jsdom, não `globalThis`.
   const clock = installClock(window);
@@ -794,6 +939,8 @@ export async function loadRenderer(options: RendererFixtureOptions = {}): Promis
         .__RENDERER_TEST_INTERNALS__ ?? {},
     calls,
     speechSynthesis,
+    audio,
+    media,
     clock,
     flush: flushMicroAndMacrotasks,
     close: () => {
