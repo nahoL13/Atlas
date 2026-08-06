@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import tempfile
 import unittest
+from shutil import copytree
 from pathlib import Path
 
 WORKFLOW_DIR = Path(__file__).resolve().parents[1]
@@ -96,6 +97,31 @@ class GenerationTests(unittest.TestCase):
             self.assertEqual(text.count("<!-- ATLAS-SPEC-PIPELINE:START -->"), 1)
             self.assertEqual(text.count("<!-- ATLAS-SPEC-PIPELINE:END -->"), 1)
             self.assertIn("spec-pipeline", text)
+
+    def test_bootstraps_agents_without_legacy_state_machine(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            copytree(REPO_ROOT / ".agents", root / ".agents")
+            (root / "CLAUDE.md").write_text(
+                "# CLAUDE.md\n\n"
+                "This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.\n\n"
+                "Conteúdo externo antes.\n\n"
+                "## Fluxo de desenvolvimento\n\n"
+                "- **O pipeline de SPEC é autônomo de ponta a ponta** (legado).\n"
+                "- **Ramo micro (Emenda v1.2):** fluxo legado.\n"
+                "- Conteúdo externo depois.\n",
+                encoding="utf-8",
+            )
+
+            agents = expected_generated_files(root)[Path("AGENTS.md")]
+
+        self.assertIn("# AGENTS.md", agents)
+        self.assertIn("guidance to Codex", agents)
+        self.assertIn("Conteúdo externo antes.", agents)
+        self.assertIn("Conteúdo externo depois.", agents)
+        self.assertNotIn("O pipeline de SPEC é autônomo de ponta a ponta", agents)
+        self.assertNotIn("Ramo micro (Emenda v1.2)", agents)
+        self.assertEqual(agents.count("<!-- ATLAS-SPEC-PIPELINE:START -->"), 1)
 
 
 if __name__ == "__main__":

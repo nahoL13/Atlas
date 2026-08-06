@@ -16,6 +16,10 @@ CLAUDE_TOOLS = {
 
 START = "<!-- ATLAS-SPEC-PIPELINE:START -->"
 END = "<!-- ATLAS-SPEC-PIPELINE:END -->"
+LEGACY_DISPATCH_BULLET_PREFIXES = (
+    "- **O pipeline de SPEC é autônomo de ponta a ponta**",
+    "- **Ramo micro (Emenda v1.2):**",
+)
 
 
 def replace_generated_block(text: str, block: str) -> str:
@@ -109,6 +113,11 @@ def load_root_instruction(root: Path, filename: str) -> str:
         raise FileNotFoundError(target)
 
     claude = (root / "CLAUDE.md").read_text(encoding="utf-8")
+    claude = "".join(
+        line
+        for line in claude.splitlines(keepends=True)
+        if not line.startswith(LEGACY_DISPATCH_BULLET_PREFIXES)
+    )
     return claude.replace("# CLAUDE.md", "# AGENTS.md", 1).replace(
         "guidance to Claude Code (claude.ai/code)", "guidance to Codex", 1
     )
