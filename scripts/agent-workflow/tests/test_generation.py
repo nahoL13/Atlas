@@ -56,6 +56,17 @@ class GenerationTests(unittest.TestCase):
         drafter = outputs[Path(".claude/agents/spec-drafter.md")]
         self.assertIn("model: opus\n---\n\nVocê rascunha", drafter)
 
+    def test_doc_sync_adapter_keeps_neutral_trailer_and_scoped_staging(self) -> None:
+        canonical = (REPO_ROOT / ".agents/skills/doc-sync/SKILL.md").read_text()
+        generated = expected_generated_files(REPO_ROOT)[
+            Path(".claude/skills/doc-sync/SKILL.md")
+        ]
+        for content in (canonical, generated):
+            self.assertIn("git add <lista-explícita-de-arquivos-da-SPEC>", content)
+            self.assertNotIn("\ngit add -A\n", content)
+            self.assertIn("Co-Authored-By: <modelo em uso>", content)
+            self.assertNotIn("noreply@anthropic.com", content)
+
 
 if __name__ == "__main__":
     unittest.main()

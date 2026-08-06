@@ -101,15 +101,20 @@ SPEC-0018). Um único commit cobre a implementação + a SPEC (Status `Done`)
 + a entrada de `LESSONS_LEARNED.md` + toda a sincronização de docs vivas.
 
 ```bash
-git add -A
+git add <lista-explícita-de-arquivos-da-SPEC>
+git diff --cached --name-only
 git commit -m "<tipo>(<escopo>): SPEC-XXXX <resumo>
 
 <corpo em PT-BR: o que mudou, escopo, gate do Roadmap fechado, contagem de testes>
 
-Co-Authored-By: <modelo em uso> <noreply@anthropic.com>"
+Co-Authored-By: <modelo em uso>"
 git push
 ```
 
+- Substitua `<lista-explícita-de-arquivos-da-SPEC>` pelos arquivos da
+  implementação, SPEC, lições e documentação desta SPEC; nunca use `git add -A`.
+  Confirme que `git diff --cached --name-only` contém somente esse escopo antes
+  do commit.
 - Mensagem em **PT-BR**, seguindo o padrão dos commits do repo
   (`feat(cli): SPEC-XXXX ...`, `docs(spec): SPEC-XXXX ...`).
 - Trailer `Co-Authored-By` obrigatório, com o modelo em uso.
