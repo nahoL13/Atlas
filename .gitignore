@@ -21,6 +21,7 @@ docs/.obsidian/cache
 .claude/usage-report.md
 .codex/usage-report.md
 .codex/usage-cache.json
+.codex/usage-cache.lock
 
 # Piper (SPEC-0040, ADR-0021): binário + modelos de voz não são versionados
 # (Decisão D10) — só o contrato de layout (README.md) fica no git.

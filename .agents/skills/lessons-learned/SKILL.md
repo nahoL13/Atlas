@@ -1,21 +1,24 @@
 ---
 name: lessons-learned
-description: Use when a SPEC in Project Atlas is being closed/concluded (Definition of Done reached) — drafts a Lessons Learned entry in docs/implementation/LESSONS_LEARNED.md following the project's mandatory format. Trigger phrases include "concluir a SPEC", "fechar a SPEC-XXXX", "registrar lições aprendidas".
+description: Use during closeout of an Atlas SPEC after its technical/acceptance gates pass — drafts and verifies a Lessons Learned entry in docs/implementation/LESSONS_LEARNED.md following the project's mandatory format. Trigger phrases include "concluir a SPEC", "fechar a SPEC-XXXX", "registrar lições aprendidas".
 ---
 
 # lessons-learned
 
-Registrar lições aprendidas é obrigatório ao concluir uma SPEC — é parte
-explícita da Definition of Done (CLAUDE.md e do próprio
-`docs/implementation/templates/SPEC-TEMPLATE.md`). Esta skill produz a
+Registrar lições aprendidas é um **item de fechamento** obrigatório ao
+concluir uma SPEC — é parte explícita da Definition of Done (CLAUDE.md e do
+próprio `docs/implementation/templates/SPEC-TEMPLATE.md`). Esta skill produz a
 entrada no formato exigido por `docs/implementation/LESSONS_LEARNED.md`,
 a partir do trabalho real realizado na sessão.
 
 ## Quando usar
 
-Ao final de uma SPEC — depois que testes passam, critérios de aceitação
-estão atendidos e a documentação da própria SPEC foi atualizada, mas antes
-de marcar a SPEC como `Done`.
+Durante o `spec-closer`, **depois** que os gates técnicos/de aceite passam.
+No Perfil completo, o fio principal já aplicou `Review → Done`; no Perfil
+micro, o closer aplica essa transição após seu Passo 0. Em ambos, a entrada
+de Lições é criada depois desse gate e verificada como artefato de fechamento;
+ela nunca é pré-condição da validação técnica nem precisa existir antes de
+`Done`.
 
 ## Passos
 
@@ -83,4 +86,5 @@ de marcar a SPEC como `Done`.
    nova SPEC apontada — ou confirme com o usuário quem fará isso e quando.
    Um encaminhamento sem dono é o mesmo que não ter sido registrado.
 
-6. Mostre a entrada para revisão antes de considerar a SPEC `Done`.
+6. Revise a entrada como parte da verificação de fechamento do `spec-closer`
+   antes do commit/push.

@@ -73,15 +73,22 @@ def dispatch(platform: str, event: str, payload: dict, repo_root: Path) -> HookD
 
 def main() -> int:
     args = parse_args()
+    fail_open_stop = args.platform == "codex" and args.event == "Stop"
     try:
         payload = json.load(sys.stdin)
         if not isinstance(payload, dict):
             raise ValueError("hook payload must be a JSON object")
         repo_root = resolve_repo_root(payload)
         decision = dispatch(args.platform, args.event, payload, repo_root)
-    except (json.JSONDecodeError, ValueError) as error:
-        sys.stderr.write(f"{error}\n")
-        return 1
+    except Exception as error:
+        if fail_open_stop:
+            sys.stdout.write("{}")
+            sys.stderr.write(f"Codex Stop telemetry failed open: {error}\n")
+            return 0
+        if isinstance(error, (json.JSONDecodeError, ValueError)):
+            sys.stderr.write(f"{error}\n")
+            return 1
+        raise
     sys.stdout.write(decision.stdout)
     sys.stderr.write(decision.stderr)
     return decision.exit_code

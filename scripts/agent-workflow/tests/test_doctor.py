@@ -3,13 +3,17 @@ from __future__ import annotations
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 from shutil import copytree
+from unittest.mock import patch
 
 WORKFLOW_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(WORKFLOW_DIR))
 
 from doctor import run_checks
+import check
 from workflow_lib import write_generated_files
 
 
@@ -68,6 +72,23 @@ class DoctorTests(unittest.TestCase):
 
         self.assertEqual(parity.status, "error")
         self.assertIn(".claude/agents/obsolete.md", parity.detail)
+
+    def test_check_and_doctor_both_reject_obsolete_generated_adapter(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.make_generated_repo(root)
+            obsolete = root / ".codex/agents/obsolete.toml"
+            obsolete.write_text("name = \"obsolete\"\n", encoding="utf-8")
+
+            with patch.object(check, "REPO_ROOT", root), redirect_stdout(StringIO()):
+                check_status = check.main()
+            parity = next(
+                item for item in run_checks(root) if item.name == "generated parity"
+            )
+
+        self.assertEqual(check_status, 1)
+        self.assertEqual(parity.status, "error")
+        self.assertIn(".codex/agents/obsolete.toml", parity.detail)
 
 
 if __name__ == "__main__":

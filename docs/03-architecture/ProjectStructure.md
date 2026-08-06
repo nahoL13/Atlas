@@ -161,11 +161,13 @@ não fazem parte do produto Atlas em execução e não contêm segredos.
 - `.agents/` é a fonte canônica, neutra de provedor, do workflow e das skills
   dos agentes de desenvolvimento.
 - `.claude/` é o adaptador gerado para Claude Code (agentes, skills e hooks).
-- `.codex/` é o adaptador gerado para Codex (agentes, configuração e hooks).
+- `.codex/` é o adaptador gerado para Codex (agentes, configuração e hooks);
+  os relatórios e o cache/lock privados de telemetria são ignorados pelo Git.
 
 As saídas geradas devem ser atualizadas por
 `pnpm agent-workflow:generate` e verificadas por
-`pnpm agent-workflow:check`; alterações de comportamento começam em
+`pnpm agent-workflow:check`; a verificação compara o conjunto exato e rejeita
+também adapter extra/obsoleto. Alterações de comportamento começam em
 `.agents/`. Ver `docs/04-engineering/ClaudeCodeAutomation.md` para a operação.
 
 ### Não devem conter

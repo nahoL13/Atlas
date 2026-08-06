@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from usage_lib import parse_codex_session
-from workflow_lib import expected_generated_files, load_roles
+from workflow_lib import generated_file_drift, load_roles
 
 
 CANONICAL_ROLES = {
@@ -39,13 +39,6 @@ HOOK_TRUST_INSTRUCTION = "abra `/hooks` no Codex e revise o hash pendente"
 PACKAGE_AGENTS_REFERENCE_RE = re.compile(
     r"(?:packages|apps|tooling)/[^\s`\[\]()<>]+/AGENTS\.md"
 )
-MANAGED_ADAPTER_DIRECTORIES = (
-    Path(".claude/agents"),
-    Path(".claude/skills"),
-    Path(".codex/agents"),
-)
-
-
 @dataclass(frozen=True)
 class DoctorCheck:
     name: str
@@ -84,27 +77,11 @@ def _check_canonical_skills(root: Path) -> DoctorCheck:
 
 def _check_generated_parity(root: Path) -> DoctorCheck:
     try:
-        expected = expected_generated_files(root)
+        drift = generated_file_drift(root)
     except (KeyError, OSError, tomllib.TOMLDecodeError, ValueError) as error:
         return DoctorCheck("generated parity", "error", f"cannot render generated files: {error}")
-    drift: list[str] = []
-    expected_paths = set(expected)
-    for relative, content in expected.items():
-        target = root / relative
-        try:
-            if not target.is_file() or target.read_bytes() != content.encode("utf-8"):
-                drift.append(str(relative))
-        except OSError as error:
-            drift.append(f"{relative}: {error}")
-
-    actual_managed_paths: set[Path] = set()
-    for directory in MANAGED_ADAPTER_DIRECTORIES:
-        target = root / directory
-        if target.is_dir():
-            actual_managed_paths.update(path.relative_to(root) for path in target.rglob("*") if path.is_file())
-    drift.extend(str(path) for path in sorted(actual_managed_paths - expected_paths))
     if drift:
-        return DoctorCheck("generated parity", "error", f"missing or divergent: {', '.join(drift)}")
+        return DoctorCheck("generated parity", "error", "; ".join(drift))
     return DoctorCheck("generated parity", "ok", "generated adapters match canonical sources")
 
 

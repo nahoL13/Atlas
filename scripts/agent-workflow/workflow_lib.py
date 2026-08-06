@@ -20,6 +20,16 @@ LEGACY_DISPATCH_BULLET_PREFIXES = (
     "- **O pipeline de SPEC é autônomo de ponta a ponta**",
     "- **Ramo micro (Emenda v1.2):**",
 )
+SPEC_STATUS_SECTION_RE = re.compile(
+    r"^\*\*Status\*\*\s*$\n(?P<body>.*?)(?=^---\s*$|\Z)",
+    re.MULTILINE | re.DOTALL,
+)
+SPEC_STATUS_CHECKED_RE = re.compile(r"^- \[x\] (?P<status>.+?)\s*$", re.MULTILINE)
+MANAGED_ADAPTER_DIRECTORIES = (
+    Path(".claude/agents"),
+    Path(".claude/skills"),
+    Path(".codex/agents"),
+)
 
 
 def replace_generated_block(text: str, block: str) -> str:
@@ -30,6 +40,21 @@ def replace_generated_block(text: str, block: str) -> str:
     if anchor not in text:
         raise ValueError(f"missing dispatch anchor: {anchor}")
     return text.replace(anchor, f"{block.rstrip()}\n\n{anchor}", 1)
+
+
+def parse_spec_status(source: str) -> str | None:
+    section = SPEC_STATUS_SECTION_RE.search(source)
+    if section is None:
+        return None
+    body = section.group("body")
+    checked = SPEC_STATUS_CHECKED_RE.search(body)
+    if checked is not None:
+        return checked.group("status").strip()
+    for line in body.splitlines():
+        value = line.strip()
+        if value and not value.startswith("- ["):
+            return value.removeprefix("- ").strip()
+    return None
 
 
 @dataclass(frozen=True)
@@ -233,3 +258,27 @@ def write_generated_files(root: Path) -> None:
         target = root / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
+
+
+def generated_file_drift(root: Path) -> tuple[str, ...]:
+    expected = expected_generated_files(root)
+    issues: list[str] = []
+    for relative, content in expected.items():
+        target = root / relative
+        if not target.is_file():
+            issues.append(f"missing: {relative}")
+        elif target.read_bytes() != content.encode("utf-8"):
+            issues.append(f"divergent: {relative}")
+
+    expected_paths = set(expected)
+    actual_managed_paths: set[Path] = set()
+    for directory in MANAGED_ADAPTER_DIRECTORIES:
+        target = root / directory
+        if target.is_dir():
+            actual_managed_paths.update(
+                path.relative_to(root) for path in target.rglob("*") if path.is_file()
+            )
+    issues.extend(
+        f"unexpected: {path}" for path in sorted(actual_managed_paths - expected_paths)
+    )
+    return tuple(issues)

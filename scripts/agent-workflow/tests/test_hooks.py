@@ -209,6 +209,36 @@ class HookTests(unittest.TestCase):
             }
             self.assertEqual(handle_pre_tool_use("codex", payload, root).stdout, "")
 
+    def test_codex_edit_payload_without_extractable_paths_denies(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            payload = {
+                "tool_name": "apply_patch",
+                "tool_input": {"unexpected_patch_field": "opaque"},
+            }
+            decision = handle_pre_tool_use("codex", payload, root)
+
+        body = json.loads(decision.stdout)
+        self.assertEqual(body["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertIn(
+            "não foi possível extrair caminhos",
+            body["hookSpecificOutput"]["permissionDecisionReason"].lower(),
+        )
+
+    def test_claude_empty_edit_payload_asks(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            decision = handle_pre_tool_use(
+                "claude", {"tool_name": "Edit", "tool_input": {}}, root
+            )
+
+        body = json.loads(decision.stdout)
+        self.assertEqual(body["hookSpecificOutput"]["permissionDecision"], "ask")
+        self.assertIn(
+            "não foi possível extrair caminhos",
+            body["hookSpecificOutput"]["permissionDecisionReason"].lower(),
+        )
+
     def test_path_with_parent_segments_into_src_still_requires_a_spec(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -296,7 +326,10 @@ class HookTests(unittest.TestCase):
             pnpm = bin_dir / "pnpm"
             pnpm.write_text("#!/bin/sh\nprintf 'lint stdout\\n'\nprintf 'lint stderr\\n' >&2\nexit 1\n")
             pnpm.chmod(0o755)
-            payload = {"tool_input": {"file_path": str(root / "apps/cli/src/main.tsx")}}
+            source = root / "apps/cli/src/main.tsx"
+            source.parent.mkdir(parents=True)
+            source.write_text("export {};\n", encoding="utf-8")
+            payload = {"tool_input": {"file_path": str(source)}}
             old_path = os.environ.get("PATH", "")
             try:
                 os.environ["PATH"] = f"{bin_dir}{os.pathsep}{old_path}"
@@ -315,7 +348,10 @@ class HookTests(unittest.TestCase):
             pnpm = bin_dir / "pnpm"
             pnpm.write_text("#!/bin/sh\nprintf 'response path linted\\n'\nexit 1\n")
             pnpm.chmod(0o755)
-            payload = {"tool_response": {"filePath": str(root / "apps/cli/src/main.mts")}}
+            source = root / "apps/cli/src/main.mts"
+            source.parent.mkdir(parents=True)
+            source.write_text("export {};\n", encoding="utf-8")
+            payload = {"tool_response": {"filePath": str(source)}}
             old_path = os.environ.get("PATH", "")
             try:
                 os.environ["PATH"] = f"{bin_dir}{os.pathsep}{old_path}"
@@ -333,6 +369,15 @@ class HookTests(unittest.TestCase):
             pnpm = bin_dir / "pnpm"
             pnpm.write_text("#!/bin/sh\nprintf '%s\\n' \"$*\"\nexit 1\n")
             pnpm.chmod(0o755)
+            for relative in (
+                "packages/runtime/src/runtime.ts",
+                "apps/cli/src/main.tsx",
+                "tooling/release/src/build.mts",
+                "tooling/release/src/check.cts",
+            ):
+                source = root / relative
+                source.parent.mkdir(parents=True, exist_ok=True)
+                source.write_text("export {};\n", encoding="utf-8")
             payload = {
                 "tool_input": {
                     "command": "\n".join(
@@ -363,6 +408,67 @@ class HookTests(unittest.TestCase):
             ):
                 self.assertIn(expected, decision.stderr)
             self.assertNotIn("docs/guide.md", decision.stderr)
+
+    def test_codex_post_tool_does_not_lint_a_deleted_typescript_source(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            marker = root / "pnpm-called"
+            pnpm = bin_dir / "pnpm"
+            pnpm.write_text(
+                f"#!/bin/sh\ntouch {marker}\nexit 1\n", encoding="utf-8"
+            )
+            pnpm.chmod(0o755)
+            payload = {
+                "tool_input": {
+                    "command": "*** Begin Patch\n*** Delete File: apps/cli/src/deleted.ts\n*** End Patch"
+                }
+            }
+            old_path = os.environ.get("PATH", "")
+            try:
+                os.environ["PATH"] = f"{bin_dir}{os.pathsep}{old_path}"
+                decision = handle_post_tool_use("codex", payload, root)
+            finally:
+                os.environ["PATH"] = old_path
+            marker_was_created = marker.exists()
+
+        self.assertEqual(decision, decision.__class__())
+        self.assertFalse(marker_was_created)
+
+    def test_codex_post_tool_lints_only_the_existing_move_destination(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            destination = root / "apps/cli/src/new.tsx"
+            destination.parent.mkdir(parents=True)
+            destination.write_text("export {};\n", encoding="utf-8")
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            pnpm = bin_dir / "pnpm"
+            pnpm.write_text("#!/bin/sh\nprintf '%s\\n' \"$*\"\nexit 1\n")
+            pnpm.chmod(0o755)
+            payload = {
+                "tool_input": {
+                    "command": "\n".join(
+                        (
+                            "*** Begin Patch",
+                            "*** Update File: packages/runtime/src/old.ts",
+                            "*** Move to: apps/cli/src/new.tsx",
+                            "*** End Patch",
+                        )
+                    )
+                }
+            }
+            old_path = os.environ.get("PATH", "")
+            try:
+                os.environ["PATH"] = f"{bin_dir}{os.pathsep}{old_path}"
+                decision = handle_post_tool_use("codex", payload, root)
+            finally:
+                os.environ["PATH"] = old_path
+
+        self.assertEqual(decision.exit_code, 2)
+        self.assertIn("apps/cli/src/new.tsx", decision.stderr)
+        self.assertNotIn("packages/runtime/src/old.ts", decision.stderr)
 
     def test_codex_post_tool_skips_non_typescript_paths(self) -> None:
         payload = {
@@ -460,6 +566,34 @@ class HookTests(unittest.TestCase):
             )
         self.assertEqual((decision.exit_code, decision.stdout), (0, "{}"))
         self.assertIn("usage reporter failed", decision.stderr)
+
+    def test_codex_stop_cli_is_fail_open_for_early_payload_failures(self) -> None:
+        cases = (
+            ("malformed JSON", "{"),
+            ("non-object JSON", "[]"),
+            ("missing cwd", "{}"),
+            ("invalid cwd", json.dumps({"cwd": "/repo-does-not-exist"})),
+        )
+        for name, stdin in cases:
+            with self.subTest(case=name):
+                result = subprocess.run(
+                    [
+                        sys.executable,
+                        str(WORKFLOW_DIR / "hook.py"),
+                        "--platform",
+                        "codex",
+                        "--event",
+                        "Stop",
+                    ],
+                    cwd=WORKFLOW_DIR.parents[1],
+                    input=stdin,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                self.assertEqual(result.returncode, 0)
+                self.assertEqual(result.stdout, "{}")
+                self.assertTrue(result.stderr.strip())
 
 
 if __name__ == "__main__":

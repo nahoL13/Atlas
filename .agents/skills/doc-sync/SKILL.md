@@ -15,12 +15,12 @@ ordem.
 
 ## Quando usar
 
-Ao fechar uma SPEC — depois do veredicto "pronta" do `spec-validator` e da
-transição `Review → Done` aplicada pelo fio principal (fluxo da Emenda v1.1
-da Constituição), tipicamente logo após a entrada de Lições Aprendidas
-(skill `lessons-learned`). As duas skills são complementares e ambas rodam
-no fechamento: `lessons-learned` cuida do registro histórico,
-`doc-sync` cuida do estado vivo.
+Ao fechar uma SPEC, depois dos gates técnicos/de aceite e da transição
+`Review → Done`: no Perfil completo, o fio principal aplica a transição após
+o veredito técnico do `spec-validator`; no micro, o `spec-closer` a aplica
+depois do próprio Passo 0. A skill roda tipicamente logo após a entrada de
+Lições Aprendidas (`lessons-learned`). As duas são complementares:
+`lessons-learned` cuida do registro histórico e `doc-sync` do estado vivo.
 
 ## Antes de tocar qualquer documento
 
@@ -112,7 +112,8 @@ git push
 ```
 
 - Substitua `<lista-explícita-de-arquivos-da-SPEC>` pelos arquivos da
-  implementação, SPEC, lições e documentação desta SPEC; nunca use `git add -A`.
+  implementação, SPEC, lições e documentação desta SPEC; nunca faça staging
+  global da worktree.
   Confirme que `git diff --cached --name-only` contém somente esse escopo antes
   do commit.
 - Mensagem em **PT-BR**, seguindo o padrão dos commits do repo
@@ -127,7 +128,7 @@ git push
 ## O que esta skill NÃO cobre
 
 - `LESSONS_LEARNED.md` — é a skill `lessons-learned`.
-- Mudar o `Status` da SPEC — o fio principal aplica a transição após o
-  veredicto do `spec-validator`, antes de rodar esta skill.
+- Mudar o `Status` da SPEC — o dono da transição já a aplica antes desta
+  skill (fio principal no Perfil completo; `spec-closer` no micro).
 - Criar/alterar ADRs novos ou o `ModuleCatalog.md` — decisão arquitetural,
   segue `docs/00-project/ArchitectureDecisionProcess.md`.

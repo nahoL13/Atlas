@@ -12,11 +12,10 @@ sys.path.insert(0, str(WORKFLOW_DIR))
 
 from usage_lib import (  # noqa: E402
     REPO_ROOT,
-    build_spec_log,
     discover_claude_records,
     discover_codex_records,
-    merge_spec_log,
     parse_codex_session,
+    update_usage_files,
 )
 
 
@@ -71,13 +70,8 @@ def main() -> None:
     if args.no_log:
         return
     log_path = REPO_ROOT / "docs/05-context/TOKEN_USAGE_LOG.md"
-    existing = log_path.read_text(encoding="utf-8") if log_path.exists() else ""
-    # The first unified regeneration must retain legacy Claude history exactly;
-    # discovery on a new checkout cannot reconstruct past local transcripts.
-    # Historical Claude rows become normalized aggregates before current
-    # sessions are merged, preserving values and canonical table alignment.
-    log = merge_spec_log(existing, records) if existing else build_spec_log(records)
-    log_path.write_text(log, encoding="utf-8")
+    cache_path = REPO_ROOT / ".codex/usage-cache.json"
+    update_usage_files(log_path, cache_path, records)
     print(f"Log por SPEC salvo em {log_path}")
 
 

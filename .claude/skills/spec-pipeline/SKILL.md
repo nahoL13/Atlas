@@ -39,8 +39,8 @@ transições de Status marcadas como sua responsabilidade.
 | 1 | `spec-drafter` | Pedido ou SPEC incompleta; redige a SPEC e decide o que for derivável da documentação em formato de veto. | `Status: Draft`; atualize o handoff. |
 | 2 | `architecture-reviewer` | Ataca a SPEC Draft contra Constituição, ADRs, Module Catalog e PRD. | Aprovação autoriza o despachante a aplicar **Draft → Ready**. |
 | 3 | `spec-implementer` | Recebe a SPEC Ready e o handoff. | O despachante aplica **Ready → In Progress** antes/durante a implementação e, quando o relatório chegar, **In Progress → Review**. |
-| 4 | `spec-validator` | Confere a SPEC Review, os critérios e os quatro comandos completos. | Com veredicto “pronta”, o despachante aplica **Review → Done**. |
-| 5 | `spec-closer` | Recebe a SPEC Done, Perfil completo e o relatório do validator. | Fecha em cold-start (lições, docs vivas, commit e push) e devolve relatório compacto. |
+| 4 | `spec-validator` | Confere a SPEC Review, os critérios, os gates técnicos/de aceite e os quatro comandos completos; não exige artefatos que o closer ainda criará. | Com veredicto técnico “tecnicamente pronta para fechamento”, o despachante aplica **Review → Done**. |
+| 5 | `spec-closer` | Recebe a SPEC Done, Perfil completo e o relatório técnico do validator. | Cria e verifica os itens de fechamento em cold-start (lições, docs vivas, commit e push) e devolve relatório compacto. |
 
 ## Perfil micro
 
@@ -52,7 +52,7 @@ implementa e quem valida. Ele dispensa apenas o `spec-validator` separado:
 | 1 | `spec-drafter` | Propõe Perfil micro e redige a SPEC em formato de veto. | `Status: Draft`; atualize o handoff. |
 | 2 | `architecture-reviewer` | Confirma a elegibilidade em modo leve e os invariantes; rebaixa para completo se qualquer condição falhar. | Aprovação autoriza o despachante a aplicar **Draft → Ready**. |
 | 3 | `spec-implementer` | Recebe a SPEC Ready e o handoff. | O despachante aplica **Ready → In Progress** e, ao receber o relatório, **In Progress → Review**. |
-| 4 | `spec-closer` | Recebe a SPEC Review; valida primeiro (quatro comandos completos, critérios, DoD e escopo). | Se verde, o closer aplica **Review → Done**, sincroniza docs, commita e envia o relatório compacto. |
+| 4 | `spec-closer` | Recebe a SPEC Review; valida primeiro somente os gates técnicos/de aceite (quatro comandos completos, critérios e escopo), sem exigir itens que ele próprio criará. | Se verde, aplica **Review → Done**; depois cria e verifica lições, docs vivas e demais itens de fechamento, commita e envia o relatório compacto. |
 
 ## Retornos e limites de tentativa
 

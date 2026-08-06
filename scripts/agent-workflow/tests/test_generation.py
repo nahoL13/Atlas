@@ -68,6 +68,57 @@ class GenerationTests(unittest.TestCase):
             self.assertIn("Co-Authored-By: <modelo em uso>", content)
             self.assertNotIn("noreply@anthropic.com", content)
 
+    def test_closer_and_doc_sync_never_stage_the_whole_worktree(self) -> None:
+        outputs = expected_generated_files(REPO_ROOT)
+        artifacts = {
+            "canonical closer": (
+                REPO_ROOT / ".agents/workflow/agents/spec-closer.md"
+            ).read_text(encoding="utf-8"),
+            "canonical doc-sync": (
+                REPO_ROOT / ".agents/skills/doc-sync/SKILL.md"
+            ).read_text(encoding="utf-8"),
+            "Claude closer": outputs[Path(".claude/agents/spec-closer.md")],
+            "Codex closer": outputs[Path(".codex/agents/spec-closer.toml")],
+            "Claude doc-sync": outputs[Path(".claude/skills/doc-sync/SKILL.md")],
+        }
+        for name, content in artifacts.items():
+            with self.subTest(artifact=name):
+                self.assertNotIn("git add -A", content)
+                self.assertIn("git diff --cached --name-only", content)
+
+    def test_complete_profile_separates_technical_verdict_from_closeout(self) -> None:
+        pipeline = (REPO_ROOT / ".agents/skills/spec-pipeline/SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        validator = (
+            REPO_ROOT / ".agents/workflow/agents/spec-validator.md"
+        ).read_text(encoding="utf-8")
+        closer = (REPO_ROOT / ".agents/workflow/agents/spec-closer.md").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("veredicto técnico", pipeline.lower())
+        self.assertIn("não inclui os itens de fechamento", validator)
+        self.assertNotIn(
+            "procure uma entrada `## SPEC-XXXX` no topo do Registro", validator
+        )
+        self.assertIn(
+            "itens de fechamento ainda não precisam existir: eles pertencem a este closer",
+            " ".join(closer.split()),
+        )
+
+    def test_micro_profile_validates_before_creating_closeout_artifacts(self) -> None:
+        closer = (REPO_ROOT / ".agents/workflow/agents/spec-closer.md").read_text(
+            encoding="utf-8"
+        )
+        validation = closer.index("## Passo 0 — Validação técnica")
+        lessons = closer.index("## Passo 1 — Lições Aprendidas")
+        closeout_check = closer.index("## Passo 3 — Verificação do fechamento")
+
+        self.assertLess(validation, lessons)
+        self.assertLess(lessons, closeout_check)
+        self.assertIn("nunca são pré-condição do Passo 0", closer)
+
     def test_pipeline_skill_is_generated_for_claude(self) -> None:
         outputs = expected_generated_files(REPO_ROOT)
         skill = outputs[Path(".claude/skills/spec-pipeline/SKILL.md")]

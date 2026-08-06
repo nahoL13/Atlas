@@ -6,13 +6,14 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from workflow_lib import parse_spec_status
+
 
 PATCH_FILE_RE = re.compile(r"^\*\*\* (?:Add|Update|Delete) File: (.+)$", re.MULTILINE)
 PATCH_MOVE_RE = re.compile(r"^\*\*\* Move to: (.+)$", re.MULTILINE)
 SOURCE_RE = re.compile(r"^(packages|apps|tooling)/([^/]+)/src/(.+)$")
-STATUS_SECTION_RE = re.compile(r"^\*\*Status\*\*\s*$\n(?P<body>.*?)(?=^---\s*$)", re.MULTILINE | re.DOTALL)
-ACTIVE_STATUS_RE = re.compile(r"^- \[x\] (Ready|In Progress)$", re.MULTILINE)
 TYPESCRIPT_SUFFIXES = {".ts", ".tsx", ".mts", ".cts"}
+ACTIVE_SPEC_STATUSES = {"Ready", "In Progress"}
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,8 @@ def extract_touched_paths(platform: str, payload: dict) -> tuple[Path, ...]:
         value = tool_input.get("file_path")
         return (Path(value),) if isinstance(value, str) and value else ()
     command = tool_input.get("command", "")
+    if not isinstance(command, str):
+        return ()
     paths = PATCH_FILE_RE.findall(command) + PATCH_MOVE_RE.findall(command)
     return tuple(dict.fromkeys(Path(value) for value in paths))
 
@@ -76,8 +79,7 @@ def find_active_spec(repo_root: Path, component: str) -> Path | None:
     specs_dir = repo_root / "docs/implementation/specs"
     for spec in sorted(specs_dir.glob("*.md")):
         source = spec.read_text(encoding="utf-8")
-        status = STATUS_SECTION_RE.search(source)
-        if status and ACTIVE_STATUS_RE.search(status.group("body")) and _spec_mentions_component(
+        if parse_spec_status(source) in ACTIVE_SPEC_STATUSES and _spec_mentions_component(
             source, component
         ):
             return spec
@@ -100,11 +102,29 @@ def _permission_decision(platform: str, missing_components: tuple[str, ...]) -> 
     return HookDecision(stdout=json.dumps(body, ensure_ascii=False))
 
 
+def _unextractable_edit_decision(platform: str) -> HookDecision:
+    decision = "ask" if platform == "claude" else "deny"
+    body = {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": decision,
+            "permissionDecisionReason": (
+                "Não foi possível extrair caminhos do payload de edição; "
+                "o gate de SPEC falhou de forma fechada. Revise o schema da ferramenta."
+            ),
+        }
+    }
+    return HookDecision(stdout=json.dumps(body, ensure_ascii=False))
+
+
 def handle_pre_tool_use(platform: str, payload: dict, repo_root: Path) -> HookDecision:
+    paths = extract_touched_paths(platform, payload)
+    if not paths:
+        return _unextractable_edit_decision(platform)
     components = tuple(
         dict.fromkeys(
             component
-            for path in extract_touched_paths(platform, payload)
+            for path in paths
             if (component := _component_for_path(repo_root, path)) is not None
         )
     )
@@ -123,7 +143,10 @@ def _post_tool_paths(platform: str, payload: dict) -> tuple[Path, ...]:
 
 def handle_post_tool_use(platform: str, payload: dict, repo_root: Path) -> HookDecision:
     typescript_paths = tuple(
-        path for path in _post_tool_paths(platform, payload) if path.suffix in TYPESCRIPT_SUFFIXES
+        path
+        for path in _post_tool_paths(platform, payload)
+        if path.suffix in TYPESCRIPT_SUFFIXES
+        and (path if path.is_absolute() else repo_root / path).is_file()
     )
     if not typescript_paths:
         return HookDecision()

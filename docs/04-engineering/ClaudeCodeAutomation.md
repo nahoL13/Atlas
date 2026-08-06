@@ -74,15 +74,27 @@ operacional completo; esta seção é apenas um mapa de leitura.
 
 No **Perfil completo**, o despachante encaminha sem desenhar ou implementar
 inline: drafter (`Draft`) → reviewer (autoriza `Draft → Ready`) → implementer
-(`Ready → In Progress → Review`) → validator (veredicto pronta permite ao
-despachante aplicar `Review → Done`) → closer (lições, docs vivas, commit e
-push em cold-start).
+(`Ready → In Progress → Review`) → validator (veredito técnico/de aceite
+permite ao despachante aplicar `Review → Done`) → closer (cria e verifica
+lições, docs vivas e demais itens de fechamento; depois faz commit/push em
+cold-start).
 
 No **Perfil micro**, o reviewer confirma a elegibilidade em modo leve e o
 validator separado é substituído pelo closer: ele recebe `Review`, executa os
-quatro gates completos, confere critérios/DoD/escopo e só então aplica
-`Review → Done`, sincroniza documentação e commita. Autor e verificador
-continuam separados.
+quatro gates completos e confere critérios técnicos/de aceite e escopo. Esses
+gates **não exigem** Lições Aprendidas, docs vivas finais, commit/push nem
+outro artefato que o próprio closer ainda criará. Se passarem, o closer aplica
+`Review → Done`; só então cria e verifica os itens de fechamento, sincroniza a
+documentação e commita. Autor e verificador continuam separados.
+
+Essa separação vale também para a Definition of Done: validator (completo) ou
+Passo 0 do closer (micro) conferem apenas a parcela executável antes do
+fechamento — testes, Critérios de Aceitação, arquitetura e escopo. Lições,
+sincronização viva, Status, staging explícito, commit e push pertencem ao
+closer e são verificados depois que ele próprio os produz. No Perfil completo,
+o validator entrega um **veredito técnico**, o fio principal conserva a
+transição `Review → Done` e o closer conserva todo o fechamento; no micro, o
+closer conserva tanto a validação técnica quanto sua transição de Status.
 
 O primeiro veto do reviewer ou a primeira reprovação de validação retorna uma
 vez à fase anterior. O segundo veto ou a segunda reprovação escala ao usuário.
@@ -100,8 +112,8 @@ atualizam telemetria no encerramento sem bloquear desenvolvimento.
 
 | Evento | Comportamento comum | Diferença semântica |
 |---|---|---|
-| `PreToolUse` | Localiza a SPEC `Ready`/`In Progress` que cobre cada componente tocado. | Claude responde `ask`; Codex responde `deny` quando não há SPEC ativa. |
-| `PostToolUse` | Executa ESLint nos arquivos TypeScript tocados. | Mesmo gate pós-edição. |
+| `PreToolUse` | Localiza a SPEC `Ready`/`In Progress` que cobre cada componente tocado. Payload de edição vazio ou com schema não reconhecido falha fechado com diagnóstico. Patches só de docs continuam liberados. | Claude responde `ask`; Codex responde `deny` quando falta SPEC ou não é possível extrair caminhos. |
+| `PostToolUse` | Executa ESLint somente nos arquivos TypeScript tocados que ainda existem após a operação; Delete ignora a origem removida e Move considera o destino. | Mesmo gate pós-edição. |
 | `UserPromptSubmit` | Classifica pedidos de SPEC e aponta para `spec-pipeline`. | Mesmo lembrete. |
 | `Stop` | Atualiza telemetria em modo não bloqueante. | Claude usa o reporter Claude; Codex envia o transcript ao hook/reporter Codex. |
 
@@ -118,13 +130,26 @@ antes do smoke. Não simule essa confirmação no CI ou no doctor.
 atualiza `docs/05-context/TOKEN_USAGE_LOG.md` preservando Claude e Codex em
 linhas separadas. Os arquivos privados são gitignored:
 `.claude/usage-report.md`, `.codex/usage-report.md` e
-`.codex/usage-cache.json`.
+`.codex/usage-cache.json`. O lock auxiliar `.codex/usage-cache.lock` também é
+privado e ignorado.
 
 Não compare diretamente os dois números. Claude mantém a matemática histórica
 de tokens efetivos; Codex reporta tokens brutos de snapshots cumulativos e usa
 somente o último snapshot válido de cada sessão. `incomplete` indica
 schema/registro insuficiente, não zero tokens. A atribuição de sessão a SPEC é
 heurística e serve para capacidade, não contabilidade.
+
+O Markdown compartilhado contém somente agregados por SPEC/executor. IDs de
+sessão, cwd, timestamps completos, modelos e buckets individuais vivem apenas
+no cache privado. Na primeira execução sem cache, o reporter preserva os
+agregados já versionados, registra um cutover e marca as sessões históricas
+descobertas sem reaplicá-las; somente sessões novas após o cutover entram. Uma
+atualização completa substitui a contribuição anterior da mesma sessão, mas um
+snapshot posterior `incomplete` preserva o último completo. Todo ciclo
+read-modify-write usa um lock estável e arquivos temporários promovidos por
+`os.replace`, de modo que dois hooks `Stop` concorrentes não perdem sessões.
+Qualquer falha do `Stop` Codex — inclusive JSON/cwd/root antes do dispatch — é
+diagnosticada, mas o hook sempre encerra com código `0` e `{}`.
 
 ```bash
 python3 scripts/agent-usage-report.py --executor all
@@ -149,6 +174,8 @@ acusa deriva byte a byte, sem credenciais de modelo. A CI executa o mesmo
 `doctor` é estritamente somente leitura: valida conjunto canônico, paridade,
 JSON/TOML, referências legadas, fixtures de transcript e clientes no `PATH`;
 cliente ausente é aviso, não erro.
+`check` e `doctor` compartilham a mesma comparação de conjunto exato: adapter
+ausente, divergente **ou extra/obsoleto** falha nos dois comandos e na CI.
 
 Antes de declarar uma SPEC concluída, os quatro gates completos continuam
 obrigatórios:

@@ -1,18 +1,22 @@
 from __future__ import annotations
 
 import datetime as dt
+import fcntl
 import json
+import os
 import re
+import tempfile
 from collections import Counter, defaultdict
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
+from workflow_lib import parse_spec_status
+
 
 SPEC_RE = re.compile(r"SPEC-\d{4}")
 SPEC_TITLE_RE = re.compile(r"\*\*Título\*\*\s*\n\n(.+)")
-SPEC_STATUS_CHECKBOX_RE = re.compile(r"- \[x\] (.+)")
-SPEC_STATUS_PLAIN_RE = re.compile(r"\*\*Status\*\*\s*\n\n(.+)")
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SPECS_DIR = REPO_ROOT / "docs" / "implementation" / "specs"
 
@@ -42,7 +46,7 @@ PHASE_COLUMN_ORDER = [
     "Fechamento",
     PHASE_OTHER_AGENTS,
 ]
-SESSION_LEDGER_RE = re.compile(r"<!-- ATLAS-USAGE-SESSION-LEDGER: (?P<data>.*?) -->", re.DOTALL)
+CACHE_VERSION = 1
 
 
 @dataclass(frozen=True)
@@ -64,6 +68,14 @@ class UsageRecord:
     last_ts: str | None
     telemetry_status: str
     cwd: str | None
+
+
+@dataclass
+class UsageCache:
+    cutover: str
+    protect_historical_baseline: bool
+    ignored_sessions: set[tuple[str, str]]
+    sessions: dict[tuple[str, str], UsageRecord]
 
 
 def _extract_text(content: object) -> str:
@@ -301,9 +313,7 @@ def _read_spec_meta(spec_id: str) -> tuple[str | None, str | None]:
         return None, None
     source = matches[0].read_text(encoding="utf-8", errors="ignore")
     title = (match.group(1).strip() if (match := SPEC_TITLE_RE.search(source)) else None)
-    status = (match.group(1).strip() if (match := SPEC_STATUS_CHECKBOX_RE.search(source)) else None)
-    if status is None:
-        status = match.group(1).strip() if (match := SPEC_STATUS_PLAIN_RE.search(source)) else None
+    status = parse_spec_status(source)
     return title, status
 
 
@@ -416,29 +426,6 @@ def merge_aggregates(existing: dict[tuple[str, str], SpecLogAggregate], incoming
     return merged
 
 
-def parse_session_ledger(source: str) -> dict[tuple[str, str], UsageRecord]:
-    match = SESSION_LEDGER_RE.search(source)
-    if match is None:
-        return {}
-    try:
-        raw_records = json.loads(match.group("data"))
-    except json.JSONDecodeError:
-        return {}
-    records: dict[tuple[str, str], UsageRecord] = {}
-    if not isinstance(raw_records, list):
-        return records
-    for raw in raw_records:
-        if not isinstance(raw, dict):
-            continue
-        try:
-            raw["models"] = tuple(raw.get("models", ()))
-            record = UsageRecord(**raw)
-        except (TypeError, ValueError):
-            continue
-        records[(record.executor, record.session)] = record
-    return records
-
-
 def _subtract_record(aggregates: dict[tuple[str, str], SpecLogAggregate], record: UsageRecord, remaining: list[UsageRecord]) -> None:
     if record.spec_tag is None:
         return
@@ -480,7 +467,7 @@ def _merge_session_records(aggregates: dict[tuple[str, str], SpecLogAggregate], 
     return merged, sessions
 
 
-def render_spec_log(aggregates: dict[tuple[str, str], SpecLogAggregate], ledger: dict[tuple[str, str], UsageRecord] | None = None) -> str:
+def render_spec_log(aggregates: dict[tuple[str, str], SpecLogAggregate]) -> str:
     lines = ["# Log de uso de tokens por SPEC\n", "> **Project Atlas — Log de Custo de Token por SPEC**\n"]
     lines.append(f"Atualizado em: {dt.date.today().isoformat()} (regenerado por `python3 scripts/agent-usage-report.py --executor all`)\n")
     lines.append("As métricas são separadas por executor. Tokens efetivos Claude usam os pesos históricos; Codex fica `N/D` até existir uma métrica comparável documentada. Snapshots de Codex são cumulativos e só o último total de cada transcript é lido.\n")
@@ -520,20 +507,155 @@ def render_spec_log(aggregates: dict[tuple[str, str], SpecLogAggregate], ledger:
     for executor, totals in sorted(done_totals.items()):
         average = sum(totals) // len(totals)
         lines.append(f"- {executor}: SPECs concluídas: {len(totals)}. Custo médio: **{_fmt(average)} tokens efetivos**. Faixa: {_fmt(min(totals))} – {_fmt(max(totals))}.\n")
-    if ledger:
-        records = [asdict(record) for _identity, record in sorted(ledger.items())]
-        lines.append("<!-- ATLAS-USAGE-SESSION-LEDGER: " + json.dumps(records, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + " -->\n")
     return "\n".join(lines)
 
 
 def build_spec_log(records: list[UsageRecord]) -> str:
-    aggregates, ledger = _merge_session_records({}, {}, records)
-    return render_spec_log(aggregates, ledger)
+    return render_spec_log(aggregate_records(records))
 
 
 def merge_spec_log(existing: str, records: list[UsageRecord]) -> str:
-    aggregates, ledger = _merge_session_records(parse_spec_log(existing), parse_session_ledger(existing), records)
-    return render_spec_log(aggregates, ledger)
+    return render_spec_log(
+        merge_aggregates(parse_spec_log(existing), aggregate_records(records))
+    )
+
+
+def _record_from_json(raw: object) -> UsageRecord:
+    if not isinstance(raw, dict):
+        raise ValueError("usage cache session must be an object")
+    values = dict(raw)
+    values["models"] = tuple(values.get("models", ()))
+    return UsageRecord(**values)
+
+
+def _load_usage_cache(path: Path) -> UsageCache:
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict) or raw.get("version") != CACHE_VERSION:
+        raise ValueError("unsupported usage cache schema")
+    cutover = raw.get("cutover")
+    if not isinstance(cutover, str) or not cutover:
+        raise ValueError("usage cache cutover is missing")
+    ignored: set[tuple[str, str]] = set()
+    for identity in raw.get("ignored_sessions", []):
+        if not isinstance(identity, dict):
+            raise ValueError("usage cache ignored session must be an object")
+        executor, session = identity.get("executor"), identity.get("session")
+        if not isinstance(executor, str) or not isinstance(session, str):
+            raise ValueError("usage cache ignored session identity is invalid")
+        ignored.add((executor, session))
+    sessions: dict[tuple[str, str], UsageRecord] = {}
+    for raw_record in raw.get("sessions", []):
+        record = _record_from_json(raw_record)
+        sessions[(record.executor, record.session)] = record
+    protect_historical_baseline = raw.get("protect_historical_baseline", True)
+    if not isinstance(protect_historical_baseline, bool):
+        raise ValueError("usage cache baseline protection flag is invalid")
+    return UsageCache(cutover, protect_historical_baseline, ignored, sessions)
+
+
+def _render_usage_cache(cache: UsageCache) -> str:
+    payload = {
+        "version": CACHE_VERSION,
+        "cutover": cache.cutover,
+        "protect_historical_baseline": cache.protect_historical_baseline,
+        "ignored_sessions": [
+            {"executor": executor, "session": session}
+            for executor, session in sorted(cache.ignored_sessions)
+        ],
+        "sessions": [
+            asdict(record) for _identity, record in sorted(cache.sessions.items())
+        ],
+    }
+    return json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ) + "\n"
+
+
+def _timestamp(value: str | None) -> dt.datetime | None:
+    if value is None:
+        return None
+    try:
+        parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=dt.UTC)
+    return parsed.astimezone(dt.UTC)
+
+
+def _is_historical(record: UsageRecord, cutover: str) -> bool:
+    first, boundary = _timestamp(record.first_ts), _timestamp(cutover)
+    return first is None or boundary is None or first <= boundary
+
+
+@contextmanager
+def _usage_lock(path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a+b") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def update_usage_files(
+    log_path: Path,
+    cache_path: Path,
+    records: list[UsageRecord],
+    *,
+    now: str | None = None,
+) -> str:
+    """Merge session snapshots under a private cache lock and atomic replaces."""
+    cutover = now or dt.datetime.now(dt.UTC).isoformat().replace("+00:00", "Z")
+    lock_path = cache_path.with_suffix(".lock")
+    with _usage_lock(lock_path):
+        existing = log_path.read_text(encoding="utf-8") if log_path.exists() else ""
+        aggregates = parse_spec_log(existing)
+        if cache_path.exists():
+            cache = _load_usage_cache(cache_path)
+        else:
+            cache = UsageCache(cutover, bool(aggregates), set(), {})
+
+        if cache.protect_historical_baseline:
+            cache.ignored_sessions.update(
+                (record.executor, record.session)
+                for record in records
+                if (record.executor, record.session) not in cache.sessions
+                and _is_historical(record, cache.cutover)
+            )
+
+        eligible = [
+            record
+            for record in records
+            if record.telemetry_status == "complete"
+            and (record.executor, record.session) not in cache.ignored_sessions
+        ]
+        merged, sessions = _merge_session_records(
+            aggregates, cache.sessions, eligible
+        )
+        cache.sessions = sessions
+        shared = render_spec_log(merged)
+        _atomic_write_text(cache_path, _render_usage_cache(cache))
+        _atomic_write_text(log_path, shared)
+        return shared
 
 
 def migrate_legacy_log(source: str) -> str:
