@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 WORKFLOW_DIR = Path(__file__).resolve().parents[1]
@@ -19,6 +20,7 @@ from hook_lib import (
     handle_pre_tool_use,
     handle_user_prompt_submit,
 )
+from hook import dispatch
 from workflow_lib import expected_generated_files
 
 
@@ -428,7 +430,7 @@ class HookTests(unittest.TestCase):
         claude = json.loads(outputs[Path(".claude/settings.json")])
         codex = json.loads(outputs[Path(".codex/hooks.json")])
         self.assertEqual(set(claude["hooks"]), {"PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop"})
-        self.assertEqual(set(codex["hooks"]), {"PreToolUse", "PostToolUse", "UserPromptSubmit"})
+        self.assertEqual(set(codex["hooks"]), {"PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop"})
         for config in (claude, codex):
             for event in ("PreToolUse", "PostToolUse", "UserPromptSubmit"):
                 command = config["hooks"][event][0]["hooks"][0]["command"]
@@ -441,8 +443,23 @@ class HookTests(unittest.TestCase):
         self.assertTrue(stop_hook["async"])
         self.assertEqual(
             stop_hook["command"],
-            'cd "${' + "CLAUDE" + '_PROJECT_DIR:-.}" && python3 scripts/claude-usage-report.py >/dev/null 2>&1 || true',
+            'cd "${' + "CLAUDE" + '_PROJECT_DIR:-.}" && python3 scripts/agent-usage-report.py --executor claude >/dev/null 2>&1 || true',
         )
+        self.assertEqual(
+            codex["hooks"]["Stop"][0]["hooks"][0]["command"],
+            'python3 "$(git rev-parse --show-toplevel)/scripts/agent-workflow/hook.py" --platform codex --event Stop',
+        )
+
+    def test_codex_stop_keeps_success_protocol_when_reporter_fails(self) -> None:
+        with patch("hook.subprocess.run", side_effect=OSError("reporter unavailable")):
+            decision = dispatch(
+                "codex",
+                "Stop",
+                {"transcript_path": "/tmp/transcript.jsonl"},
+                Path("/repo"),
+            )
+        self.assertEqual((decision.exit_code, decision.stdout), (0, "{}"))
+        self.assertIn("usage reporter failed", decision.stderr)
 
 
 if __name__ == "__main__":

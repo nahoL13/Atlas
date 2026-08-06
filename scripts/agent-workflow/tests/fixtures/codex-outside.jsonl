@@ -1,0 +1,2 @@
+{"timestamp":"2026-08-05T10:00:00Z","type":"session_meta","payload":{"id":"codex-outside","thread_source":"user","cwd":"/outside"}}
+{"timestamp":"2026-08-05T10:00:01Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":1,"input_tokens":1,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"cache_write_input_tokens":0}}}}

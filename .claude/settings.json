@@ -42,7 +42,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd \"${CLAUDE_PROJECT_DIR:-.}\" && python3 scripts/claude-usage-report.py >/dev/null 2>&1 || true",
+            "command": "cd \"${CLAUDE_PROJECT_DIR:-.}\" && python3 scripts/agent-usage-report.py --executor claude >/dev/null 2>&1 || true",
             "timeout": 30,
             "async": true,
             "statusMessage": "Atualizando log de uso de tokens..."

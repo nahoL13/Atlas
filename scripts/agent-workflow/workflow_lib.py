@@ -180,10 +180,23 @@ def render_hook_settings(platform: str) -> str:
                         "command": (
                             'cd "${'
                             + "CLAUDE"
-                            + '_PROJECT_DIR:-.}" && python3 scripts/claude-usage-report.py >/dev/null 2>&1 || true'
+                            + '_PROJECT_DIR:-.}" && python3 scripts/agent-usage-report.py --executor claude >/dev/null 2>&1 || true'
                         ),
                         "timeout": 30,
                         "async": True,
+                        "statusMessage": "Atualizando log de uso de tokens...",
+                    }
+                ]
+            }
+        ]
+    else:
+        hooks["Stop"] = [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": render_hook_command("codex", "Stop"),
+                        "timeout": 30,
                         "statusMessage": "Atualizando log de uso de tokens...",
                     }
                 ]

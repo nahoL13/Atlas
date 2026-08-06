@@ -51,6 +51,23 @@ def dispatch(platform: str, event: str, payload: dict, repo_root: Path) -> HookD
         return handle_post_tool_use(platform, payload, repo_root)
     if event == "UserPromptSubmit":
         return handle_user_prompt_submit(payload)
+    if platform == "codex":
+        transcript_path = payload.get("transcript_path")
+        if isinstance(transcript_path, str) and transcript_path:
+            command = [
+                sys.executable,
+                str(repo_root / "scripts/agent-usage-report.py"),
+                "--executor",
+                "codex",
+                "--transcript",
+                transcript_path,
+            ]
+            try:
+                result = subprocess.run(command, text=True, capture_output=True, check=False)
+            except OSError as error:
+                return HookDecision(stdout="{}", stderr=f"usage reporter failed: {error}\n")
+            if result.returncode != 0:
+                return HookDecision(stdout="{}", stderr=f"usage reporter failed: {result.stderr}")
     return HookDecision(stdout="{}" if platform == "codex" else "")
 
 
