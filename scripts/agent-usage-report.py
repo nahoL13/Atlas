@@ -15,7 +15,7 @@ from usage_lib import (  # noqa: E402
     build_spec_log,
     discover_claude_records,
     discover_codex_records,
-    migrate_legacy_log,
+    merge_spec_log,
     parse_codex_session,
 )
 
@@ -38,31 +38,16 @@ def parse_args() -> argparse.Namespace:
 
 def build_private_report(records: list, executor: str, top_n: int) -> str:
     selected = [record for record in records if executor == "all" or record.executor.lower() == executor]
-    lines = ["# Uso de tokens por executor — Project Atlas\n", f"- Executor: {executor}\n", f"- Sessões analisadas: {len(selected)}\n", "| Executor | Sessão | SPEC | Modelos | Tokens brutos | Tokens efetivos | Telemetria |", "|---|---|---|---|---:|---:|---|"]
-    for record in sorted(selected, key=lambda item: item.raw_total, reverse=True)[:top_n]:
-        effective = str(record.effective_total) if record.effective_total is not None else "N/D"
-        lines.append(f"| {record.executor} | {record.session[:16]} | {record.spec_tag or '-'} | {', '.join(record.models) or '-'} | {record.raw_total} | {effective} | {record.telemetry_status} |")
+    executors = ("Claude", "Codex") if executor == "all" else (("Claude",) if executor == "claude" else ("Codex",))
+    lines = ["# Uso de tokens por executor — Project Atlas\n", f"- Executor: {executor}\n", f"- Sessões analisadas: {len(selected)}\n"]
+    for current_executor in executors:
+        lines.extend([f"## {current_executor}\n", "| Executor | Sessão | SPEC | Modelos | Tokens brutos | Tokens efetivos | Telemetria |", "|---|---|---|---|---:|---:|---|"])
+        current = [record for record in selected if record.executor == current_executor]
+        for record in sorted(current, key=lambda item: item.raw_total, reverse=True)[:top_n]:
+            effective = str(record.effective_total) if record.effective_total is not None else "N/D"
+            lines.append(f"| {record.executor} | {record.session[:16]} | {record.spec_tag or '-'} | {', '.join(record.models) or '-'} | {record.raw_total} | {effective} | {record.telemetry_status} |")
+        lines.append("")
     return "\n".join(lines) + "\n"
-
-
-def merge_codex_rows(existing: str, current: str) -> str:
-    """Add fresh Codex rows without recomputing unrecoverable Claude history."""
-    sections = (("## Por SPEC", "## Detalhamento por fase"), ("## Detalhamento por fase", "## Eficiência de processo"))
-    for start_marker, end_marker in sections:
-        current_start = current.find(start_marker)
-        current_end = current.find(end_marker, current_start + len(start_marker))
-        incoming = [line for line in current[current_start:current_end].splitlines() if line.startswith("| SPEC-") and "| Codex |" in line]
-        if not incoming:
-            continue
-        start = existing.find(start_marker)
-        end = existing.find(end_marker, start + len(start_marker))
-        section = existing[start:end]
-        for line in incoming:
-            key = "|".join(line.split("|")[:3]) + "|"
-            section_lines = [old for old in section.splitlines() if not old.startswith(key)]
-            section = "\n".join(section_lines).rstrip() + "\n" + line + "\n"
-        existing = existing[:start] + section + existing[end:]
-    return existing
 
 
 def main() -> None:
@@ -89,15 +74,9 @@ def main() -> None:
     existing = log_path.read_text(encoding="utf-8") if log_path.exists() else ""
     # The first unified regeneration must retain legacy Claude history exactly;
     # discovery on a new checkout cannot reconstruct past local transcripts.
-    if existing:
-        # Historical Claude transcripts are local and frequently unavailable in
-        # a worktree. Keep their exact, previously validated arithmetic.
-        log = migrate_legacy_log(existing)
-        codex_records = [record for record in records if record.executor == "Codex"]
-        if codex_records:
-            log = merge_codex_rows(log, build_spec_log(codex_records))
-    else:
-        log = build_spec_log(records)
+    # Historical Claude rows become normalized aggregates before current
+    # sessions are merged, preserving values and canonical table alignment.
+    log = merge_spec_log(existing, records) if existing else build_spec_log(records)
     log_path.write_text(log, encoding="utf-8")
     print(f"Log por SPEC salvo em {log_path}")
 

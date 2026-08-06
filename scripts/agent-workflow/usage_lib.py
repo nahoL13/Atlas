@@ -4,7 +4,7 @@ import datetime as dt
 import json
 import re
 from collections import Counter, defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -109,6 +109,7 @@ def parse_claude_session(path: Path, metadata: dict[str, object] | None = None) 
     mentions: Counter[str] = Counter(SPEC_RE.findall(description))
     input_tokens = cached_input = cache_write_input = output_tokens = 0
     models: set[str] = set()
+    valid_usage_count = 0
     first_ts = last_ts = None
     with path.open(encoding="utf-8", errors="ignore") as handle:
         for raw in handle:
@@ -127,6 +128,7 @@ def parse_claude_session(path: Path, metadata: dict[str, object] | None = None) 
             usage = message.get("usage")
             if not isinstance(usage, dict):
                 continue
+            valid_usage_count += 1
             model = message.get("model")
             if isinstance(model, str):
                 models.add(model)
@@ -143,7 +145,7 @@ def parse_claude_session(path: Path, metadata: dict[str, object] | None = None) 
         cache_write_input=cache_write_input, output_tokens=output_tokens, reasoning_output=0,
         raw_total=raw_total, effective_total=_effective_total(input_tokens, cache_write_input, cached_input, output_tokens),
         spec_tag=description_spec.group(0) if description_spec else _top_spec(mentions),
-        first_ts=first_ts, last_ts=last_ts, telemetry_status="complete", cwd=None,
+        first_ts=first_ts, last_ts=last_ts, telemetry_status="complete" if valid_usage_count else "incomplete", cwd=None,
     )
 
 
@@ -155,6 +157,7 @@ def parse_codex_session(path: Path) -> UsageRecord:
     mentions: Counter[str] = Counter()
     first_ts = last_ts = None
     last_usage: dict[str, Any] | None = None
+    saw_token_count = False
     with path.open(encoding="utf-8", errors="ignore") as handle:
         for raw in handle:
             try:
@@ -193,12 +196,12 @@ def parse_codex_session(path: Path) -> UsageRecord:
                     if isinstance(message, str):
                         mentions.update(SPEC_RE.findall(message))
                 elif kind == "token_count":
+                    saw_token_count = True
                     info = payload.get("info")
                     total = info.get("total_token_usage") if isinstance(info, dict) else None
-                    if isinstance(total, dict):
-                        # Codex snapshots are cumulative: retaining only this final one is intentional.
-                        last_usage = total
-    if last_usage is None:
+                    # Codex snapshots are cumulative: only the final schema is authoritative.
+                    last_usage = total if isinstance(total, dict) else None
+    if not saw_token_count or last_usage is None:
         return UsageRecord("Codex", session, _phase(agent_role), agent_role, tuple(sorted(models)), 0, 0, 0, 0, 0, 0, None, _top_spec(mentions), first_ts, last_ts, "incomplete", cwd)
     values = {key: _int(last_usage.get(key)) for key in ("total_tokens", "input_tokens", "cached_input_tokens", "cache_write_input_tokens", "output_tokens", "reasoning_output_tokens")}
     if any(value is None for value in values.values()):
@@ -236,6 +239,7 @@ def discover_claude_records(project_dir: Path) -> list[UsageRecord]:
 def discover_codex_records(sessions_dir: Path, repo_root: Path) -> list[UsageRecord]:
     root = repo_root.resolve()
     records: list[UsageRecord] = []
+    parents: dict[str, str] = {}
     for path in sorted(sessions_dir.rglob("*.jsonl")):
         record = parse_codex_session(path)
         if record.cwd is None:
@@ -245,7 +249,36 @@ def discover_codex_records(sessions_dir: Path, repo_root: Path) -> list[UsageRec
         except ValueError:
             continue
         records.append(record)
-    return records
+        with path.open(encoding="utf-8", errors="ignore") as handle:
+            for raw in handle:
+                try:
+                    entry = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                payload = entry.get("payload")
+                if entry.get("type") != "session_meta" or not isinstance(payload, dict):
+                    continue
+                source = payload.get("source")
+                subagent = source.get("subagent") if isinstance(source, dict) else payload.get("subagent")
+                spawn = subagent.get("thread_spawn") if isinstance(subagent, dict) else None
+                parent = spawn.get("parent_thread_id") if isinstance(spawn, dict) else None
+                if isinstance(parent, str):
+                    parents[record.session] = parent
+                break
+    by_session = {record.session: record for record in records}
+    # A child may be read before an ancestor, so resolve until no fallback changes.
+    for _ in records:
+        changed = False
+        for session, record in tuple(by_session.items()):
+            if record.spec_tag is not None or session not in parents:
+                continue
+            parent = by_session.get(parents[session])
+            if parent is not None and parent.spec_tag is not None:
+                by_session[session] = replace(record, spec_tag=parent.spec_tag)
+                changed = True
+        if not changed:
+            break
+    return [by_session[record.session] for record in records]
 
 
 def _fmt(value: int) -> str:
@@ -264,66 +297,164 @@ def _read_spec_meta(spec_id: str) -> tuple[str | None, str | None]:
     return title, status
 
 
-def build_spec_log(records: list[UsageRecord]) -> str:
-    per_spec: dict[tuple[str, str], dict[str, object]] = defaultdict(lambda: {"raw": 0, "effective": 0, "sessions": 0, "last": None, "complete": True})
-    phases: dict[tuple[str, str], dict[str, int | None]] = defaultdict(dict)
+@dataclass
+class SpecLogAggregate:
+    spec_tag: str
+    executor: str
+    title: str
+    status: str
+    sessions: int
+    last_ts: str | None
+    raw_total: int
+    effective_total: int | None
+    telemetry_status: str
+    phases: dict[str, int | None]
+
+
+def _parse_number(value: str) -> int:
+    return int(value.replace(".", "").replace(",", ""))
+
+
+def aggregate_records(records: list[UsageRecord]) -> dict[tuple[str, str], SpecLogAggregate]:
+    aggregates: dict[tuple[str, str], SpecLogAggregate] = {}
     for record in records:
         if record.spec_tag is None:
             continue
         key = (record.spec_tag, record.executor)
-        bucket = per_spec[key]
-        bucket["raw"] = int(bucket["raw"]) + record.raw_total
-        bucket["sessions"] = int(bucket["sessions"]) + 1
-        bucket["complete"] = bool(bucket["complete"]) and record.telemetry_status == "complete"
-        if record.effective_total is not None:
-            bucket["effective"] = int(bucket["effective"]) + record.effective_total
-        if record.last_ts and (bucket["last"] is None or record.last_ts > bucket["last"]):
-            bucket["last"] = record.last_ts
-        previous = phases[key].get(record.phase)
-        if record.effective_total is None:
-            phases[key][record.phase] = None
-        elif previous is not None:
-            phases[key][record.phase] = int(previous) + record.effective_total
+        aggregate = aggregates.get(key)
+        if aggregate is None:
+            title, status = _read_spec_meta(record.spec_tag)
+            aggregate = SpecLogAggregate(record.spec_tag, record.executor, title or "(SPEC não encontrada em docs/implementation/specs/)", status or "?", 0, None, 0, 0 if record.executor == "Claude" else None, "complete", {})
+            aggregates[key] = aggregate
+        aggregate.sessions += 1
+        aggregate.raw_total += record.raw_total
+        if aggregate.effective_total is not None and record.effective_total is not None:
+            aggregate.effective_total += record.effective_total
+        aggregate.telemetry_status = "complete" if aggregate.telemetry_status == record.telemetry_status == "complete" else "incomplete"
+        if record.last_ts and (aggregate.last_ts is None or record.last_ts > aggregate.last_ts):
+            aggregate.last_ts = record.last_ts
+        previous = aggregate.phases.get(record.phase)
+        if aggregate.executor == "Codex":
+            aggregate.phases[record.phase] = None
+        elif previous is None and record.phase in aggregate.phases:
+            aggregate.phases[record.phase] = None
         else:
-            phases[key][record.phase] = record.effective_total
+            aggregate.phases[record.phase] = (previous or 0) + (record.effective_total or 0)
+    return aggregates
+
+
+def parse_spec_log(source: str) -> dict[tuple[str, str], SpecLogAggregate]:
+    source = migrate_legacy_log(source)
+    aggregates: dict[tuple[str, str], SpecLogAggregate] = {}
+    spec_start, phase_start = source.find("## Por SPEC"), source.find("## Detalhamento por fase")
+    if spec_start < 0 or phase_start < 0:
+        return aggregates
+    spec_lines = [line for line in source[spec_start:phase_start].splitlines() if line.startswith("|")]
+    if len(spec_lines) < 2:
+        return aggregates
+    for line in spec_lines[2:]:
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        if len(cells) < 8:
+            continue
+        spec_tag, executor = cells[:2]
+        telemetry = "complete"
+        if len(cells) >= 9 and cells[-1] in {"complete", "incomplete"}:
+            telemetry = cells.pop()
+        status, sessions, last_ts, raw_total, effective_text = cells[-5:]
+        title = " | ".join(cells[2:-5])
+        effective = _parse_number(effective_text) if effective_text not in {"", "N/D"} else None
+        aggregates[(spec_tag, executor)] = SpecLogAggregate(
+            spec_tag, executor, title, status, int(sessions), last_ts if last_ts != "-" else None,
+            _parse_number(raw_total), effective, telemetry, {},
+        )
+    efficiency_start = source.find("## Eficiência de processo", phase_start)
+    phase_lines = [line for line in source[phase_start:efficiency_start].splitlines() if line.startswith("|")]
+    if len(phase_lines) < 2:
+        return aggregates
+    headers = [cell.strip() for cell in phase_lines[0].strip("|").split("|")]
+    for line in phase_lines[2:]:
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        row = dict(zip(headers, cells, strict=False))
+        aggregate = aggregates.get((row.get("SPEC", ""), row.get("Executor", "")))
+        if aggregate is None:
+            continue
+        for phase in headers[2:]:
+            value = row.get(phase, "—")
+            if value == "—":
+                continue
+            aggregate.phases[phase] = None if value == "N/D" else _parse_number(value)
+    return aggregates
+
+
+def merge_aggregates(existing: dict[tuple[str, str], SpecLogAggregate], incoming: dict[tuple[str, str], SpecLogAggregate]) -> dict[tuple[str, str], SpecLogAggregate]:
+    merged = {key: SpecLogAggregate(value.spec_tag, value.executor, value.title, value.status, value.sessions, value.last_ts, value.raw_total, value.effective_total, value.telemetry_status, dict(value.phases)) for key, value in existing.items()}
+    for key, update in incoming.items():
+        target = merged.get(key)
+        if target is None:
+            merged[key] = update
+            continue
+        target.sessions += update.sessions
+        target.raw_total += update.raw_total
+        if target.effective_total is not None and update.effective_total is not None:
+            target.effective_total += update.effective_total
+        target.telemetry_status = "complete" if target.telemetry_status == update.telemetry_status == "complete" else "incomplete"
+        if update.last_ts and (target.last_ts is None or update.last_ts > target.last_ts):
+            target.last_ts = update.last_ts
+        for phase, value in update.phases.items():
+            previous = target.phases.get(phase)
+            target.phases[phase] = None if value is None or (phase in target.phases and previous is None) else (previous or 0) + value
+    return merged
+
+
+def render_spec_log(aggregates: dict[tuple[str, str], SpecLogAggregate]) -> str:
     lines = ["# Log de uso de tokens por SPEC\n", "> **Project Atlas — Log de Custo de Token por SPEC**\n"]
     lines.append(f"Atualizado em: {dt.date.today().isoformat()} (regenerado por `python3 scripts/agent-usage-report.py --executor all`)\n")
     lines.append("As métricas são separadas por executor. Tokens efetivos Claude usam os pesos históricos; Codex fica `N/D` até existir uma métrica comparável documentada. Snapshots de Codex são cumulativos e só o último total de cada transcript é lido.\n")
     lines.extend(["---\n", "## Por SPEC\n", "| SPEC | Executor | Título | Status | Sessões | Última atividade | Tokens brutos | Tokens efetivos | Telemetria |", "|---|---|---|---|---:|---|---:|---:|---|"])
     done_totals: dict[str, list[int]] = defaultdict(list)
-    for (spec_id, executor), bucket in sorted(per_spec.items()):
-        title, status = _read_spec_meta(spec_id)
-        title, status = title or "(SPEC não encontrada em docs/implementation/specs/)", status or "?"
-        effective = _fmt(int(bucket["effective"])) if executor == "Claude" else "N/D"
-        if status == "Done" and executor == "Claude":
-            done_totals[executor].append(int(bucket["effective"]))
-        lines.append(f"| {spec_id} | {executor} | {title} | {status} | {bucket['sessions']} | {str(bucket['last'] or '-')[:10]} | {_fmt(int(bucket['raw']))} | {effective} | {'complete' if bucket['complete'] else 'incomplete'} |")
+    for (_spec_id, _executor), aggregate in sorted(aggregates.items()):
+        effective = _fmt(aggregate.effective_total or 0) if aggregate.executor == "Claude" else "N/D"
+        if aggregate.status == "Done" and aggregate.executor == "Claude" and aggregate.effective_total is not None:
+            done_totals[aggregate.executor].append(aggregate.effective_total)
+        lines.append(f"| {aggregate.spec_tag} | {aggregate.executor} | {aggregate.title} | {aggregate.status} | {aggregate.sessions} | {str(aggregate.last_ts or '-')[:10]} | {_fmt(aggregate.raw_total)} | {effective} | {aggregate.telemetry_status} |")
     lines.extend(["", "## Detalhamento por fase\n", "Valores em tokens efetivos. Codex não é somado nem comparado a Claude enquanto não existir métrica equivalente.\n"])
-    present = {phase for totals in phases.values() for phase in totals}
+    present = {phase for aggregate in aggregates.values() for phase in aggregate.phases}
     columns = [phase for phase in PHASE_COLUMN_ORDER if phase == PHASE_MAIN_THREAD or phase in present]
     columns += sorted(present - set(PHASE_COLUMN_ORDER))
     lines.append("| " + " | ".join(["SPEC", "Executor"] + columns) + " |")
     lines.append("|" + "|".join(["---", "---"] + ["---:"] * len(columns)) + "|")
-    for key in sorted(phases):
-        spec_id, executor = key
-        values = ["N/D" if executor == "Codex" else _fmt(int(phases[key].get(column) or 0)) for column in columns]
-        lines.append("| " + " | ".join([spec_id, executor] + values) + " |")
+    for (_spec_id, _executor), aggregate in sorted(aggregates.items()):
+        values = []
+        for column in columns:
+            if column not in aggregate.phases:
+                values.append("—" if aggregate.executor == "Codex" else "0")
+            elif aggregate.phases[column] is None:
+                values.append("N/D")
+            else:
+                values.append(_fmt(aggregate.phases[column] or 0))
+        lines.append("| " + " | ".join([aggregate.spec_tag, aggregate.executor] + values) + " |")
     lines.extend(["", "## Eficiência de processo (overhead ÷ implementação)\n", "Calculada separadamente por executor, apenas quando tokens efetivos comparáveis existem.\n", "| SPEC | Executor | Implementação | Overhead (resto) | Overhead ÷ Impl |", "|---|---|---:|---:|---:|"])
-    for key in sorted(phases):
-        spec_id, executor = key
-        if executor != "Claude":
+    for (_spec_id, _executor), aggregate in sorted(aggregates.items()):
+        if aggregate.executor != "Claude":
             continue
-        totals = phases[key]
-        implementation = totals.get("Implementação")
+        implementation = aggregate.phases.get("Implementação")
         if not implementation:
             continue
-        overhead = sum(int(value or 0) for value in totals.values()) - int(implementation)
-        lines.append(f"| {spec_id} | {executor} | {_fmt(int(implementation))} | {_fmt(overhead)} | {overhead / int(implementation):.1f}× |")
+        overhead = sum(int(value or 0) for value in aggregate.phases.values()) - int(implementation)
+        lines.append(f"| {aggregate.spec_tag} | {aggregate.executor} | {_fmt(int(implementation))} | {_fmt(overhead)} | {overhead / int(implementation):.1f}× |")
     lines.extend(["", "## Como estimar antes de começar uma SPEC nova\n"])
     for executor, totals in sorted(done_totals.items()):
         average = sum(totals) // len(totals)
         lines.append(f"- {executor}: SPECs concluídas: {len(totals)}. Custo médio: **{_fmt(average)} tokens efetivos**. Faixa: {_fmt(min(totals))} – {_fmt(max(totals))}.\n")
     return "\n".join(lines)
+
+
+def build_spec_log(records: list[UsageRecord]) -> str:
+    return render_spec_log(aggregate_records(records))
+
+
+def merge_spec_log(existing: str, records: list[UsageRecord]) -> str:
+    return render_spec_log(merge_aggregates(parse_spec_log(existing), aggregate_records(records)))
 
 
 def migrate_legacy_log(source: str) -> str:
