@@ -89,8 +89,15 @@ Monólito modular não significa ausência de limites arquiteturais.
 
 ```text
 atlas/
+├── .agents/
+│   ├── skills/
+│   └── workflow/
+│
 ├── .claude/
 │   └── skills/
+│
+├── .codex/
+│   └── agents/
 │
 ├── .github/
 │   ├── ISSUE_TEMPLATE/
@@ -146,25 +153,22 @@ Diretórios devem ser criados somente quando sua primeira implementação real f
 
 # Diretórios da Raiz
 
-## `.claude/`
+## `.agents/`, `.claude/` e `.codex/`
 
-Contém recursos específicos para o desenvolvimento do projeto com Claude Code.
+Esses três diretórios contêm exclusivamente automação de desenvolvimento; eles
+não fazem parte do produto Atlas em execução e não contêm segredos.
 
-```text
-.claude/
-└── skills/
-    ├── implement-spec/
-    ├── create-spec/
-    ├── review-implementation/
-    ├── create-adr/
-    └── update-documentation/
-```
+- `.agents/` é a fonte canônica, neutra de provedor, do workflow e das skills
+  dos agentes de desenvolvimento.
+- `.claude/` é o adaptador gerado para Claude Code (agentes, skills e hooks).
+- `.codex/` é o adaptador gerado para Codex (agentes, configuração e hooks).
 
-As Skills desse diretório descrevem procedimentos recorrentes de engenharia.
+As saídas geradas devem ser atualizadas por
+`pnpm agent-workflow:generate` e verificadas por
+`pnpm agent-workflow:check`; alterações de comportamento começam em
+`.agents/`. Ver `docs/04-engineering/ClaudeCodeAutomation.md` para a operação.
 
-Elas não fazem parte do produto Atlas em execução.
-
-### Não deve conter
+### Não devem conter
 
 - código da aplicação;
 - lógica do Core;
@@ -514,13 +518,14 @@ Pode incluir:
 - ciclo de vida de Skills temporárias;
 - futura implementação do Skill Builder.
 
-Não deve ser confundido com `.claude/skills/`.
+Não deve ser confundido com `.agents/skills/`, fonte canônica das Skills de
+desenvolvimento (renderizada também em `.claude/skills/`).
 
 ```text
-.claude/skills/
+.agents/skills/
 ```
 
-define procedimentos usados pelo Claude Code durante o desenvolvimento.
+define procedimentos usados por agentes durante o desenvolvimento.
 
 ```text
 packages/skills/

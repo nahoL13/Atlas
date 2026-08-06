@@ -25,6 +25,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Agent workflow parity
+        run: pnpm agent-workflow:check
+
       - name: Lint
         run: pnpm lint
 

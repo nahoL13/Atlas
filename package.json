@@ -12,7 +12,11 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc -p tsconfig.json && pnpm -r --if-present typecheck",
-    "test": "vitest run"
+    "test": "vitest run",
+    "agent-workflow:generate": "python3 scripts/agent-workflow/generate.py",
+    "agent-workflow:test": "python3 -m unittest discover -s scripts/agent-workflow/tests -p 'test_*.py' -v",
+    "agent-workflow:check": "pnpm agent-workflow:test && python3 scripts/agent-workflow/check.py",
+    "agent-workflow:doctor": "python3 scripts/agent-workflow/doctor.py"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

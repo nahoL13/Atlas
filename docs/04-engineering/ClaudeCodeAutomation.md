@@ -1,322 +1,190 @@
-# Claude Code Automation
+# Agent Development Automation
 
-> **Project Atlas — Automação de Workflow no Claude Code**
+> **Project Atlas — Automação de desenvolvimento por agentes**
+>
+> Este arquivo mantém o nome histórico `ClaudeCodeAutomation.md` para que
+> SPECs e lições anteriores continuem apontando para o mesmo caminho.
 
-Version: 1.3
+Version: 2.0
 
-Status: Documento vivo (não segue o processo de SPEC/ADR — é tooling de
-workflow do Claude Code, não arquitetura da plataforma Atlas)
+Status: Documento vivo de tooling; não define arquitetura nem runtime do Atlas.
 
 ---
 
 # Objetivo
 
-Este documento descreve a automação construída dentro do Claude Code para
-apoiar o processo oficial de desenvolvimento do Atlas (definido em
-[Development Guide](DevelopmentGuide.md)): cinco subagents (um por fase do
-ciclo de uma SPEC, mais um revisor adversarial de arquitetura e um agente de
-fechamento), três skills, quatro hooks e um script de análise de custo de
-token.
+Este documento explica a operação do processo oficial de SPEC no Claude Code
+e no Codex. O processo continua sendo o do [Development Guide](DevelopmentGuide.md):
+Ideia → PRD → SPEC → implementação → verificação → documentação → merge.
 
-Nada aqui altera o processo em si — o fluxo Ideia → PRD → SPEC →
-Implementação → Testes → Documentação → Review → Merge continua sendo o
-mesmo. O que muda é **quem executa cada etapa dentro do Claude Code** e
-**quanto cada etapa custa em tokens**, de forma rastreável.
+Os adaptadores reduzem custo de contexto e tornam o fluxo repetível. Eles não
+autorizam implementação sem SPEC, não criam decisões arquiteturais e não
+substituem as escaladas humanas da Constituição.
 
 ---
 
-# Motivação
+# Fonte canônica e adaptadores
 
-Duas dores concretas motivaram esta automação:
-
-1. **Sessões que terminam no meio de uma SPEC.** O limite de uso do Claude
-   Code é por janela de sessão, não por SPEC. Sem visibilidade de custo, não
-   dava para saber se uma SPEC cabia na sessão atual antes de começar.
-
-2. **Consumo de tokens concentrado no modelo mais caro sem necessidade.**
-   Uma primeira análise (`scripts/claude-usage-report.py`, ver abaixo) sobre
-   os transcripts reais deste projeto mostrou que **72% do consumo total
-   (441M de 614M tokens em 24 sessões) veio do Opus**, mesmo em trabalho
-   mecânico (rodar testes, conferir checklist) que não exige o modelo mais
-   caro. A maior parte do custo total, além disso, é `cache_read` — ou
-   seja, contexto acumulado numa sessão longa sendo reprocessado a cada
-   turno, não geração nova.
-
-A resposta para os dois problemas é a mesma: **isolar cada fase do ciclo de
-uma SPEC em um subagent com contexto próprio e modelo escolhido pelo custo
-real da tarefa**, em vez de fazer tudo no fio principal com o modelo padrão.
-Um subagent começa com contexto zerado (não herda o histórico acumulado da
-conversa) e devolve só o resultado final — isso ataca a causa raiz do
-`cache_read` alto, não só o custo por token do modelo.
-
-Descartamos deliberadamente a ideia original (agentes para "organizar o
-processo" de SPEC) — o processo já funciona bem sem agentes. O valor real
-identificado foi economia de contexto/token, não orquestração.
-
----
-
-# Visão geral do fluxo
-
-Desde a **Emenda v1.1 da Constituição** (2026-07-19), o pipeline é
-autônomo de ponta a ponta: um único pedido ("faz a SPEC de X") dispara a
-cadeia inteira, e o fio principal atua só como **despachante magro** —
-repassa relatórios entre agentes, aplica as transições de `Status` e nunca
-re-narra o trabalho.
+`.agents/` é a única fonte canônica do workflow:
 
 ```text
-"faz a SPEC de X"
-        ↓
-  spec-drafter (Opus)  →  Status: Draft, SEM perguntas abertas
-        │                   (decide sozinho; decisões em formato de veto na SPEC)
-        ↓
-  architecture-reviewer (Opus)  →  GATE: aprovação autoriza Draft → Ready
-        │                   veto → volta ao drafter 1×; 2º veto → ESCALA AO USUÁRIO
-        ↓  (fio principal muda Status: Draft → Ready)
-  spec-implementer (Sonnet)  →  código + testes
-        ↓
-  spec-validator (Sonnet)  →  veredicto
-        │                   não pronta → volta ao implementer 1×; 2ª reprovação → ESCALA
-        ↓  (fio principal muda Status: Review → Done)
-  spec-closer (Sonnet)  →  lições aprendidas + docs vivas + commit + push
-                           (cold-start único; lê git diff uma vez e reaproveita)
+.agents/
+  workflow/
+    agents/                 cinco papéis com metadados neutros
+    dispatch.md             bloco curto dos documentos-raiz
+    model-tiers.toml        mapeamento de modelo por tipo de trabalho
+  skills/
+    spec-check/
+    lessons-learned/
+    doc-sync/
+    spec-pipeline/
+
+.claude/                    adaptador Claude gerado
+  agents/*.md
+  skills/*/SKILL.md
+  settings.json
+
+.codex/                     adaptador Codex gerado
+  agents/*.toml
+  config.toml
+  hooks.json
 ```
 
-**Escalações obrigatórias** (o pipeline para e chama o usuário — Emenda
-v1.1): emendar a Constituição; módulo novo/responsabilidade movida; ADR
-novo; segundo veto do reviewer; segunda reprovação do validator; pedido sem
-base no PRD. O usuário mantém override a qualquer momento.
+Não edite um adaptador gerado como fonte. Edite `.agents/`, execute a geração
+e revise o diff. `CLAUDE.md`, `AGENTS.md`, `.claude/**` e `.codex/**` também
+são saídas verificadas da geração. Os documentos-raiz só despacham para
+`spec-pipeline`; não duplicam a máquina de estados.
 
-## Ramo micro (fast-path para SPECs pequenas — Emenda v1.2, 2026-07-20)
+| Tier neutro | Claude | Codex | Uso |
+|---|---|---|---|
+| `deep-reasoning` | Opus | `gpt-5.6-sol`, esforço `high` | rascunho e gate adversarial |
+| `balanced-execution` | Sonnet | `gpt-5.6-terra`, esforço `high` | implementação, validação e fechamento |
 
-O pipeline acima é o do **Perfil `completo`**. Uma SPEC classificada como
-**`micro`** segue um ramo mais enxuto — **sem** relaxar salvaguarda de
-qualidade. É micro a SPEC contida a **um** package (+ opcionalmente a CLI que o
-expõe), aditiva, derivada de ADRs/PRD já existentes (nenhuma decisão nova), que
-não toca `@atlas/contracts`, não cria módulo/Tool/Skill/Persona, não move
-responsabilidade, não pede ADR novo nem emenda, e cabe numa sessão — exatamente
-a fronteira das escalações da Emenda v1.1. Os arquétipos são as SPECs 22 e 23.
-
-```text
- spec-drafter          →  classifica Perfil: micro (porquê em formato de veto)
-        ↓
- architecture-reviewer →  GATE em modo LEVE: confirma elegibilidade + invariantes
-        │                 (rebaixa para `completo` se qualquer condição falhar)
-        ↓  (fio principal: Draft → Ready)
- spec-implementer      →  código + testes (INALTERADO — separado)
-        ↓  (fio principal: In Progress → Review)
- spec-closer (micro)   →  VALIDA (testes/lint/typecheck + Critérios de Aceitação)
-                          e, se passar, fecha (lições + doc-sync + Status: Done +
-                          commit) — tudo num cold-start só. Reprovou → volta ao
-                          implementer 1×; 2ª reprovação → escala.
-```
-
-**Por que isto economiza** (medido no `TOKEN_USAGE_LOG.md`): o custo de uma
-micro-SPEC é ~85% cerimônia (overhead ÷ implementação ~5,9× na 22/23), e o maior
-balde é o hand-off pelo fio principal. O ramo micro corta um cold-start inteiro
-(validação + fechamento fundidos no `spec-closer`) e a busca adversarial
-exaustiva do gate, mirando ~25–30% por micro-SPEC.
-
-**O que NÃO se abre mão** (as duas salvaguardas): (1) o **gate do
-`architecture-reviewer`** continua autorizando `Draft → Ready` — o modo leve
-troca só o ataque adversarial exaustivo pela verificação de elegibilidade, nunca
-pula o gate; (2) a **independência entre autor e verificador** — quem valida
-(`spec-closer`) nunca é quem escreveu o código (`spec-implementer`), e o closer
-segue proibido de tocar `packages/*/src`/`apps/*/src`. A classificação `micro` é
-**proposta** pelo drafter e **confirmada** pelo reviewer; na dúvida, cai no
-`completo` (default seguro). O `spec-validator` separado é usado **só** no
-`completo`.
-
-Em cada seta de pedido do usuário ("cria uma SPEC pra X", "implementa a
-SPEC-XXXX", "valida a SPEC-XXXX"), um hook `UserPromptSubmit` injeta um
-lembrete automático apontando para o subagent certo — para que a delegação
-aconteça de fato, sem depender de eu lembrar sozinho no meio de uma
-conversa longa.
+Os papéis são exatamente cinco: `spec-drafter`, `architecture-reviewer`,
+`spec-implementer`, `spec-validator` e `spec-closer`. As quatro skills
+canônicas são `spec-check`, `lessons-learned`, `doc-sync` e `spec-pipeline`.
 
 ---
 
-# Os cinco subagents
+# Pipeline de SPEC
 
-Definidos em `.claude/agents/`. Cada um cobre exatamente uma fase e usa o
-modelo escolhido pelo tipo de trabalho, não o mais caro por padrão.
+Use `.agents/skills/spec-pipeline/SKILL.md` para toda solicitação de criar,
+continuar, revisar, implementar, validar ou fechar uma SPEC. Ele é o contrato
+operacional completo; esta seção é apenas um mapa de leitura.
 
-| Agente | Modelo | Fase | O que faz | O que NÃO faz |
-|---|---|---|---|---|
-| [`spec-drafter`](../../.claude/agents/spec-drafter.md) | Opus | Criação/Decisão | Cruza PRD, ADRs e Module Catalog; preenche o `SPEC-TEMPLATE.md`; **decide sozinho** as questões de design deriváveis da documentação e registra cada uma na SPEC em formato de veto (decisão + porquê + alternativa descartada); SPEC sai sem perguntas abertas | Não decide os casos de escalação da Emenda v1.1 (Constituição, módulo novo, ADR novo, pedido sem base no PRD); nunca sai de `Status: Draft`; não implementa |
-| [`architecture-reviewer`](../../.claude/agents/architecture-reviewer.md) | Opus | Gate Draft → Ready | Ataca o rascunho contra Constituição, Module Catalog, ADRs e PRD; sua aprovação **autoriza** `Draft → Ready` (Emenda v1.1); veto devolve ao `spec-drafter` 1×, segundo veto escala ao usuário | Não edita nenhum arquivo (a transição de `Status` é aplicada pelo fio principal); não expande escopo |
-| [`spec-implementer`](../../.claude/agents/spec-implementer.md) | Sonnet | Implementação | Implementa apenas o que está em "Escopo" de uma SPEC `Ready`/`In Progress`; roda testes/lint/typecheck; reporta os atritos encontrados no relatório final (insumo do Lessons Learned) | Não implementa o que está em "Fora do Escopo"; não marca `Done`; não decide arquitetura; **não sincroniza docs vivas** (`CLAUDE.md` raiz/packages, `NEXT_CONTEXT.md`, `CURRENT_SPRINT.md`, `Roadmap.md` — isso é o passo de fecho `doc-sync`) |
-| [`spec-validator`](../../.claude/agents/spec-validator.md) | Sonnet | Verificação | Roda testes/lint/typecheck; confere cada "Critério de Aceitação" e item da "Definition of Done" item a item | Não edita código; não decide se algo deveria ser diferente; não muda `Status` sozinho |
-| [`spec-closer`](../../.claude/agents/spec-closer.md) | Sonnet | Fechamento | Registra as Lições Aprendidas (`LESSONS_LEARNED.md`) e sincroniza as docs vivas (`PLATFORM_STATE.md`, `CLAUDE.md` raiz/packages, `NEXT_CONTEXT.md`, `CURRENT_SPRINT.md`, notas de ADR) seguindo as skills `lessons-learned`/`doc-sync` como formato canônico; lê `git diff`/`git log` **uma vez** e faz o commit + push único de fechamento | Não muda `Status` (o fio principal já aplicou `Review → Done`); não escreve código; não cria ADR/Module Catalog novo (registra o encaminhamento e escala) |
+No **Perfil completo**, o despachante encaminha sem desenhar ou implementar
+inline: drafter (`Draft`) → reviewer (autoriza `Draft → Ready`) → implementer
+(`Ready → In Progress → Review`) → validator (veredicto pronta permite ao
+despachante aplicar `Review → Done`) → closer (lições, docs vivas, commit e
+push em cold-start).
 
-A tabela acima descreve as fases no **Perfil `completo`**. No **Perfil `micro`**
-(ver "Ramo micro" acima): o `architecture-reviewer` roda em modo leve; o
-`spec-validator` **não é chamado** (sua verificação é fundida no `spec-closer`);
-e o `spec-closer` **valida antes de fechar** e é quem aplica `Review → Done`.
-As colunas "O que NÃO faz" valem para o perfil completo — as exceções do micro
-estão nas definições dos próprios agentes.
+No **Perfil micro**, o reviewer confirma a elegibilidade em modo leve e o
+validator separado é substituído pelo closer: ele recebe `Review`, executa os
+quatro gates completos, confere critérios/DoD/escopo e só então aplica
+`Review → Done`, sincroniza documentação e commita. Autor e verificador
+continuam separados.
 
-O Opus no `spec-drafter` é intencional: síntese de escopo a partir de
-documentação exige mais julgamento que os outros dois. O `spec-validator`
-começou em Haiku, mas foi promovido a Sonnet antes do primeiro uso real:
-rodar comandos é mecânico, porém conferir se cada Critério de Aceitação
-está de fato atendido no código e se o diff ficou dentro do "Escopo" exige
-compreensão de código × documento — e o validator é o último portão
-automatizado antes do gate humano `Review → Done`. Um verificador fraco
-depois de um implementador mais forte inverteria a lógica do controle de
-qualidade.
-
-O `spec-closer` (Sonnet) foi a última fase a sair do fio principal
-(2026-07-20). O fechamento — lições aprendidas + sincronização das docs
-vivas — rodava no fio principal via as skills `lessons-learned`/`doc-sync`,
-no **pior ponto de custo**: o fim da SPEC, quando o contexto acumulado
-(rascunho + parecer do reviewer + relatórios do implementer/validator) já é
-o maior da sessão, e cada `Edit` multi-arquivo reprocessava tudo em
-`cache_read` caro. Isolar num subagent frio ataca exatamente essa causa
-raiz — a mesma lógica que justificou implementer/validator. É Sonnet, não
-Haiku, porque escreve prosa (o parágrafo "Estado" do `CLAUDE.md`, o
-narrativo do `PLATFORM_STATE.md`), não só marca checklist. Juntar as duas
-tarefas num agente só (em vez de dois cold-starts) faz o `git diff`/`git log`
-ser lido **uma vez** e reaproveitado nos dois passos. O trade-off: o agente
-frio precisa re-ler os docs vivos + a SPEC + o diff, mas esses são leituras
-pequenas e baratas perto do contexto de pico que o fio principal reprocessava
-a cada edit.
-
-**Histórico do gate (duas reversões deliberadas):** a v1.2 deste documento
-descartou a ideia de um "agente arquiteto" que decide sozinho, por violar a
-Constituição de então ("a IA é colaboradora, não arquiteta"), e adotou o
-gate humano com insumo adversarial: o humano aprovava por veto lendo as
-decisões do `architecture-reviewer`. Na prática, porém, o pingue-pongue de
-perguntas no fio principal seguiu sendo o maior custo de tokens do projeto
-(fase "Criação/Decisão" dominante no `TOKEN_USAGE_LOG.md` mesmo após os
-subagents), e o gate humano continuava assentindo. Em 2026-07-19 o usuário
-decidiu reverter: a **Emenda v1.1 da Constituição** legitima a autonomia, e
-o gate passou a ser **máquina** — a aprovação do `architecture-reviewer`
-autoriza `Draft → Ready`. O que se preservou da solução anterior: as
-decisões continuam registradas em formato de veto (agora dentro da SPEC),
-o usuário mantém override, e as decisões estruturais de verdade
-(Constituição, módulo novo, ADR novo) continuam escalando para ele. Duas
-instâncias Opus discordando (drafter decide, reviewer ataca) seguem sendo o
-mecanismo de qualidade — o que mudou foi quem segura o portão.
-
-**Contexto zerado é o recurso e o risco:** cada subagent começa frio, e a
-SPEC vira o único canal entre as fases. Por isso a skill `spec-check` e os
-lembretes do hook instruem a incluir no prompt de delegação as decisões da
-conversa que não estão no texto da SPEC, e o `spec-implementer` é obrigado
-a reportar atritos no relatório final — sem isso, esse conhecimento morre
-com o contexto descartado do subagent.
+O primeiro veto do reviewer ou a primeira reprovação de validação retorna uma
+vez à fase anterior. O segundo veto ou a segunda reprovação escala ao usuário.
+Emenda constitucional, módulo novo ou responsabilidade movida, ADR novo,
+pedido sem base no PRD e override explícito também escalam imediatamente.
 
 ---
 
-# As três skills
+# Hooks e confiança
 
-Definidas em `.claude/skills/`. Skills são instruções em texto que servem de
-**fonte canônica do formato** — a de `spec-check` é seguida no fio principal;
-as de `lessons-learned` e `doc-sync` deixaram de rodar no fio principal
-(2026-07-20) e passaram a ser **lidas pelo `spec-closer`** como o checklist
-que ele executa. Manter o formato numa skill (e não inline no agente) evita
-divergência entre os dois: quem edita o formato edita um lugar só. Importante:
-o disparo de uma skill é **probabilístico** — o modelo decide invocá-la a
-partir da descrição, não é garantido pelo harness. O backstop determinístico
-é o hook `PreToolUse` (abaixo), que roda sempre.
+Os hooks são renderizados nas duas árvores de adaptador e usam
+`scripts/agent-workflow/hook.py`. Eles verificam SPEC ativa antes de uma
+edição de fonte, fazem lint após TypeScript tocado, orientam prompts de SPEC e
+atualizam telemetria no encerramento sem bloquear desenvolvimento.
 
-- **[`spec-check`](../../.claude/skills/spec-check/SKILL.md)** — antes de
-  qualquer edição em `packages/*/src`, `apps/*/src`,
-  `tooling/*/src`. Verifica se existe SPEC aprovada cobrindo a mudança (e
-  para se não existir); depois de confirmar, instrui a delegar para
-  `spec-implementer` (e depois `spec-validator`) em vez de implementar
-  direto ali, passando no prompt de delegação as decisões da conversa que
-  não estão no texto da SPEC.
-- **[`lessons-learned`](../../.claude/skills/lessons-learned/SKILL.md)** —
-  formato da entrada de Lições Aprendidas, **executado pelo `spec-closer`** no
-  fechamento (não mais no fio principal). Reconstrói o que aconteceu de fato
-  (via `git log`/`git diff` e o relatório de atritos do `spec-implementer`) e
-  preenche o formato exigido por `docs/implementation/LESSONS_LEARNED.md`.
-- **[`doc-sync`](../../.claude/skills/doc-sync/SKILL.md)** — também
-  **executado pelo `spec-closer`** no fechamento, complementar à
-  `lessons-learned`: enquanto aquela cuida do registro histórico, esta
-  sincroniza o **estado vivo** — checklist
-  estrutural cobrindo o `CLAUDE.md` raiz (parágrafo "Estado" + seção
-  "ainda não criado"), os `CLAUDE.md` dos packages tocados,
-  `NEXT_CONTEXT.md`, `CURRENT_SPRINT.md` e notas em ADRs previstas pela
-  SPEC.
-  **A sincronização dessas docs vivas é passo de fecho, rodado no fio
-  principal _após_ a validação — nunca escopo do `spec-implementer`.** O
-  implementador toca só a documentação **específica da própria SPEC** (o
-  arquivo da SPEC, notas de atualização em ADRs que a SPEC prevê); as docs
-  vivas listadas acima são deste passo. Se o campo "Definition of
-  Done → documentação atualizada" do `SPEC-TEMPLATE.md` for lido como se o
-  implementador devesse atualizá-las, é engano: o template foi anotado
-  (Lessons Learned da [SPEC-0019](../implementation/specs/SPEC-0019-observation-replan-loop.md))
-  justamente para deixar essa fronteira explícita e evitar o trabalho-e-reversão.
-
----
-
-# Os quatro hooks
-
-Definidos em `.claude/settings.json` (versionado, compartilhado com o
-time).
-
-| Evento | O que faz | Bloqueia? |
+| Evento | Comportamento comum | Diferença semântica |
 |---|---|---|
-| `PreToolUse` (Write\|Edit) | Antes de editar `packages/*/src`/`apps/*/src`/`tooling/*/src`, verifica se alguma SPEC **ativa** (`Status: Ready` ou `In Progress`) menciona o pacote — SPECs `Done` não contam, senão o gate perde o sentido conforme o corpus de SPECs cresce | Só `ask` (pede confirmação) — nunca `deny` automático |
-| `PostToolUse` (Write\|Edit) | Depois de editar um `.ts` nesses caminhos, roda `eslint` no arquivo; erros voltam como feedback bloqueante | Sim, via exit code 2 — mas só depois da edição já ter acontecido |
-| `UserPromptSubmit` | Roda `scripts/hooks/spec-prompt-nudge.sh`; se o pedido menciona criar/implementar/validar/concluir uma SPEC (ou lições aprendidas), injeta lembrete para usar o subagent/skill certo | Não — só injeta contexto |
-| `Stop` | Depois de cada resposta minha, roda `scripts/claude-usage-report.py` em background (`async: true`) para manter os relatórios de token atualizados | Não — assíncrono, nunca trava a conversa |
+| `PreToolUse` | Localiza a SPEC `Ready`/`In Progress` que cobre cada componente tocado. | Claude responde `ask`; Codex responde `deny` quando não há SPEC ativa. |
+| `PostToolUse` | Executa ESLint nos arquivos TypeScript tocados. | Mesmo gate pós-edição. |
+| `UserPromptSubmit` | Classifica pedidos de SPEC e aponta para `spec-pipeline`. | Mesmo lembrete. |
+| `Stop` | Atualiza telemetria em modo não bloqueante. | Claude usa o reporter Claude; Codex envia o transcript ao hook/reporter Codex. |
 
-**Por que o `PostToolUse` roda só eslint, sem typecheck:** duas razões. A
-versão original rodava `tsc -p tsconfig.json --noEmit`, mas o `tsconfig.json`
-da raiz só cobre `tests/**` — o typecheck que vale é o por package
-(`pnpm -r --if-present typecheck`), então o hook validava a coisa errada.
-Além disso, numa mudança multi-arquivo as edições intermediárias falham
-typecheck **por definição** (estado transitório), e cada falha injetaria a
-saída inteira do tsc como feedback — ruído que atrapalha o subagent e gasta
-tokens, contrariando o objetivo da automação. O typecheck completo continua
-obrigatório, mas no lugar certo: o `spec-implementer` roda `pnpm typecheck`
-ao final da implementação e o `spec-validator` roda de novo na validação.
-
-**Por que nenhum hook bloqueia edição direta com `deny`:** o payload do
-hook não permite distinguir com segurança se uma chamada de `Write`/`Edit`
-veio do fio principal ou de dentro do próprio `spec-implementer`. Um `deny`
-automático correria o risco de travar o subagent que deveria estar fazendo
-a edição. Por isso a aplicação da regra é em duas camadas mais suaves
-(lembrete no início do turno + instrução na skill), não um bloqueio rígido.
+A confiança persistida de hooks não é uma interface documentada e
+machine-readable. Portanto o doctor sempre a apresenta como checagem manual:
+**abra `/hooks` no Codex e revise o hash pendente**. Faça isso em cada cliente
+antes do smoke. Não simule essa confirmação no CI ou no doctor.
 
 ---
 
-# Log de custo de token por SPEC
+# Telemetria por executor
 
-`scripts/claude-usage-report.py` lê os transcripts locais do Claude Code
-(`~/.claude/projects/<projeto>/*.jsonl`, incluindo as pastas
-`subagents/agent-*.jsonl` de cada sessão) e gera dois artefatos:
+`scripts/agent-usage-report.py` produz relatórios privados por executor e
+atualiza `docs/05-context/TOKEN_USAGE_LOG.md` preservando Claude e Codex em
+linhas separadas. Os arquivos privados são gitignored:
+`.claude/usage-report.md`, `.codex/usage-report.md` e
+`.codex/usage-cache.json`.
 
-- **`.claude/usage-report.md`** — relatório detalhado, pessoal,
-  **gitignored** (nomes de sessão, ranking por consumo). Não é
-  documentação do time.
-- **[`docs/05-context/TOKEN_USAGE_LOG.md`](../05-context/TOKEN_USAGE_LOG.md)**
-  — resumo por SPEC, **versionado**, com:
-  - custo total por SPEC (Título e Status lidos direto do arquivo da SPEC);
-  - detalhamento por fase (Criação/Decisão × Implementação × Verificação ×
-    Apoio/outros agentes) — só se popula quando os subagents acima são
-    efetivamente usados via Task; SPECs antigas aparecem 100% em
-    Criação/Decisão, o que é o retrato real do que aconteceu, não um erro;
-  - custo médio e faixa observada das SPECs `Done`, para estimar se uma
-    SPEC nova cabe na sessão atual antes de começar.
+Não compare diretamente os dois números. Claude mantém a matemática histórica
+de tokens efetivos; Codex reporta tokens brutos de snapshots cumulativos e usa
+somente o último snapshot válido de cada sessão. `incomplete` indica
+schema/registro insuficiente, não zero tokens. A atribuição de sessão a SPEC é
+heurística e serve para capacidade, não contabilidade.
 
-Regenerado automaticamente pelo hook `Stop` (ver acima) — normalmente não
-precisa rodar manualmente. Para forçar: `python3 scripts/claude-usage-report.py`.
-
-**Limitação conhecida:** a atribuição de sessão → SPEC é heurística (conta
-menções a `SPEC-XXXX` no texto, usa a mais citada). Uma sessão que discutiu
-duas SPECs joga 100% do custo na dominante. Suficiente para decidir "cabe
-ou não cabe numa sessão", não é contabilidade exata.
+```bash
+python3 scripts/agent-usage-report.py --executor all
+python3 scripts/agent-usage-report.py --executor codex --transcript <jsonl>
+```
 
 ---
 
-# Registro de impacto (baseline → medição)
+# Operação e CI
 
-Toda mudança nesta automação que promete economia de token registra aqui um
-**baseline congelado + hipótese + medição**, para não otimizarmos no escuro.
-A tabela do `TOKEN_USAGE_LOG.md` é regenerada e muda sozinha; os números
-abaixo são um **snapshot manual** da referência "antes", que não se altera.
+Depois de alterar `.agents/`, rode na raiz:
+
+```bash
+pnpm agent-workflow:generate
+pnpm agent-workflow:check
+pnpm agent-workflow:doctor
+```
+
+`generate` reescreve somente saídas geradas. `check` roda testes Python e
+acusa deriva byte a byte, sem credenciais de modelo. A CI executa o mesmo
+`pnpm agent-workflow:check` após instalar dependências e antes de lint.
+`doctor` é estritamente somente leitura: valida conjunto canônico, paridade,
+JSON/TOML, referências legadas, fixtures de transcript e clientes no `PATH`;
+cliente ausente é aviso, não erro.
+
+Antes de declarar uma SPEC concluída, os quatro gates completos continuam
+obrigatórios:
+
+```bash
+pnpm typecheck
+pnpm lint
+pnpm test
+pnpm format:check
+```
+
+## Smoke local e canary Codex
+
+Depois de confiar os hooks, abra sessões novas de Claude e Codex e peça, sem
+editar arquivos nem executar uma SPEC:
+
+```text
+Liste os cinco agentes e as quatro skills do pipeline Atlas. Não edite arquivos e não execute uma SPEC.
+```
+
+No Codex, confira o mesmo resultado em Desktop, CLI e IDE usando a configuração
+compartilhada do projeto. Se cliente, Desktop/IDE ou confiança não estiverem
+observáveis neste ambiente, registre o passo como manual; não o marque como
+aprovado.
+
+A primeira SPEC real iniciada no Codex após o merge é o canary ponta a ponta.
+Sua aceitação exige despacho correto de fases, ownership correto de Status,
+fechamento, commit/push e uma linha de telemetria rotulada `Codex`. Não use a
+SPEC-0052 como canary desta automação.
+
+---
+
+# Histórico de medição — baseline exclusivo de Claude
+
+Esta seção é um snapshot histórico. Os dados e a matemática abaixo são
+**baseline exclusivo de Claude**; não foram reescritos para incluir Codex.
 
 ## Baseline congelado — pipeline completo, pré-`spec-closer` (2026-07-20)
 
@@ -330,8 +198,6 @@ principal)"** e não é isolável — é exatamente por isso que não dava para 
 | SPEC-0019 | 4.688.414 | 1.333.249 | 0 | 3.374.441 | 545.657 |
 | SPEC-0020 | 4.030.323 | 1.479.607 | 816.702 | 2.651.780 | 911.089 |
 | SPEC-0021 | 7.013.597 | 0 | 1.445.130 | 1.221.015 | 470.358 |
-
-## Entradas
 
 ### `spec-closer` — extrair o fechamento do fio principal (2026-07-20)
 
@@ -363,105 +229,15 @@ principal)"** e não é isolável — é exatamente por isso que não dava para 
 
 # Verificação escopada
 
-Desde a SPEC-0042, a verificação de rotina durante a **iteração** de uma SPEC
-não precisa rodar o workspace inteiro. Cada um dos 13 packages/apps com
-`tests/` ganhou o script `test` (`"vitest run"`), o que torna `--filter`
-utilizável para os quatro comandos:
+Durante a iteração, cada package/app pode rodar os comandos escopados:
 
-- testes: `pnpm --filter <package> test`
-- typecheck: `pnpm --filter <package> typecheck`
-- lint: `pnpm exec eslint <caminho>`
-- formatação: `pnpm exec prettier --check <caminho>`
+- testes: `pnpm --filter <package> test`;
+- typecheck: `pnpm --filter <package> typecheck`;
+- lint: `pnpm exec eslint <caminho>`;
+- formatação: `pnpm exec prettier --check <caminho>`.
 
-**Condição de validade da equivalência com a execução da CI (D12).** A
-execução escopada roda **sem config** (o Vitest usa o default quando não
-encontra `vitest.config.ts` no diretório do package) e só é equivalente à
-execução completa da raiz **enquanto `vitest.config.ts` da raiz contiver
-apenas `include`**. Se a config raiz ganhar `setupFiles`, `environment`,
-`coverage`, `pool` ou qualquer outra chave, essa equivalência quebra **em
-silêncio** — a execução escopada deixaria de exercitar o que a raiz exercita,
-sem nenhum sinal de erro — e a convenção acima precisa ser revista antes do
-próximo uso.
-
-**Arquivo fora de qualquer package.** `tests/smoke.test.ts` (raiz do
-workspace) não pertence a nenhum package e por construção **não é alcançado
-por nenhuma execução escopada** — só a execução da raiz o cobre.
-
-**Escopado durante a iteração; uma passada completa na raiz antes de
-declarar concluído.** O `--filter` existe para reduzir o contexto acumulado
-enquanto se trabalha num package. Antes de fechar uma SPEC, `spec-validator`
-e `spec-closer` continuam **obrigados** a rodar, ao menos uma vez, os quatro
-comandos completos na raiz — `pnpm typecheck`, `pnpm lint`, `pnpm test` e
-`pnpm format:check` — que é o que a CI de fato roda. A CI (`.github/workflows/ci.yml`)
-não muda: sempre roda tudo, na raiz.
-
----
-
-# Como isso muda o dia a dia
-
-Antes desta automação: eu fazia rascunho, implementação e validação de uma
-SPEC inteira no mesmo fio de conversa, sem separação de custo, sem
-visibilidade de quanto uma SPEC ia custar antes de começar.
-
-Depois:
-
-1. **Antes de puxar uma SPEC nova**, consultar
-   `docs/05-context/TOKEN_USAGE_LOG.md` para comparar com a SPEC concluída
-   mais parecida em tamanho e decidir se cabe na sessão atual.
-2. **Pedir a SPEC uma única vez** ("faz a SPEC de X") — a cadeia inteira
-   roda sozinha: drafter decide, reviewer aprova ou veta, implementer
-   implementa, validator valida, e o `spec-closer` fecha (lições + docs
-   vivas + commit/push). O fio principal só despacha e aplica transições de
-   `Status`.
-3. **Ler as decisões depois, exercer override quando discordar** — cada
-   SPEC carrega suas decisões em formato de veto; o usuário só é chamado
-   nas escalações da Emenda v1.1 (Constituição, módulo novo, ADR novo,
-   segundo veto/reprovação).
-4. **Ao final de cada resposta**, o log de tokens já está atualizado
-   sozinho — não precisa rodar nada manualmente, mesmo se a sessão cair no
-   meio da SPEC.
-
----
-
-# Onde encontrar cada peça
-
-```text
-.claude/
-  agents/
-    spec-drafter.md            (Opus — Criação/Decisão)
-    architecture-reviewer.md   (Opus — Revisão de arquitetura, Draft → Ready)
-    spec-implementer.md        (Sonnet — Implementação)
-    spec-validator.md          (Sonnet — Verificação)
-    spec-closer.md             (Sonnet — Fechamento: lições + docs vivas + commit)
-  skills/
-    spec-check/SKILL.md        (seguida no fio principal)
-    lessons-learned/SKILL.md   (formato lido pelo spec-closer)
-    doc-sync/SKILL.md          (formato lido pelo spec-closer)
-  settings.json            (os 4 hooks)
-
-scripts/
-  claude-usage-report.py
-  hooks/
-    spec-prompt-nudge.sh
-
-docs/05-context/
-  TOKEN_USAGE_LOG.md        (versionado, por SPEC)
-```
-
----
-
-# Status desta automação
-
-**Em uso real.** O pipeline já fechou SPECs de ponta a ponta — SPEC-0019,
-0020 e 0021 passaram pelo fluxo com os subagents `spec-implementer`/
-`spec-validator` efetivamente usados via Task (ver a coluna por fase em
-`docs/05-context/TOKEN_USAGE_LOG.md`, que só se popula quando os agentes são
-de fato acionados). A Emenda v1.1 da Constituição (gate `Draft → Ready`
-autônomo) está operando.
-
-O `spec-closer` (fase de Fechamento) foi extraído do fio principal em
-2026-07-20, depois de os dados de token mostrarem que o fechamento
-(`lessons-learned` + `doc-sync`) rodava no ponto de contexto mais caro da
-sessão. É a mudança mais recente e ainda não passou por uma SPEC de cabo a
-rabo — a próxima SPEC a fechar valida (ou ajusta) o cold-start compartilhado
-descrito acima.
+A equivalência de testes escopados requer que `vitest.config.ts` da raiz
+permaneça somente com `include`; ao adicionar `setupFiles`, ambiente, cobertura
+ou pool, revise esta convenção. `tests/smoke.test.ts` da raiz só é alcançado
+pela execução completa. Portanto iteração escopada não substitui os quatro
+gates completos antes de fechar.
