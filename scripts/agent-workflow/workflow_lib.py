@@ -14,6 +14,19 @@ CLAUDE_TOOLS = {
     "shell": ("Bash",),
 }
 
+START = "<!-- ATLAS-SPEC-PIPELINE:START -->"
+END = "<!-- ATLAS-SPEC-PIPELINE:END -->"
+
+
+def replace_generated_block(text: str, block: str) -> str:
+    pattern = re.compile(rf"{re.escape(START)}.*?{re.escape(END)}", re.DOTALL)
+    if pattern.search(text):
+        return pattern.sub(block.rstrip(), text, count=1)
+    anchor = "## Fluxo de desenvolvimento"
+    if anchor not in text:
+        raise ValueError(f"missing dispatch anchor: {anchor}")
+    return text.replace(anchor, f"{block.rstrip()}\n\n{anchor}", 1)
+
 
 @dataclass(frozen=True)
 class ModelTier:
@@ -88,6 +101,19 @@ def render_codex_agent(role: RoleDefinition, tier: ModelTier) -> str:
     )
 
 
+def load_root_instruction(root: Path, filename: str) -> str:
+    target = root / filename
+    if target.exists():
+        return target.read_text(encoding="utf-8")
+    if filename != "AGENTS.md":
+        raise FileNotFoundError(target)
+
+    claude = (root / "CLAUDE.md").read_text(encoding="utf-8")
+    return claude.replace("# CLAUDE.md", "# AGENTS.md", 1).replace(
+        "guidance to Claude Code (claude.ai/code)", "guidance to Codex", 1
+    )
+
+
 def expected_generated_files(root: Path) -> dict[Path, str]:
     tiers = load_model_tiers(root)
     outputs: dict[Path, str] = {}
@@ -95,9 +121,17 @@ def expected_generated_files(root: Path) -> dict[Path, str]:
         tier = tiers[role.tier]
         outputs[Path(f".claude/agents/{role.name}.md")] = render_claude_agent(role, tier)
         outputs[Path(f".codex/agents/{role.name}.toml")] = render_codex_agent(role, tier)
-    for skill in ("spec-check", "lessons-learned", "doc-sync"):
+    for skill in ("spec-check", "lessons-learned", "doc-sync", "spec-pipeline"):
         source = root / ".agents/skills" / skill / "SKILL.md"
         outputs[Path(f".claude/skills/{skill}/SKILL.md")] = source.read_text()
+    dispatch = (root / ".agents/workflow/dispatch.md").read_text(encoding="utf-8")
+    for filename in ("CLAUDE.md", "AGENTS.md"):
+        outputs[Path(filename)] = replace_generated_block(
+            load_root_instruction(root, filename), dispatch
+        )
+    outputs[Path(".codex/config.toml")] = (
+        'project_doc_fallback_filenames = ["CLAUDE.md"]\n\n[agents]\nenabled = true\n'
+    )
     return outputs
 
 

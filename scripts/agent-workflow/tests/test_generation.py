@@ -67,6 +67,36 @@ class GenerationTests(unittest.TestCase):
             self.assertIn("Co-Authored-By: <modelo em uso>", content)
             self.assertNotIn("noreply@anthropic.com", content)
 
+    def test_pipeline_skill_is_generated_for_claude(self) -> None:
+        outputs = expected_generated_files(REPO_ROOT)
+        skill = outputs[Path(".claude/skills/spec-pipeline/SKILL.md")]
+        ordered_roles = [
+            "spec-drafter",
+            "architecture-reviewer",
+            "spec-implementer",
+            "spec-validator",
+            "spec-closer",
+        ]
+        positions = [skill.index(role) for role in ordered_roles]
+        self.assertEqual(positions, sorted(positions))
+        self.assertIn("segundo veto", skill.lower())
+        self.assertIn("segunda reprovação", skill.lower())
+        self.assertIn("Perfil micro", skill)
+
+    def test_codex_project_config_enables_fallback_instructions(self) -> None:
+        config = expected_generated_files(REPO_ROOT)[Path(".codex/config.toml")]
+        self.assertIn('project_doc_fallback_filenames = ["CLAUDE.md"]', config)
+        self.assertIn("[agents]", config)
+        self.assertIn("enabled = true", config)
+
+    def test_root_dispatch_blocks_are_generated(self) -> None:
+        outputs = expected_generated_files(REPO_ROOT)
+        for path in (Path("CLAUDE.md"), Path("AGENTS.md")):
+            text = outputs[path]
+            self.assertEqual(text.count("<!-- ATLAS-SPEC-PIPELINE:START -->"), 1)
+            self.assertEqual(text.count("<!-- ATLAS-SPEC-PIPELINE:END -->"), 1)
+            self.assertIn("spec-pipeline", text)
+
 
 if __name__ == "__main__":
     unittest.main()
