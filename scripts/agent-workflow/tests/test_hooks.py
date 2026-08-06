@@ -27,7 +27,9 @@ class HookTests(unittest.TestCase):
         specs = root / "docs/implementation/specs"
         specs.mkdir(parents=True, exist_ok=True)
         spec = specs / name
-        spec.write_text(f"- [x] {status}\n\n{body}\n", encoding="utf-8")
+        spec.write_text(
+            f"**Status**\n\n- [x] {status}\n\n---\n\n{body}\n", encoding="utf-8"
+        )
         return spec
 
     def test_codex_patch_extracts_every_file(self) -> None:
@@ -122,6 +124,37 @@ class HookTests(unittest.TestCase):
             self.write_spec(root, "SPEC-9999-runtime.md", "In Progress", "@atlas/runtime")
             self.assertEqual(find_active_spec(root, "packages/runtime"), root / "docs/implementation/specs/SPEC-9999-runtime.md")
 
+    def test_official_ready_and_in_progress_statuses_cover_a_component(self) -> None:
+        for status in ("Ready", "In Progress"):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                spec = self.write_spec(root, "SPEC-9999-runtime.md", status, "packages/runtime")
+                self.assertEqual(find_active_spec(root, "packages/runtime"), spec)
+
+    def test_done_spec_with_historical_ready_checklist_does_not_cover_a_component(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            specs = root / "docs/implementation/specs"
+            specs.mkdir(parents=True)
+            (specs / "SPEC-9999-runtime.md").write_text(
+                "\n".join(
+                    (
+                        "**Status**",
+                        "",
+                        "- [x] Done",
+                        "",
+                        "---",
+                        "",
+                        "# Critérios históricos",
+                        "- [x] Ready",
+                        "- [x] In Progress",
+                        "packages/runtime",
+                    )
+                ),
+                encoding="utf-8",
+            )
+            self.assertIsNone(find_active_spec(root, "packages/runtime"))
+
     def test_draft_and_done_specs_do_not_cover_source_edits(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -173,6 +206,42 @@ class HookTests(unittest.TestCase):
                 }
             }
             self.assertEqual(handle_pre_tool_use("codex", payload, root).stdout, "")
+
+    def test_path_with_parent_segments_into_src_still_requires_a_spec(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            payload = {
+                "tool_input": {
+                    "command": (
+                        "*** Begin Patch\n"
+                        "*** Update File: packages/runtime/tmp/../../runtime/src/file.ts\n"
+                        "*** End Patch"
+                    )
+                }
+            }
+            body = json.loads(handle_pre_tool_use("codex", payload, root).stdout)
+            self.assertEqual(body["hookSpecificOutput"]["permissionDecision"], "deny")
+            self.assertIn("packages/runtime", body["hookSpecificOutput"]["permissionDecisionReason"])
+
+    def test_parent_segments_are_normalized_before_assigning_the_component(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.write_spec(root, "SPEC-9999-runtime.md", "Ready", "packages/runtime")
+            payload = {
+                "tool_input": {
+                    "command": (
+                        "*** Begin Patch\n"
+                        "*** Update File: packages/runtime/src/../../../apps/cli/src/main.ts\n"
+                        "*** End Patch"
+                    )
+                }
+            }
+            body = json.loads(handle_pre_tool_use("codex", payload, root).stdout)
+            self.assertEqual(body["hookSpecificOutput"]["permissionDecision"], "deny")
+            self.assertEqual(
+                body["hookSpecificOutput"]["permissionDecisionReason"],
+                "Nenhuma SPEC ativa cobre: apps/cli. Crie/aprove a SPEC e execute novamente.",
+            )
 
     def test_all_missing_components_are_named_once(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

@@ -10,6 +10,7 @@ from pathlib import Path
 PATCH_FILE_RE = re.compile(r"^\*\*\* (?:Add|Update|Delete) File: (.+)$", re.MULTILINE)
 PATCH_MOVE_RE = re.compile(r"^\*\*\* Move to: (.+)$", re.MULTILINE)
 SOURCE_RE = re.compile(r"^(packages|apps|tooling)/([^/]+)/src/(.+)$")
+STATUS_SECTION_RE = re.compile(r"^\*\*Status\*\*\s*$\n(?P<body>.*?)(?=^---\s*$)", re.MULTILINE | re.DOTALL)
 ACTIVE_STATUS_RE = re.compile(r"^- \[x\] (Ready|In Progress)$", re.MULTILINE)
 TYPESCRIPT_SUFFIXES = {".ts", ".tsx", ".mts", ".cts"}
 
@@ -32,6 +33,7 @@ def extract_touched_paths(platform: str, payload: dict) -> tuple[Path, ...]:
 
 
 def _component_for_path(repo_root: Path, path: Path) -> str | None:
+    path = _lexically_normalize(path)
     try:
         relative = path.relative_to(repo_root) if path.is_absolute() else path
     except ValueError:
@@ -44,6 +46,21 @@ def _component_for_path(repo_root: Path, path: Path) -> str | None:
             return None
     match = SOURCE_RE.fullmatch(relative.as_posix())
     return f"{match.group(1)}/{match.group(2)}" if match else None
+
+
+def _lexically_normalize(path: Path) -> Path:
+    normalized_parts: list[str] = []
+    for part in path.parts:
+        if part in {path.anchor, ".", ""}:
+            continue
+        if part == "..":
+            if normalized_parts and normalized_parts[-1] != "..":
+                normalized_parts.pop()
+            elif not path.anchor:
+                normalized_parts.append(part)
+            continue
+        normalized_parts.append(part)
+    return Path(path.anchor, *normalized_parts) if path.anchor else Path(*normalized_parts)
 
 
 def _spec_mentions_component(source: str, component: str) -> bool:
@@ -59,7 +76,10 @@ def find_active_spec(repo_root: Path, component: str) -> Path | None:
     specs_dir = repo_root / "docs/implementation/specs"
     for spec in sorted(specs_dir.glob("*.md")):
         source = spec.read_text(encoding="utf-8")
-        if ACTIVE_STATUS_RE.search(source) and _spec_mentions_component(source, component):
+        status = STATUS_SECTION_RE.search(source)
+        if status and ACTIVE_STATUS_RE.search(status.group("body")) and _spec_mentions_component(
+            source, component
+        ):
             return spec
     return None
 
