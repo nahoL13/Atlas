@@ -1,0 +1,8 @@
+{
+  "cwd": "/repo",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "apply_patch",
+  "tool_input": {
+    "command": "*** Begin Patch\n*** Update File: packages/runtime/src/runtime.ts\n@@\n-old\n+new\n*** Add File: apps/cli/src/new-file.ts\n+export {};\n*** End Patch"
+  }
+}

@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "f=$(jq -r '.tool_input.file_path // empty'); pkg=$(echo \"$f\" | grep -oE '/(packages|apps|tooling)/[^/]+/src' | sed -E 's#/(packages|apps|tooling)/([^/]+)/src#\\2#'); if [ -n \"$pkg\" ]; then cd \"${CLAUDE_PROJECT_DIR:-.}\" || exit 0; hit=\"\"; for s in $(grep -ril \"$pkg\" docs/implementation/specs/*.md 2>/dev/null); do if grep -qE '^- \\[x\\] (Ready|In Progress)' \"$s\"; then hit=$s; break; fi; done; if [ -z \"$hit\" ]; then reason=\"Nenhuma SPEC ativa (Status Ready ou In Progress) menciona o package '$pkg'. Confirme que existe uma SPEC aprovada cobrindo esta mudanca (use a skill spec-check) antes de prosseguir.\"; jq -n --arg reason \"$reason\" '{hookSpecificOutput:{hookEventName:\"PreToolUse\",permissionDecision:\"ask\",permissionDecisionReason:$reason}}'; exit 0; fi; fi; exit 0",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/agent-workflow/hook.py\" --platform claude --event PreToolUse",
             "timeout": 15,
             "statusMessage": "Verificando SPEC correspondente..."
           }
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "f=$(jq -r '.tool_input.file_path // .tool_response.filePath // empty'); if echo \"$f\" | grep -qE '/(packages|apps|tooling)/[^/]+/src/.*\\.ts$'; then cd \"${CLAUDE_PROJECT_DIR:-.}\" || exit 0; lint_out=$(pnpm exec eslint \"$f\" 2>&1); lint_rc=$?; if [ \"$lint_rc\" -ne 0 ]; then printf 'ESLint:\\n%s\\n' \"$lint_out\" >&2; exit 2; fi; fi; exit 0",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/agent-workflow/hook.py\" --platform claude --event PostToolUse",
             "timeout": 60,
             "statusMessage": "Rodando eslint..."
           }
@@ -31,7 +31,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PROJECT_DIR:-.}\"/scripts/hooks/spec-prompt-nudge.sh",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/agent-workflow/hook.py\" --platform claude --event UserPromptSubmit",
             "timeout": 10
           }
         ]

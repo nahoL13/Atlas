@@ -123,6 +123,75 @@ def load_root_instruction(root: Path, filename: str) -> str:
     )
 
 
+def render_hook_command(platform: str, event: str) -> str:
+    return (
+        'python3 "$(git rev-parse --show-toplevel)'
+        f'/scripts/agent-workflow/hook.py" --platform {platform} --event {event}'
+    )
+
+
+def render_hook_settings(platform: str) -> str:
+    tool_matcher = "Write|Edit" if platform == "claude" else "Edit|Write"
+    hooks: dict[str, list[dict[str, object]]] = {
+        "PreToolUse": [
+            {
+                "matcher": tool_matcher,
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": render_hook_command(platform, "PreToolUse"),
+                        "timeout": 15,
+                        "statusMessage": "Verificando SPEC correspondente...",
+                    }
+                ],
+            }
+        ],
+        "PostToolUse": [
+            {
+                "matcher": tool_matcher,
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": render_hook_command(platform, "PostToolUse"),
+                        "timeout": 60,
+                        "statusMessage": "Rodando eslint...",
+                    }
+                ],
+            }
+        ],
+        "UserPromptSubmit": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": render_hook_command(platform, "UserPromptSubmit"),
+                        "timeout": 10,
+                    }
+                ]
+            }
+        ],
+    }
+    if platform == "claude":
+        hooks["Stop"] = [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": (
+                            'cd "${'
+                            + "CLAUDE"
+                            + '_PROJECT_DIR:-.}" && python3 scripts/claude-usage-report.py >/dev/null 2>&1 || true'
+                        ),
+                        "timeout": 30,
+                        "async": True,
+                        "statusMessage": "Atualizando log de uso de tokens...",
+                    }
+                ]
+            }
+        ]
+    return json.dumps({"hooks": hooks}, ensure_ascii=False, indent=2) + "\n"
+
+
 def expected_generated_files(root: Path) -> dict[Path, str]:
     tiers = load_model_tiers(root)
     outputs: dict[Path, str] = {}
@@ -141,6 +210,8 @@ def expected_generated_files(root: Path) -> dict[Path, str]:
     outputs[Path(".codex/config.toml")] = (
         'project_doc_fallback_filenames = ["CLAUDE.md"]\n\n[agents]\nenabled = true\n'
     )
+    outputs[Path(".claude/settings.json")] = render_hook_settings("claude")
+    outputs[Path(".codex/hooks.json")] = render_hook_settings("codex")
     return outputs
 
 
