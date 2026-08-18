@@ -288,6 +288,16 @@ export interface RendererFixtureOptions {
     readonly available?: boolean;
     readonly reason?: string;
   };
+  /** SPEC-0053 — `prefers-reduced-motion: reduce` inicial (default `false`). */
+  readonly reducedMotion?: boolean;
+  /** SPEC-0053 — `window.devicePixelRatio` dublado (default `1`). */
+  readonly devicePixelRatio?: number;
+  /**
+   * SPEC-0053 (CA23) — força `#presence-canvas.getContext('2d')` a lançar
+   * ANTES do carregamento do renderer, simulando ausência real de suporte a
+   * Canvas 2D (default `false`).
+   */
+  readonly canvasContextUnavailable?: boolean;
 }
 
 function defaultStatus(options: RendererFixtureOptions): RendererStatusSnapshot {
@@ -499,8 +509,12 @@ function buildAtlasDouble(options: RendererFixtureOptions, calls: RendererCalls)
 export interface SpeechSynthesisDouble {
   setVoices(voices: readonly RendererOsVoice[]): void;
   fireVoicesChanged(): void;
-  /** SPEC-0052 (CA41): dispara `end`/`error` do N-ésimo utterance criado (0-based). */
-  fireUtteranceEvent(index: number, type: 'end' | 'error'): void;
+  /**
+   * SPEC-0052 (CA41)/SPEC-0053 (Escopo 7, CA21): dispara `start`/`end`/`error`
+   * do N-ésimo utterance criado (0-based). `start` é o único evento nativo
+   * que ativa `playbackActive` no núcleo.
+   */
+  fireUtteranceEvent(index: number, type: 'start' | 'end' | 'error'): void;
   utteranceCount(): number;
 }
 
@@ -566,7 +580,7 @@ function installSpeechSynthesisDouble(
         listener();
       }
     },
-    fireUtteranceEvent(index: number, type: 'end' | 'error'): void {
+    fireUtteranceEvent(index: number, type: 'start' | 'end' | 'error'): void {
       const utterance = utterances[index];
       if (utterance === undefined) {
         return;
@@ -582,8 +596,12 @@ function installSpeechSynthesisDouble(
 }
 
 export interface AudioDouble {
-  /** SPEC-0052 (CA41): dispara `ended`/`error` do N-ésimo `Audio` criado (0-based). */
-  fireEvent(index: number, type: 'ended' | 'error'): void;
+  /**
+   * SPEC-0052 (CA41)/SPEC-0053 (Escopo 7, CA21): dispara `playing`/`ended`/
+   * `error` do N-ésimo `Audio` (Piper) criado (0-based). `playing` é o único
+   * evento nativo que ativa `playbackActive` no núcleo.
+   */
+  fireEvent(index: number, type: 'playing' | 'ended' | 'error'): void;
 }
 
 function installAudioDouble(window: DOMWindow, calls: RendererCalls): AudioDouble {
@@ -621,7 +639,7 @@ function installAudioDouble(window: DOMWindow, calls: RendererCalls): AudioDoubl
   url.revokeObjectURL ??= () => {};
 
   return {
-    fireEvent(index: number, type: 'ended' | 'error'): void {
+    fireEvent(index: number, type: 'playing' | 'ended' | 'error'): void {
       const audio = audios[index];
       if (audio === undefined) {
         return;
@@ -629,6 +647,155 @@ function installAudioDouble(window: DOMWindow, calls: RendererCalls): AudioDoubl
       for (const listener of audio.listeners[type] ?? []) {
         listener();
       }
+    },
+  };
+}
+
+export interface ReducedMotionDouble {
+  /** SPEC-0053 (Escopo 8): alterna `matches` e dispara os ouvintes de `change`. */
+  set(matches: boolean): void;
+}
+
+/**
+ * SPEC-0053 (Escopo 8): `window.matchMedia` não existe no jsdom — dublê
+ * mínimo, restrito à única media query que `renderer.js` observa
+ * (`prefers-reduced-motion: reduce`), com suporte a `addEventListener` E ao
+ * `addListener` legado.
+ */
+function installMatchMedia(window: DOMWindow, initialReducedMotion: boolean): ReducedMotionDouble {
+  let matches = initialReducedMotion;
+  const listeners = new Set<(event: { matches: boolean }) => void>();
+  const mediaQueryList = {
+    get matches() {
+      return matches;
+    },
+    media: '(prefers-reduced-motion: reduce)',
+    addEventListener: (type: string, listener: (event: { matches: boolean }) => void): void => {
+      if (type === 'change') listeners.add(listener);
+    },
+    removeEventListener: (type: string, listener: (event: { matches: boolean }) => void): void => {
+      if (type === 'change') listeners.delete(listener);
+    },
+    addListener: (listener: (event: { matches: boolean }) => void): void => {
+      listeners.add(listener);
+    },
+    removeListener: (listener: (event: { matches: boolean }) => void): void => {
+      listeners.delete(listener);
+    },
+  };
+  Object.assign(window, {
+    matchMedia: () => mediaQueryList,
+  });
+  return {
+    set(next: boolean): void {
+      matches = next;
+      for (const listener of listeners) {
+        listener({ matches });
+      }
+    },
+  };
+}
+
+/** SPEC-0053 (Escopo 6): `window.devicePixelRatio` dublado — fixo pela vida da fixture. */
+function installDevicePixelRatio(window: DOMWindow, ratio: number): void {
+  Object.defineProperty(window, 'devicePixelRatio', {
+    configurable: true,
+    value: ratio,
+  });
+}
+
+export interface CanvasCall {
+  readonly type: string;
+  readonly args: readonly unknown[];
+}
+
+export interface CanvasDouble {
+  /** SPEC-0053 (Escopo 6): chamadas registradas no contexto 2D do `id` dado, na ordem. */
+  calls(id: string): readonly CanvasCall[];
+}
+
+/**
+ * SPEC-0053 (Escopo 6/11): dublê de `CanvasRenderingContext2D` — grava toda
+ * chamada (tipo + argumentos) num array por elemento `<canvas>`, sem
+ * instalar biblioteca de Canvas. `getContext('2d')` devolve sempre o MESMO
+ * objeto para o mesmo elemento (idempotente, como o real).
+ *
+ * `throwOnGetContext` (CA23): força `getContext('2d')` a LANÇAR — instalado
+ * ANTES do `window.eval(rendererSource)`, para que a captura de
+ * `presenceCtx` (feita uma única vez, no carregamento do módulo) veja a
+ * falha de verdade. Sobrescrever `canvas.getContext` DEPOIS do load não
+ * exerceria o caminho de falha real (o `renderer.js` só chama
+ * `getContext('2d')` uma vez, no boot).
+ */
+function installCanvasDouble(
+  window: DOMWindow,
+  options?: { readonly throwOnGetContext?: boolean },
+): CanvasDouble {
+  const contextsByCanvas = new Map<
+    unknown,
+    { calls: CanvasCall[]; ctx: Record<string, unknown> }
+  >();
+
+  function createContext(canvas: { width: number; height: number }): Record<string, unknown> {
+    const calls: CanvasCall[] = [];
+    const record = (type: string, ...args: unknown[]): void => {
+      calls.push({ type, args });
+    };
+    const gradient = { addColorStop: (...args: unknown[]) => record('addColorStop', ...args) };
+    const ctx: Record<string, unknown> = {
+      canvas,
+      fillStyle: '#000000',
+      strokeStyle: '#000000',
+      globalAlpha: 1,
+      setTransform: (...args: unknown[]) => record('setTransform', ...args),
+      clearRect: (...args: unknown[]) => record('clearRect', ...args),
+      beginPath: (...args: unknown[]) => record('beginPath', ...args),
+      closePath: (...args: unknown[]) => record('closePath', ...args),
+      arc: (...args: unknown[]) => record('arc', ...args),
+      fill: (...args: unknown[]) => record('fill', ...args, ctx.fillStyle, ctx.globalAlpha),
+      lineTo: (...args: unknown[]) => record('lineTo', ...args),
+      moveTo: (...args: unknown[]) => record('moveTo', ...args),
+      stroke: (...args: unknown[]) => record('stroke', ...args),
+      save: (...args: unknown[]) => record('save', ...args),
+      restore: (...args: unknown[]) => record('restore', ...args),
+      translate: (...args: unknown[]) => record('translate', ...args),
+      rotate: (...args: unknown[]) => record('rotate', ...args),
+      scale: (...args: unknown[]) => record('scale', ...args),
+      createRadialGradient: (...args: unknown[]) => {
+        record('createRadialGradient', ...args);
+        return gradient;
+      },
+      createLinearGradient: (...args: unknown[]) => {
+        record('createLinearGradient', ...args);
+        return gradient;
+      },
+    };
+    contextsByCanvas.set(canvas, { calls, ctx });
+    return ctx;
+  }
+
+  const canvasPrototype = window.HTMLCanvasElement.prototype as unknown as {
+    getContext: (type: string) => unknown;
+  };
+  canvasPrototype.getContext = function fakeGetContext(this: {
+    width: number;
+    height: number;
+  }): unknown {
+    if (options?.throwOnGetContext === true) {
+      throw new Error('sem suporte a Canvas (dublê)');
+    }
+    const existing = contextsByCanvas.get(this);
+    if (existing !== undefined) {
+      return existing.ctx;
+    }
+    return createContext(this);
+  };
+
+  return {
+    calls(id: string): readonly CanvasCall[] {
+      const canvas = window.document.getElementById(id);
+      const entry = canvas === null ? undefined : contextsByCanvas.get(canvas);
+      return entry === undefined ? [] : entry.calls;
     },
   };
 }
@@ -830,6 +997,19 @@ function installClock(window: DOMWindow): InjectedClock {
   });
   window.Date.now = () => now;
 
+  // SPEC-0053 (Escopo 8): `requestAnimationFrame`/`cancelAnimationFrame`
+  // dublados sobre O MESMO relógio injetável (16ms por frame) — sem isso,
+  // `renderer.js` (que lê `Date.now()`, jamais `performance.now()`, por
+  // simetria com este dublê) ficaria preso ao rAF nativo do jsdom, alheio a
+  // `fixture.clock.advance()`.
+  const fakeRequestAnimationFrame = ((callback: (time: number) => void) =>
+    schedule(() => callback(now), 16)) as unknown as DOMWindow['requestAnimationFrame'];
+  const fakeCancelAnimationFrame = clear as unknown as DOMWindow['cancelAnimationFrame'];
+  Object.assign(window, {
+    requestAnimationFrame: fakeRequestAnimationFrame,
+    cancelAnimationFrame: fakeCancelAnimationFrame,
+  });
+
   return { advance };
 }
 
@@ -847,6 +1027,10 @@ export interface RendererFixture {
   readonly media: MediaGraphDouble;
   /** SPEC-0046/D19 — relógio injetável instalado na janela jsdom ANTES do `window.eval`. */
   readonly clock: InjectedClock;
+  /** SPEC-0053 — chamadas registradas no `CanvasRenderingContext2D` dublado de `#presence-canvas`. */
+  readonly canvas: CanvasDouble;
+  /** SPEC-0053 — alterna `prefers-reduced-motion: reduce` em runtime. */
+  readonly reducedMotion: ReducedMotionDouble;
   /** Drena microtarefas/macrotarefas até as promessas do carregamento assentarem. */
   flush(): Promise<void>;
   /** Fecha a janela jsdom (chamado em `afterEach`). */
@@ -891,6 +1075,11 @@ const EPILOGUE = `
   HF_SPEAKING_WATCHDOG_BASE_MS: typeof HF_SPEAKING_WATCHDOG_BASE_MS !== 'undefined' ? HF_SPEAKING_WATCHDOG_BASE_MS : undefined,
   HF_SPEAKING_WATCHDOG_PER_CHAR_MS: typeof HF_SPEAKING_WATCHDOG_PER_CHAR_MS !== 'undefined' ? HF_SPEAKING_WATCHDOG_PER_CHAR_MS : undefined,
   HF_SPEAKING_WATCHDOG_MAX_MS: typeof HF_SPEAKING_WATCHDOG_MAX_MS !== 'undefined' ? HF_SPEAKING_WATCHDOG_MAX_MS : undefined,
+  generatePresencePointCloud: typeof generatePresencePointCloud !== 'undefined' ? generatePresencePointCloud : undefined,
+  mulberry32: typeof mulberry32 !== 'undefined' ? mulberry32 : undefined,
+  PRESENCE_PROFILES: typeof PRESENCE_PROFILES !== 'undefined' ? PRESENCE_PROFILES : undefined,
+  derivePresenceState: typeof derivePresenceState !== 'undefined' ? derivePresenceState : undefined,
+  presenceStateLabel: typeof presenceStateLabel !== 'undefined' ? presenceStateLabel : undefined,
 };
 `;
 
@@ -928,6 +1117,13 @@ export async function loadRenderer(options: RendererFixtureOptions = {}): Promis
   // SPEC-0046/D19: instalado ANTES do `window.eval` — `renderer.js` usa os
   // timers DA JANELA jsdom, não `globalThis`.
   const clock = installClock(window);
+  // SPEC-0053 (Escopo 6/11): dublês do núcleo Canvas — instalados ANTES do
+  // `window.eval`, mesma disciplina do relógio.
+  const reducedMotion = installMatchMedia(window, options.reducedMotion ?? false);
+  installDevicePixelRatio(window, options.devicePixelRatio ?? 1);
+  const canvas = installCanvasDouble(window, {
+    throwOnGetContext: options.canvasContextUnavailable === true,
+  });
 
   window.eval(rendererSource + '\n' + EPILOGUE);
 
@@ -942,6 +1138,8 @@ export async function loadRenderer(options: RendererFixtureOptions = {}): Promis
     audio,
     media,
     clock,
+    canvas,
+    reducedMotion,
     flush: flushMicroAndMacrotasks,
     close: () => {
       window.close();

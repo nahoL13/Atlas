@@ -72,17 +72,28 @@ describe('painel de memória', () => {
       ],
     });
 
+    // SPEC-0053 (Escopo 3/CA8): título compacto + disclosure — o detalhe
+    // integral (id/data/origem/categoria/subject) só existe no `.memory-detail`,
+    // revelado ao clicar no título.
     const items = [...f.document.querySelectorAll('#memory-list li')] as unknown as HTMLLIElement[];
     expect(items.length).toBe(2);
-    const first = items[0]?.querySelector('span')?.textContent ?? '';
-    expect(first).toContain('[f1]');
-    expect(first).toContain('lembrete um');
-    expect(first).toContain('2026-01-01T00:00:00.000Z');
-    expect(first).toContain('origem: user');
-    expect(first).toContain('categoria: fact');
+    const firstTitle = items[0]?.querySelector('button') as unknown as {
+      click(): void;
+      textContent: string;
+    };
+    expect(firstTitle.textContent).toBe('lembrete um');
+    firstTitle.click();
+    const firstDetail = items[0]?.querySelector('.memory-detail')?.textContent ?? '';
+    expect(firstDetail).toContain('lembrete um');
+    expect(firstDetail).toContain('id: f1');
+    expect(firstDetail).toContain('2026-01-01T00:00:00.000Z');
+    expect(firstDetail).toContain('origem: user');
+    expect(firstDetail).toContain('categoria: fact');
 
-    const second = items[1]?.querySelector('span')?.textContent ?? '';
-    expect(second).toContain('projeto: atlas');
+    const secondTitle = items[1]?.querySelector('button') as unknown as { click(): void };
+    secondTitle.click();
+    const secondDetail = items[1]?.querySelector('.memory-detail')?.textContent ?? '';
+    expect(secondDetail).toContain('subject: atlas');
   });
 
   it('"Esquecer" chama memory.forget com o id do fato, desabilita o próprio botão e recarrega a lista', async () => {
@@ -117,13 +128,14 @@ describe('painel de memória', () => {
     const callsBefore = memoryListCalls;
 
     const items = [...f.document.querySelectorAll('#memory-list li')] as unknown as HTMLLIElement[];
-    const secondForgetButton = [
-      ...(items[1]?.querySelectorAll('button') ?? []),
-    ] as unknown as Array<{
+    const secondButtons = [...(items[1]?.querySelectorAll('button') ?? [])] as unknown as Array<{
       click(): void;
       disabled: boolean;
+      textContent: string;
     }>;
-    const forgetButton = secondForgetButton[0];
+    // SPEC-0053 (Escopo 3/CA8): o título (disclosure) é o primeiro `<button>`
+    // do item — "Esquecer" é o segundo.
+    const forgetButton = secondButtons.find((button) => button.textContent === 'Esquecer');
     if (forgetButton === undefined) {
       throw new Error('botão "Esquecer" não encontrado');
     }
@@ -163,7 +175,9 @@ describe('painel de memória', () => {
     });
     const callsBefore = memoryListCalls;
 
-    const button = f.document.querySelector('#memory-list li button') as unknown as {
+    // SPEC-0053 (Escopo 3/CA8): "Esquecer" é o segundo `<button>` do item (o
+    // primeiro é o título/disclosure).
+    const button = [...f.document.querySelectorAll('#memory-list li button')][1] as unknown as {
       click(): void;
     };
     await withSuppressedUnhandledRejection(async () => {

@@ -2,7 +2,7 @@
 
 > **Project Atlas — Log de Custo de Token por SPEC**
 
-Atualizado em: 2026-08-06 (regenerado por `python3 scripts/agent-usage-report.py --executor all`)
+Atualizado em: 2026-08-17 (regenerado por `python3 scripts/agent-usage-report.py --executor all`)
 
 As métricas são separadas por executor. Tokens efetivos Claude usam os pesos históricos; Codex fica `N/D` até existir uma métrica comparável documentada. Snapshots de Codex são cumulativos e só o último total de cada transcript é lido.
 
@@ -59,10 +59,11 @@ As métricas são separadas por executor. Tokens efetivos Claude usam os pesos h
 | SPEC-0046 | Claude | Entrada por voz (STT) no chat do `apps/desktop`: captura por push-to-talk, transcrição por `whisper.cpp` local no main process, texto entregue ao campo de entrada para revisão do usuário | Done | 4 | 2026-08-05 | 93.676.496 | 16.689.997 | complete |
 | SPEC-0047 | Claude | Extensão do gate mecânico de paridade renderer↔módulo aos exports de `apps/desktop/src/piper-tts.ts` (e `stt-engine.ts`) e cobertura comportamental dos painéis sobre o harness jsdom da SPEC-0045 | Done | 2 | 2026-08-03 | 50.894.804 | 8.941.222 | complete |
 | SPEC-0048 | Claude | Fechamento dos dois resíduos da SPEC-0047 no renderer do desktop: `#chat-send` passa a considerar `askInFlight` na serialização de gestos (com guarda no manipulador de envio), e o comentário sobre `computeDefaultPiperVoiceURI` volta a descrever o estado real de cobertura | Done | 2 | 2026-08-03 | 24.788.975 | 4.859.006 | complete |
-| SPEC-0049 | Claude | Fechamento das duas direções residuais de serialização de gestos registradas pela SPEC-0048 (DoD-d): o painel `ask` do desktop passa a recusar um 2º `ask` concorrente e um `ask` disparado durante um turno de chat em voo, e a falha de `atlas.ask` deixa de virar unhandled rejection para aparecer no `#ask-result` | Done | 2 | 2026-08-04 | 20.345.139 | 3.913.578 | complete |
+| SPEC-0049 | Claude | Fechamento das duas direções residuais de serialização de gestos registradas pela SPEC-0048 (DoD-d): o painel `ask` do desktop passa a recusar um 2º `ask` concorrente e um `ask` disparado durante um turno de chat em voo, e a falha de `atlas.ask` deixa de virar unhandled rejection para aparecer no `#ask-result` | Done | 2 | 2026-08-06 | 20.345.139 | 3.913.578 | complete |
 | SPEC-0050 | Claude | Fechamento do resíduo D7 da SPEC-0049: o rastreio de operação em voo do `core-bridge` (`busySessions`/`inFlightOperations`) passa a ser guarda de entrada também de `resolveAskSnapshot` e `sendChatTurn` — somando-se aos consumidores que já existem (`updatePersona`, `selectPermissionRoots`) —, tornando o invariante "um round-trip contra o Core por vez" estrutural no main process, e não mais garantia exclusiva do renderer | Done | 2 | 2026-08-04 | 31.029.100 | 8.304.209 | complete |
 | SPEC-0051 | Claude | Cancelamento (desistência) de uma operação em voo no `apps/desktop`: um botão "Cancelar" por painel (`ask` e chat) faz a promessa do gesto assentar imediatamente com mensagem pinada, libera a interface e o main process para um gesto novo, e **contém** os efeitos do trabalho abandonado (nenhum `learned` persistido, nenhuma conversa atualizada, `ConfirmPort` fail-closed **pegajoso por sessão**, conversa afetada em quarentena), sem introduzir cancelamento real dentro do Core. | Done | 2 | 2026-08-05 | 99.432.888 | 13.842.602 | complete |
-| SPEC-0052 | Claude | Modo hands-free no `apps/desktop`: microfone aberto entre turnos sob toggle explícito, fim de fala detectado por VAD Silero em WASM no renderer, auto-envio da transcrição ao chat e resposta falada — com o microfone fechado durante o processamento e durante a fala | Draft | 1 | 2026-08-06 | 6.776.693 | 1.484.741 | complete |
+| SPEC-0052 | Claude | Modo hands-free no `apps/desktop`: microfone aberto entre turnos sob toggle explícito, fim de fala detectado por VAD Silero em WASM no renderer, auto-envio da transcrição ao chat e resposta falada — com o microfone fechado durante o processamento e durante a fala | Draft | 5 | 2026-08-07 | 40.294.821 | 7.057.766 | complete |
+| SPEC-0053 | Claude | Desktop v3.0: núcleo holográfico volumétrico (Canvas 2D, 400 pontos determinísticos, sete perfis de estado ligados a sinais reais de voz) substitui a esfera CSS-only; navegação passa a drawer overlay sob demanda com Sessão absorvendo a timeline integralmente; substitui integralmente as direções v1.x/v2.0 reprovadas em smoke humano | Done | 20 | 2026-08-18 | 203.400.667 | 32.924.458 | complete |
 
 ## Detalhamento por fase
 
@@ -120,7 +121,8 @@ Valores em tokens efetivos. Codex não é somado nem comparado a Claude enquanto
 | SPEC-0049 | Claude | 677.295 | 0 | 439.408 | 1.052.170 | 415.004 | 1.329.701 | 0 |
 | SPEC-0050 | Claude | 826.040 | 3.578.699 | 867.789 | 864.266 | 695.112 | 1.472.303 | 0 |
 | SPEC-0051 | Claude | 1.107.198 | 23.450 | 935.085 | 8.915.134 | 1.178.794 | 1.682.941 | 0 |
-| SPEC-0052 | Claude | 0 | 0 | 794.333 | 0 | 690.408 | 0 | 0 |
+| SPEC-0052 | Claude | 2.837.170 | 0 | 794.333 | 0 | 994.857 | 2.431.406 | 0 |
+| SPEC-0053 | Claude | 7.372.239 | 1.996.006 | 1.000.863 | 18.752.363 | 3.097.778 | 705.209 | 0 |
 
 ## Eficiência de processo (overhead ÷ implementação)
 
@@ -167,6 +169,7 @@ Calculada separadamente por executor, apenas quando tokens efetivos comparáveis
 | SPEC-0049 | Claude | 1.052.170 | 2.861.408 | 2.7× |
 | SPEC-0050 | Claude | 864.266 | 7.439.943 | 8.6× |
 | SPEC-0051 | Claude | 8.915.134 | 4.927.468 | 0.6× |
+| SPEC-0053 | Claude | 18.752.363 | 14.172.095 | 0.8× |
 
 ## Como estimar antes de começar uma SPEC nova
 

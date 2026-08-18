@@ -51,7 +51,7 @@ A ausência de atrito também é informação.
 
 ---
 
-**Escopo deste arquivo:** o Registro abaixo mantém as **últimas 5 SPECs**. As entradas da SPEC-0047 e anteriores estão em `LESSONS_LEARNED-ARCHIVE.md`, preservadas sem edição (regra 2 intacta — nada é reescrito, só realocado).
+**Escopo deste arquivo:** o Registro abaixo mantém as **últimas 5 SPECs**. As entradas da SPEC-0048 e anteriores estão em `LESSONS_LEARNED-ARCHIVE.md`, preservadas sem edição (regra 2 intacta — nada é reescrito, só realocado).
 
 O corte existe porque este arquivo chegou a 157 KB (~39k tokens) e era relido no arranque de quase todo subagent, dominando o custo em tokens do pipeline. Ao fechar uma SPEC: adicione a entrada nova no topo do Registro e mova a mais antiga das 6 para o arquivo.
 
@@ -67,11 +67,29 @@ Lições que se repetiram em três ou mais SPECs. Este índice existe para sobre
 - **Campo obrigatório novo em `Deps` exige grep pelo nome da função construtora** (`createRuntime(`, `createPermissionService(`) em **todo o repo** — repetido 8× até a SPEC-0013.
 - **Membro obrigatório novo numa interface de contrato não é pego por esse grep** — busque pelo **nome do tipo** (`git grep 'PermissionService'`), que acha fakes e implementações diretas nos testes (quebrou o typecheck na SPEC-0017).
 - **`vitest run` não faz typecheck** (esbuild só remove tipos) — um passo TDD "RED" que depende de erro de *tipo* só falha de verdade em `pnpm --filter <pkg> typecheck`.
-- **Smoke visual/sonoro das fatias desktop nunca confirmado** — SPEC-0031 a 0046, 13 seguidas. O shell de automação não tem WindowServer, microfone nem os binários Piper/`whisper-cli`. Não bloqueia fechamento documental, mas não conte como verificado.
+- **Smoke visual/sonoro das fatias desktop** — SPEC-0031 a 0046, 15 seguidas sem confirmação (o shell de automação não tem WindowServer, microfone nem os binários Piper/`whisper-cli`). Deixou de ser risco hipotético na **SPEC-0053**: o smoke humano rodou de fato pela primeira vez e **reprovou** a v2.0 (1.322 testes/80 arquivos, quatro gates técnicos verdes) por hierarquia/sobreposição/falta de volume — prova concreta de que gates técnicos verdes não bastam para aceite perceptivo. A v3.0 corrigiu e fechou os 15 itens `OK`. Fatia futura que tocar o núcleo/layout reabre a pendência.
 - **Contrato só sobe a `@atlas/contracts` com 2º consumidor real**, via ADR (ADR-0007). Tipos de uma app só (`StatusSnapshot`, `TurnSnapshot`, `FactSnapshot`) ficam locais.
 
 
 # Registro
+
+## [SPEC-0053](specs/SPEC-0053-desktop-visual-layout.md) — Núcleo holográfico volumétrico e navegação por drawer no desktop, v3.0 (2026-08-17)
+
+**Descobrimos que...**
+
+A v2.0 desta mesma SPEC tinha passado **por inteiro** nos quatro gates técnicos da raiz e em 27 Critérios de Aceitação (1.322 testes/80 arquivos) e ainda assim foi reprovada no smoke visual humano — sidebar/trilho e timeline permanentes competiam com a presença, o painel Memória sobrepunha/cortava conteúdo, e a esfera CSS-only não comunicava volume. Pela primeira vez em ~20 fatias visuais consecutivas do desktop (SPEC-0031 a 0052), o smoke humano **de fato rodou e reprovou** uma implementação inteira — até aqui o próprio Registro só citava a pendência como risco hipotético ("nunca confirmado", não "já reprovou"). A v3.0 corrigiu com esfera de partículas em Canvas 2D (projeção 3D determinística, depth-sort, SHA-256 pinado da nuvem de 400 pontos) e navegação por drawer overlay, repetiu o smoke e todos os 15 itens vieram `OK`. Descobrimos também que nem o texto da v3.0 escapou da disciplina do gate: o `architecture-reviewer` vetou a 1ª passada por cinco ambiguidades de aceite (contagem de navegação sem excluir `Fechar`/controles internos; início de `speaking` preso a evento real de playback; manifesto exato dos 77 IDs HEAD/v3/v2; digest estável da nuvem de pontos; disclosures completos de Persona/Personas/Objetivo) — a mesma classe "garantia em prosa absoluta tende a estar incompleta" que os Padrões Recorrentes já catalogam, agora pega **antes** da implementação começar, não depois.
+
+**A arquitetura ajudou porque...**
+
+Canvas 2D nativo (sem WebGL/lib nova) bastou para produzir volume real via projeção 3D determinística; pinar o SHA-256 da nuvem de 400 pontos + quatro sentinelas tornou a geometria inteiramente verificável em `jsdom`, sem GPU nem display real. O mapa fechado de sete perfis de estado reaproveitou sinais já emitidos pelas SPECs 0040/0052 (`playbackPending`/`playbackActive`, estados do hands-free) sem nenhuma fonte de verdade nova. O harness de dublês de Canvas/rAF/`matchMedia`/`devicePixelRatio`/ponteiro das SPECs 0045/0047 absorveu a bateria inteira de testes novos (`renderer.layout.test.ts`, 1.130 linhas) sem infraestrutura de teste nova.
+
+**A arquitetura atrapalhou porque...**
+
+Nada de estrutural — o atrito foi de processo, não de desenho: gates técnicos verdes (typecheck/lint/test/format:check) não provam hierarquia visual, volume ou corte, só o smoke humano prova isso, e desta vez ele de fato reprovou uma versão inteira depois dela já estar tecnicamente pronta para `Done`. O custo é visível no próprio `TOKEN_USAGE_LOG.md`: SPEC-0053 tem a maior contagem de sessões do log até aqui (20).
+
+**Precisamos mudar...**
+
+(1) A linha "Smoke visual/sonoro das fatias desktop nunca confirmado" nos Padrões Recorrentes deixa de ser hipotética — já reprovou uma implementação inteira (v2.0) apesar dos quatro gates técnicos verdes; a v3.0 finalmente fechou o smoke com todos os 15 itens `OK` — encaminhamento: já atualizado nesta mesma SPEC em `apps/desktop/CLAUDE.md`/`NEXT_CONTEXT.md` (a pendência estrutural muda de "nunca confirmado" para "confirmado na v3.0 da SPEC-0053"; fatias futuras reabrem a pendência só se tocarem o núcleo/layout de novo). (2) Nenhum ADR novo — Canvas 2D e drawer permanecem dentro do Output Gateway, ADR-0019 intacto (nota da própria SPEC, D3/D8).
 
 ## [SPEC-0052](specs/SPEC-0052-desktop-hands-free-voice-conversation.md) — Modo hands-free: conversa por voz contínua no desktop (2026-08-06)
 
@@ -145,24 +163,6 @@ Nada de estrutural. O atrito ficou em precisão de registro — a mesma classe j
 
 (1) A premissa original de D4 ("botão cinza ⇒ caminho normal não chega aqui") não pode ser propagada às docs vivas — já corrigida nesta própria SPEC/nesta entrada e em `apps/desktop/CLAUDE.md`, sem necessidade de ADR. (2) Resíduos deixados abertos por decisão, todos já registrados em `apps/desktop/CLAUDE.md`/`NEXT_CONTEXT.md`: **(a)** `micBusy()` fora da condição de `#ask-submit` (D5) segue sem prova mecânica — encaminhamento: candidato para a próxima SPEC que tocar a serialização de voz do painel `ask`; **(b)** o `.catch` também captura exceções lançadas dentro do próprio `.then` (pintura do traço de `steps`), efeito colateral benigno e não coberto por CA — encaminhamento: nenhum, registrado como observação; **(c)** "Esquecer" (memória) e `chat.open()` seguem sem `.catch` (D6) — encaminhamento: candidato registrado, escopo aberto por natureza, sem SPEC própria ainda; **(d)** `sendChatTurn`/`resolveAskSnapshot` seguem fora de `inFlightOperations` no `core-bridge` (D7) — a serialização continua garantia do renderer, não estrutural no main process — encaminhamento: candidato a SPEC própria, registrado em `apps/desktop/CLAUDE.md`. (3) Achado do gate (A3), não pedido: sem cancelamento de um `ask`/turno de chat em voo, um turno que não assenta (Core travado) deixa a app sem gesto de escape até ser reaberta — encaminhamento: candidato novo, registrado em `apps/desktop/CLAUDE.md`/`NEXT_CONTEXT.md` para avaliação de UX própria numa fatia futura.
 
-## [SPEC-0048](specs/SPEC-0048-desktop-chat-send-ask-serialization.md) — `#chat-send` na serialização de `ask` e comentário desatualizado de `computeDefaultPiperVoiceURI` (2026-08-03)
-
-**Descobrimos que...**
-
-O achado da SPEC-0047 ("`#chat-send` não soma `askInFlight` ao `disabled`") tinha uma segunda camada não nomeada até esta SPEC abrir o código: mesmo corrigindo a condição em `refreshChatControlsForMic()`, o `.finally` do manipulador de `submit` de `#chat-form` tinha **uma segunda origem de cálculo** (`sendButton.disabled = micBusy()`, sem `askInFlight`) que reabriria o botão ao assentar um turno de chat durante um `ask` em voo — reintroduzindo o mesmo defeito por outro caminho, se corrigido só na função. E `disabled` sozinho nunca teria sido suficiente para o CA de guarda de entrada: o harness `jsdom` despacha `submit` diretamente, contornando o atributo do botão, então a garantia real exigiu uma guarda explícita no manipulador — o texto do achado da SPEC-0047 já falava em "**enviado**", não em pixel cinza, mas só ficou óbvio ao tentar escrever o teste RED. O gate arquitetural também achou, de graça na mesma revisão, a direção simétrica não pedida: `#ask-form` não tem guarda nenhuma contra um 2º `ask` ou contra um turno de chat em voo (A3) — mesma classe de defeito, ainda aberta por decisão de escopo, não por desconhecimento.
-
-**A arquitetura ajudou porque...**
-
-A condição já vivia num lugar só nomeado (`refreshChatControlsForMic()`, já compartilhado com `#persona-select` desde as SPECs 0037/0038), então somar `askInFlight` foi uma linha; o padrão "condição em um lugar só, chamada por `refreshPermissionsPanelState()`" (D1) generalizou sem desenho novo. O harness `jsdom` da SPEC-0045/0047, com promessas controláveis de `ask`/`chatSend`, tornou os dois casos novos (CA 7/8) e o de reforço do gate (`ask` rejeitando) triviais de escrever e de observar em RED antes da correção — sem ele, provar a guarda de entrada exigiria mockar `dispatchEvent` manualmente.
-
-**A arquitetura atrapalhou porque...**
-
-Nada de estrutural. O atrito ficou em ler completo antes de escrever: quem só olhasse a linha da condição em `refreshChatControlsForMic()` teria corrigido metade do defeito e deixado o `.finally` reabrir o botão por baixo — a mesma classe "corrigir bloqueante introduz bloqueante novo no mesmo caminho" já catalogada nos Padrões Recorrentes (SPEC-0034/0038/0039), agora no par ask/chat em vez de permissões/Persona.
-
-**Precisamos mudar...**
-
-(1) As duas direções residuais registradas pelo DoD desta SPEC ficam deliberadamente fora: **(d.1) chat → ask** — serializar `#ask-form` contra um turno de chat em voo (direção inversa; decidir se o painel `ask` deve mesmo se bloquear pelo chat é questão de UX própria, não corolário desta correção) — encaminhamento: candidato registrado em `docs/05-context/NEXT_CONTEXT.md`/`apps/desktop/CLAUDE.md`, para uma fatia futura avaliar. **(d.2) ask × ask** — `renderer.js:136-166` (manipulador de `submit` de `#ask-form`) não tem guarda contra `askInFlight`/`chatTurnInFlight`, e `#objective`/`#ask-submit` não entram em nenhuma função de refresh: dois cliques seguidos em "Perguntar" sobem dois Cores concorrentes capazes de executar Tools, achado do gate arquitetural (A3), sem registro em nenhuma doc viva até esta SPEC — encaminhamento: candidato registrado em `docs/05-context/NEXT_CONTEXT.md`/`apps/desktop/CLAUDE.md` para a próxima SPEC de serialização de gestos do painel `ask`. (2) Achado colateral do mesmo gate, não corrigido aqui: o manipulador de `submit` de `#ask-form` (`renderer.js:146-166`) só tem `.finally`, sem `.catch` — uma rejeição de `atlas.ask` vira unhandled rejection e o erro nunca chega ao `#ask-result` — encaminhamento: candidato registrado em `apps/desktop/CLAUDE.md`, para a mesma fatia futura do item (d.2) avaliar junto. (3) Limite estrutural reafirmado, não fechado: a serialização segue sendo garantia do **renderer**; o `core-bridge` não rastreia `sendChatTurn` em `inFlightOperations` (só `selectPermissionRoots`) — encaminhamento: fora de escopo por decisão explícita da SPEC (mudaria a garantia documentada em "Rastreio de operação em voo" e afetaria recusas de `selectPermissionRoots`); registrado como candidato em `apps/desktop/CLAUDE.md` para SPEC própria, caso o produto exija a garantia estrutural no main process.
-
 ---
 
-**Entradas anteriores (SPEC-0047 e mais antigas):** `LESSONS_LEARNED-ARCHIVE.md`.
+**Entradas anteriores (SPEC-0048 e mais antigas):** `LESSONS_LEARNED-ARCHIVE.md`.

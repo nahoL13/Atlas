@@ -2,7 +2,7 @@
 
 > **Project Atlas — Contexto de Retomada para a Próxima Sessão**
 
-Atualizado em: 2026-08-06 (SPEC-0052)
+Atualizado em: 2026-08-17 (SPEC-0053)
 
 Este documento responde a uma pergunta só: **o que fazer agora**. Ele é lido no arranque de toda sessão e de todo subagent, então é mantido curto por design — teto de ~8 KB.
 
@@ -21,11 +21,11 @@ Este documento responde a uma pergunta só: **o que fazer agora**. Ele é lido n
 
 Últimas três fatias (detalhe completo em `PLATFORM_STATE.md` e na SPEC de cada uma):
 
+- **SPEC-0053** `Done` (2026-08-17) — desktop v3.0: redirecionamento integral do layout visual (v2.0 passou nos quatro gates técnicos e ainda assim reprovou no smoke humano — sidebar/trilho/timeline permanentes, Memória sobrepondo conteúdo, esfera CSS-only sem volume). Núcleo holográfico volumétrico em **Canvas 2D nativo** (400 pontos determinísticos, sete perfis de estado ligados a sinais reais de voz), navegação por **drawer overlay** (seis painéis, Sessão absorve a timeline inteira), progressive disclosure, paleta roxo-realeza sem emoji. Smoke humano confirmou os 15 itens `OK` — 1ª confirmação real em ~20 fatias visuais consecutivas. Zero IPC/contrato/dependência nova, diff confinado ao renderer. Detalhe: `apps/desktop/CLAUDE.md` ("Layout visual v3.0").
 - **SPEC-0052** `Done` (2026-08-06) — modo hands-free (conversa por voz contínua): toggle único abre o microfone entre turnos; fim de fala por Silero VAD (WASM no renderer, **primeira inferência do projeto fora do main**); transcrição vai **direto ao Core, sem revisão**; resposta falada; microfone comprovadamente fechado ao processar/falar. Consome o [ADR-0023](../06-adr/ADR-0023-hands-free-voice-conversation.md) (novo, `Accepted`, supersede parcial do ADR-0022 — só auto-envio, só no modo; `ConfirmPort` intocado). Sem barge-in. Detalhe: `apps/desktop/CLAUDE.md` ("Voz — modo hands-free"). Zero diff em `packages/*`/`apps/cli`.
 - **SPEC-0051** `Done` (2026-08-05) — gesto de escape: botão "Cancelar" por painel → `cancelInFlightOperation()` abandona a operação em voo e rejeita a promessa na hora. `busySessions`/`inFlightOperations` viram um registro `Set<OperationRecord>` com quatro predicados nomeados. `ConfirmPort` do chat contido por sessão (pegajoso), do `ask` por operação; quarentena de sessão. **Desistência, não cancelamento real** — Core sem `AbortSignal`. Zero diff em `packages/*`/`apps/cli`.
-- **SPEC-0050** `Done` (2026-08-04) — `resolveAskSnapshot`/`sendChatTurn` no `core-bridge` passam a **ler** `hasInFlightOperation()` como guarda de entrada, tornando "um round-trip por vez" estrutural no main process. Zero diff em `packages/*`/`apps/cli`/renderer.
 
-Suíte atual: **1303 testes / 79 arquivos**. `lint`/`typecheck`/`test`/`format:check` verdes.
+Suíte atual: **1353 testes / 80 arquivos**. `lint`/`typecheck`/`test`/`format:check` verdes.
 
 ---
 
@@ -63,7 +63,7 @@ Ponto que o hook não cobre: `scripts/hooks/spec-prompt-nudge.sh` só dispara co
 # Pendências Conhecidas
 
 - **TypeScript pinado em `^5`**: typescript-eslint 8.63 quebra com TS 7.0.2 (`TypeError: Cannot read properties of undefined (reading 'Cjs')` em `typescript-estree`; 7 probes falharam entre 2026-07-10 e 2026-07-14). **Encaminhamento: parar de re-probar por hábito** — vincular a um release do typescript-eslint que declare suporte a TS7.
-- **Smoke visual/sonoro das fatias desktop pendente de confirmação humana** — 19 fatias visuais seguidas (SPEC-0031 a 0052), sem WindowServer/microfone/binários Piper-whisper-Silero no shell de automação. Não bloqueia fechamento documental, mas **nada foi confirmado em ambiente real**. Lista item a item no CA 25 da SPEC-0040, ampliada pelas SPECs 0041/0043/0046/0052. A SPEC-0052 acrescenta o item mais difícil de dublar: o laço hands-free ponta a ponta (VAD real, latência, eco, acerto dos 3 s de silêncio). Detalhe completo: `apps/desktop/CLAUDE.md`, "Pendência estrutural".
+- **Smoke de voz/áudio real das fatias desktop pendente de confirmação humana** — a SPEC-0053 fechou a pendência de **layout/renderização** (15/15 `OK` em janela real). Segue pendente só o eixo de **áudio real** (sem WindowServer/microfone/binários Piper-`whisper-cli`-Silero no shell de automação): transcrição, latência, eco, e o item mais difícil de dublar, o laço hands-free ponta a ponta. Detalhe: `apps/desktop/CLAUDE.md`, "Pendência estrutural".
 - **Distribuição/empacotamento da CLI**: o `bin` usa shebang `#!/usr/bin/env -S npx tsx`, que atende só dev. Mapeado na Fase 3.
 - **Plugin Manager sem seção de detalhe no ModuleCatalog** — corrigir antes da SPEC que o implementar.
 - **Vizinhas da SPEC-0016 ainda abertas**: proteção de branch/ruleset, matriz multi-OS de Node, campo `packageManager` no `package.json` raiz.

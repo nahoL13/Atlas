@@ -99,7 +99,7 @@ describe('renderer STT: superfície e disponibilidade (CA21/CA32)', () => {
     await f.flush();
     expect(micStatusText(f)).not.toBe('');
     expect(micButtonEl(f).disabled).toBe(false);
-    expect(micButtonEl(f).textContent).toBe('🎤 Falar');
+    expect(micButtonEl(f).textContent).toBe('Falar');
     expect(chatInputValue(f)).toBe('texto existente');
   });
 });
@@ -109,16 +109,16 @@ describe('renderer STT: relógio injetável e EPILOGUE (CA22/CA23)', () => {
     const f = await openAvailable();
     clickMic(f);
     await f.flush();
-    expect(micButtonEl(f).textContent).toBe('⏹ Parar gravação');
+    expect(micButtonEl(f).textContent).toBe('Parar gravação');
 
     // Drenar micro/macrotarefas REAIS não faz o timer de 30s disparar — ele
     // mora nos timers da janela jsdom, substituídos pelo relógio injetado.
     await f.flush();
-    expect(micButtonEl(f).textContent).toBe('⏹ Parar gravação');
+    expect(micButtonEl(f).textContent).toBe('Parar gravação');
 
     f.clock.advance(30_000);
     await f.flush();
-    expect(micButtonEl(f).textContent).not.toBe('⏹ Parar gravação');
+    expect(micButtonEl(f).textContent).not.toBe('Parar gravação');
   });
 
   it('CA23: os símbolos novos do glue de voz estão declarados no EPILOGUE e acessíveis por internals', async () => {
@@ -265,7 +265,7 @@ describe('renderer STT: cancelar durante a transcrição — R3 (CA28)', () => {
     pending.resolve({ ok: false, reason: 'cancelled' });
     await f.flush();
 
-    expect(micButtonEl(f).textContent).toBe('🎤 Falar');
+    expect(micButtonEl(f).textContent).toBe('Falar');
     expect(chatInputValue(f)).toBe('preservado');
     expect(micStatusText(f)).not.toBe('');
   });

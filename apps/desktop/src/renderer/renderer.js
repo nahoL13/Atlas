@@ -1,3 +1,511 @@
+let globalAlert = '';
+let bootSettled = false;
+let playbackPending = false;
+let playbackActive = false;
+let currentReplyEvent = null;
+let selectedTimelineEvent = null;
+let unseenTimelineEvents = 0;
+
+function setGlobalAlert(kind, error) {
+  globalAlert = `⚠️ ${error.message ?? error}`;
+  const alert = document.getElementById('global-alert');
+  alert.textContent = globalAlert;
+  alert.hidden = false;
+  appendTimelineEvent('error', kind, globalAlert, globalAlert);
+  refreshPresence();
+}
+
+function clearGlobalAlert() {
+  globalAlert = '';
+  const alert = document.getElementById('global-alert');
+  alert.textContent = '';
+  alert.hidden = true;
+  refreshPresence();
+}
+
+function presenceStateLabel(state) {
+  return {
+    error: 'Erro',
+    speaking: 'Falando',
+    thinking: 'Pensando',
+    transcribing: 'Transcrevendo',
+    listening: 'Ouvindo',
+    booting: 'Iniciando',
+    ready: 'Pronto',
+  }[state];
+}
+
+function derivePresenceState() {
+  if (globalAlert !== '') return 'error';
+  if (playbackActive) return 'speaking';
+  if (
+    chatTurnInFlight ||
+    askInFlight ||
+    handsFreeState === 'sending' ||
+    handsFreeState === 'thinking' ||
+    playbackPending
+  )
+    return 'thinking';
+  if (micState === 'transcribing' || handsFreeState === 'transcribing') return 'transcribing';
+  if (micState === 'recording' || handsFreeState === 'listening' || handsFreeState === 'capturing')
+    return 'listening';
+  if (!bootSettled) return 'booting';
+  return 'ready';
+}
+
+function refreshPresence() {
+  const state = derivePresenceState();
+  const core = document.getElementById('presence-core');
+  core.dataset.state = state;
+  document.getElementById('presence-state').textContent = presenceStateLabel(state);
+  renderPresenceFrame();
+}
+
+// ---------------------------------------------------------------------------
+// SPEC-0053 (Escopo 6-8): núcleo holográfico volumétrico — nuvem de pontos
+// determinística (Canvas 2D puro), mapa fechado de perfis por estado e um
+// único ciclo de `requestAnimationFrame`. Autocontido: só lê
+// `#presence-core[data-state]` (derivado acima) e os dois sinais de playback
+// (`playbackPending`/`playbackActive`, geridos por `speakText`). Declarado
+// logo após `refreshPresence()` — que já a invoca em `renderPresenceFrame()`
+// — para que toda variável usada abaixo esteja inicializada antes de
+// qualquer chamada síncrona posterior no arquivo (nenhuma chamada síncrona
+// acontece ANTES deste ponto).
+
+// PRNG determinístico — aritmética JS de 32 bits, forma exata da SPEC.
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function next() {
+    let t = (a += 0x6d2b79f5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// 320 pontos de superfície (Fibonacci sphere, ângulo áureo) + 80 pontos
+// internos (mulberry32, semente `0x0a71a5`) — ordem e fórmulas vinculantes
+// (Escopo 6). Gerada uma única vez; prova mecânica em
+// `renderer.layout.test.ts` (sentinelas + digest SHA-256 canônico).
+function generatePresencePointCloud() {
+  const points = [];
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+  for (let i = 0; i < 320; i += 1) {
+    const y = 1 - (2 * i) / 319;
+    const ring = Math.sqrt(Math.max(0, 1 - y * y));
+    const theta = i * goldenAngle;
+    const x = Math.cos(theta) * ring;
+    const z = Math.sin(theta) * ring;
+    points.push({ layer: 'surface', x, y, z });
+  }
+  const rng = mulberry32(0x0a71a5);
+  for (let i = 0; i < 80; i += 1) {
+    const u = rng();
+    const v = rng();
+    const w = rng();
+    const axis = 1 - 2 * u;
+    const ring = Math.sqrt(Math.max(0, 1 - axis * axis));
+    const radius = Math.cbrt(w);
+    const x = Math.cos(2 * Math.PI * v) * ring * radius;
+    const y = axis * radius;
+    const z = Math.sin(2 * Math.PI * v) * ring * radius;
+    points.push({ layer: 'inner', x, y, z });
+  }
+  return points;
+}
+
+const PRESENCE_POINTS = generatePresencePointCloud();
+
+function easeOutCubic(progress) {
+  const clamped = Math.min(Math.max(progress, 0), 1);
+  return 1 - (1 - clamped) ** 3;
+}
+
+// Mapa fechado dos sete estados (Escopo 7) — única fonte de rotação,
+// deformação temporal e intensidade máxima por estado; nenhuma função de
+// fluxo aplica parâmetros visuais independentes.
+const PRESENCE_PROFILES = {
+  ready: { rotationSpeed: 0.16, hz: 0, amount: 0, kind: 'none', token: '--royal-bright' },
+  booting: {
+    rotationSpeed: 0.12,
+    hz: 0,
+    amount: 1,
+    kind: 'formation',
+    formationMs: 900,
+    token: '--royal-soft',
+  },
+  listening: {
+    rotationSpeed: 0.22,
+    hz: 0.65,
+    amount: 0.08,
+    kind: 'breathing',
+    token: '--royal-lilac',
+  },
+  transcribing: {
+    rotationSpeed: 0.32,
+    hz: 1.8,
+    amount: 0.06,
+    kind: 'latitudinal',
+    token: '--royal-magenta',
+  },
+  thinking: {
+    rotationSpeed: 0.55,
+    hz: 2.2,
+    amount: 0.18,
+    kind: 'flicker',
+    token: '--royal-violet',
+  },
+  speaking: { rotationSpeed: 0.28, hz: 2.4, amount: 0.12, kind: 'wave', token: '--royal-bright' },
+  error: { rotationSpeed: 0.08, hz: 7, amount: 2, kind: 'jitter', token: '--royal-error' },
+};
+
+// Réplica local (JS) dos tokens roxo-realeza claros de `styles.css`/`:root`
+// — o Canvas 2D não resolve custom properties de folha externa em runtime
+// (mesma duplicação deliberada renderer↔folha já documentada para voz).
+const PRESENCE_TOKEN_COLORS = {
+  '--royal-bright': '#7c3aed',
+  '--royal-violet': '#8b5cf6',
+  '--royal-soft': '#c7adff',
+  '--royal-lilac': '#d8c8ff',
+  '--royal-magenta': '#c84ad8',
+  '--royal-error': '#c92c5b',
+};
+
+function presenceTokenColor(token) {
+  return PRESENCE_TOKEN_COLORS[token] || PRESENCE_TOKEN_COLORS['--royal-bright'];
+}
+
+function presenceHexToRgba(hex, alpha) {
+  const clean = hex.replace('#', '');
+  const value = Number.parseInt(clean, 16);
+  const r = (value >> 16) & 255;
+  const g = (value >> 8) & 255;
+  const b = value & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+const presenceCanvasEl = document.getElementById('presence-canvas');
+const presenceCoreEl = document.getElementById('presence-core');
+const presenceStageEl = document.getElementById('presence-stage');
+
+// Falha de `getContext('2d')` não derruba o boot (Escopo 6/CA23): Persona,
+// estado, chat e todos os controles seguem funcionais sem o efeito
+// decorativo.
+const presenceCtx = (() => {
+  try {
+    return typeof presenceCanvasEl.getContext === 'function'
+      ? presenceCanvasEl.getContext('2d')
+      : null;
+  } catch {
+    return null;
+  }
+})();
+
+const PRESENCE_MAX_TILT_RAD = (12 * Math.PI) / 180;
+const PRESENCE_CAMERA_DISTANCE = 2.6;
+
+let presenceCanvasCssSize = 280;
+let presenceRotation = 0;
+let presenceLastFrameTime = null;
+let presenceCurrentTrackedState = null;
+let presenceStateEnteredAt = null;
+let presenceAnimationHandle = null;
+
+let pointerYawTarget = 0;
+let pointerPitchTarget = 0;
+let pointerYaw = 0;
+let pointerPitch = 0;
+
+let waveEnvelopeValue = 0;
+let waveEnvelopeIsSpeaking = false;
+let waveEnvelopeFrom = 0;
+let waveEnvelopeTo = 0;
+let waveEnvelopeStart = null;
+let waveEnvelopeDuration = 160;
+
+// `Date.now()` (não `performance.now()`): o harness de teste dubla
+// `window.Date.now`, não `window.performance.now` — usar a mesma fonte de
+// tempo do relógio injetável (SPEC-0046/D19) em produção e em teste.
+function presenceNow() {
+  return Date.now();
+}
+
+function presenceReducedMotionQuery() {
+  if (typeof window.matchMedia !== 'function') {
+    return { matches: false };
+  }
+  try {
+    return window.matchMedia('(prefers-reduced-motion: reduce)');
+  } catch {
+    return { matches: false };
+  }
+}
+
+function presenceReducedMotion() {
+  return presenceReducedMotionQuery().matches === true;
+}
+
+function resizePresenceCanvas() {
+  if (presenceCtx === null) {
+    return;
+  }
+  const rect = presenceCoreEl.getBoundingClientRect();
+  const cssSize =
+    rect.width > 0 ? rect.width : rect.height > 0 ? rect.height : presenceCanvasCssSize;
+  presenceCanvasCssSize = cssSize;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const backingSize = Math.max(1, Math.round(cssSize * dpr));
+  if (presenceCanvasEl.width !== backingSize || presenceCanvasEl.height !== backingSize) {
+    presenceCanvasEl.width = backingSize;
+    presenceCanvasEl.height = backingSize;
+  }
+}
+
+function convergePointer(deltaMs) {
+  const factor = 1 - Math.exp(-deltaMs / 120);
+  pointerYaw += (pointerYawTarget - pointerYaw) * factor;
+  pointerPitch += (pointerPitchTarget - pointerPitch) * factor;
+}
+
+if (presenceStageEl !== null) {
+  presenceStageEl.addEventListener('pointermove', (event) => {
+    const rect = presenceStageEl.getBoundingClientRect();
+    const width = rect.width > 0 ? rect.width : 1;
+    const height = rect.height > 0 ? rect.height : 1;
+    const relX = Math.min(1, Math.max(-1, ((event.clientX - rect.left) / width) * 2 - 1));
+    const relY = Math.min(1, Math.max(-1, ((event.clientY - rect.top) / height) * 2 - 1));
+    pointerYawTarget = relX * PRESENCE_MAX_TILT_RAD;
+    pointerPitchTarget = relY * PRESENCE_MAX_TILT_RAD;
+  });
+  presenceStageEl.addEventListener('pointerleave', () => {
+    pointerYawTarget = 0;
+    pointerPitchTarget = 0;
+  });
+}
+
+function trackPresenceStateEntry(state, now) {
+  if (state !== presenceCurrentTrackedState) {
+    presenceCurrentTrackedState = state;
+    presenceStateEnteredAt = now;
+  }
+}
+
+// Ataque `easeOutCubic` de 0→1 em 160ms ao entrar em `speaking`; release do
+// valor corrente até zero em 450ms ao sair — sem salto de geometria.
+function updateWaveEnvelope(now, isSpeaking) {
+  if (isSpeaking !== waveEnvelopeIsSpeaking) {
+    waveEnvelopeIsSpeaking = isSpeaking;
+    waveEnvelopeFrom = waveEnvelopeValue;
+    waveEnvelopeTo = isSpeaking ? 1 : 0;
+    waveEnvelopeStart = now;
+    waveEnvelopeDuration = isSpeaking ? 160 : 450;
+  }
+  if (waveEnvelopeStart === null) {
+    waveEnvelopeValue = isSpeaking ? 1 : 0;
+    return;
+  }
+  const elapsed = now - waveEnvelopeStart;
+  const progress = waveEnvelopeDuration <= 0 ? 1 : elapsed / waveEnvelopeDuration;
+  waveEnvelopeValue =
+    waveEnvelopeFrom + (waveEnvelopeTo - waveEnvelopeFrom) * easeOutCubic(progress);
+}
+
+function computePresenceDeformation(point, profile, timeSec, elapsedSinceEnterMs) {
+  switch (profile.kind) {
+    case 'formation': {
+      const progress = Math.min(elapsedSinceEnterMs / profile.formationMs, 1);
+      return { radiusScale: easeOutCubic(progress), alphaBoost: 0 };
+    }
+    case 'breathing': {
+      const wave = Math.sin(2 * Math.PI * profile.hz * timeSec);
+      return { radiusScale: 1 + profile.amount * wave, alphaBoost: 0 };
+    }
+    case 'latitudinal': {
+      const phase = point.y * Math.PI;
+      const wave = Math.sin(2 * Math.PI * profile.hz * timeSec + phase);
+      return { radiusScale: 1 + profile.amount * wave, alphaBoost: 0 };
+    }
+    case 'flicker': {
+      const wave = 0.5 + 0.5 * Math.sin(2 * Math.PI * profile.hz * timeSec + point.x * 3);
+      return { radiusScale: 1, alphaBoost: profile.amount * wave };
+    }
+    case 'wave': {
+      const longitude = Math.atan2(point.z, point.x);
+      const wave = Math.sin(longitude * 3 - 2 * Math.PI * profile.hz * timeSec);
+      return { radiusScale: 1 + profile.amount * waveEnvelopeValue * wave, alphaBoost: 0 };
+    }
+    default:
+      return { radiusScale: 1, alphaBoost: 0 };
+  }
+}
+
+// Rotação em x/y/z, projeção perspectiva e ordenação de trás para frente
+// (Escopo 6) — jitter angular do perfil `error` soma-se à rotação (yaw), não
+// desloca pontos individualmente.
+function projectPresencePoints(profile, reduced, now, elapsedSinceEnterMs, deltaMs) {
+  if (!reduced) {
+    presenceRotation += profile.rotationSpeed * (deltaMs / 1000);
+    convergePointer(deltaMs);
+  }
+  updateWaveEnvelope(now, presenceCoreEl.dataset.state === 'speaking');
+
+  let yawJitter = 0;
+  if (!reduced && profile.kind === 'jitter') {
+    const jitterRad = (profile.amount * Math.PI) / 180;
+    yawJitter = jitterRad * Math.sin(2 * Math.PI * profile.hz * (now / 1000));
+  }
+
+  const timeSec = now / 1000;
+  const totalYaw = presenceRotation + (reduced ? 0 : pointerYaw + yawJitter);
+  const pitch = reduced ? 0 : pointerPitch;
+  const cosYaw = Math.cos(totalYaw);
+  const sinYaw = Math.sin(totalYaw);
+  const cosPitch = Math.cos(pitch);
+  const sinPitch = Math.sin(pitch);
+
+  const projected = [];
+  for (const point of PRESENCE_POINTS) {
+    const { radiusScale, alphaBoost } = reduced
+      ? { radiusScale: 1, alphaBoost: 0 }
+      : computePresenceDeformation(point, profile, timeSec, elapsedSinceEnterMs);
+    const rx = point.x * radiusScale;
+    const ry = point.y * radiusScale;
+    const rz = point.z * radiusScale;
+
+    const x1 = rx * cosYaw + rz * sinYaw;
+    const z1 = -rx * sinYaw + rz * cosYaw;
+    const y2 = ry * cosPitch - z1 * sinPitch;
+    const z2 = ry * sinPitch + z1 * cosPitch;
+
+    projected.push({ x: x1, y: y2, z: z2, alphaBoost });
+  }
+
+  // Ordenação de trás para frente: ponto frontal (maior `z`) desenhado por
+  // último — maior e mais opaco que seu par traseiro (CA17).
+  projected.sort((a, b) => a.z - b.z);
+  return projected;
+}
+
+// Somente partículas circulares preenchidas e glow difuso — nunca `lineTo`,
+// `stroke` ou paths lineares (Escopo 6/CA18): sem meridianos, grades, anéis,
+// trilhos, caudas ou órbitas.
+function drawPresenceCanvas(points, profile) {
+  const ctx = presenceCtx;
+  const backingSize = presenceCanvasEl.width || 1;
+  const half = backingSize / 2;
+  const baseRadius = half * 0.86;
+  const tokenColor = presenceTokenColor(profile.token);
+
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, backingSize, backingSize);
+
+  ctx.beginPath();
+  const gradient = ctx.createRadialGradient(half, half, 0, half, half, half);
+  gradient.addColorStop(0, presenceHexToRgba(tokenColor, 0.32));
+  gradient.addColorStop(1, presenceHexToRgba(tokenColor, 0));
+  ctx.fillStyle = gradient;
+  ctx.arc(half, half, half, 0, Math.PI * 2);
+  ctx.fill();
+
+  for (const point of points) {
+    const perspective = PRESENCE_CAMERA_DISTANCE / (PRESENCE_CAMERA_DISTANCE - point.z);
+    const screenX = half + point.x * baseRadius * perspective;
+    const screenY = half + point.y * baseRadius * perspective;
+    const depthFactor = Math.min(1, Math.max(0, (point.z + 1) / 2));
+    const size = Math.max(0.6, (backingSize / 220) * (0.55 + depthFactor * 1.15)) * perspective;
+    const alpha = Math.min(1, 0.25 + depthFactor * 0.68 + point.alphaBoost);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = tokenColor;
+    ctx.beginPath();
+    ctx.arc(screenX, screenY, Math.max(0.4, size), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function renderPresenceGeometry(now) {
+  if (presenceCtx === null) {
+    return;
+  }
+  const state = presenceCoreEl.dataset.state || 'ready';
+  const profile = PRESENCE_PROFILES[state] || PRESENCE_PROFILES.ready;
+  trackPresenceStateEntry(state, now);
+  const elapsedSinceEnter = now - (presenceStateEnteredAt ?? now);
+  const deltaMs = presenceLastFrameTime === null ? 0 : Math.max(0, now - presenceLastFrameTime);
+  presenceLastFrameTime = now;
+
+  const reduced = presenceReducedMotion();
+  const points = projectPresencePoints(profile, reduced, now, elapsedSinceEnter, deltaMs);
+  drawPresenceCanvas(points, profile);
+}
+
+function presenceFrameStep() {
+  // Fonte de tempo única (`Date.now()`, não o timestamp nativo do `rAF`) —
+  // consistente entre o loop contínuo e o frame estático de reduced motion
+  // (ambos chamam `presenceNow()`), evitando um salto de época ao alternar.
+  renderPresenceGeometry(presenceNow());
+  presenceAnimationHandle = window.requestAnimationFrame(presenceFrameStep);
+}
+
+// Única instância de `requestAnimationFrame` (Escopo 8/CA22) — iniciada uma
+// vez; mudança de estado nunca cria loops paralelos.
+function startPresenceLoop() {
+  if (presenceAnimationHandle !== null) {
+    return;
+  }
+  presenceAnimationHandle = window.requestAnimationFrame(presenceFrameStep);
+}
+
+function stopPresenceLoop() {
+  if (presenceAnimationHandle !== null) {
+    window.cancelAnimationFrame(presenceAnimationHandle);
+    presenceAnimationHandle = null;
+  }
+}
+
+// Ponto de entrada único chamado por `refreshPresence()`: desenha o estado
+// corrente IMEDIATAMENTE (uma mudança de estado nunca espera o próximo tick
+// do `rAF` para aparecer) e garante a cadeia contínua rodando para as
+// próximas animações. Com reduced motion ativo, cancela o loop contínuo — só
+// o frame estático imediato (por mudança de estado/resize) é desenhado.
+function renderPresenceFrame() {
+  resizePresenceCanvas();
+  if (presenceCtx === null) {
+    return;
+  }
+  const reduced = presenceReducedMotion();
+  if (reduced) {
+    stopPresenceLoop();
+  }
+  renderPresenceGeometry(presenceNow());
+  if (!reduced) {
+    startPresenceLoop();
+  }
+}
+
+window.addEventListener('resize', () => {
+  renderPresenceFrame();
+});
+
+const presenceReducedMotionMql = (() => {
+  try {
+    return typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-reduced-motion: reduce)')
+      : null;
+  } catch {
+    return null;
+  }
+})();
+if (presenceReducedMotionMql !== null) {
+  const onPresenceReducedMotionChange = () => renderPresenceFrame();
+  if (typeof presenceReducedMotionMql.addEventListener === 'function') {
+    presenceReducedMotionMql.addEventListener('change', onPresenceReducedMotionChange);
+  } else if (typeof presenceReducedMotionMql.addListener === 'function') {
+    presenceReducedMotionMql.addListener(onPresenceReducedMotionChange);
+  }
+}
+// ---------------------------------------------------------------------------
+
 function renderStatus(snapshot) {
   const el = document.getElementById('status');
   el.textContent = [
@@ -8,6 +516,7 @@ function renderStatus(snapshot) {
     `readRoots: ${snapshot.readRoots.join(', ')}`,
     `writeRoots: ${snapshot.writeRoots.length > 0 ? snapshot.writeRoots.join(', ') : '(nenhuma)'}`,
   ].join('\n');
+  document.getElementById('presence-persona').textContent = snapshot.persona.name;
 }
 
 // Voz preferida da Persona ativa (ADR-0020(b)/D8 do SPEC-0040) — amostrada a
@@ -19,9 +528,82 @@ function loadStatus() {
     renderStatus(snapshot);
     renderPermissionLists(snapshot.readRoots, snapshot.writeRoots);
     activePersonaVoiceURI = snapshot.persona.voiceURI;
+    bootSettled = true;
+    clearGlobalAlert();
     return snapshot;
   });
 }
+
+function setupDrawer() {
+  const toggle = document.getElementById('menu-toggle');
+  const drawer = document.getElementById('panel-drawer');
+  const backdrop = document.getElementById('drawer-backdrop');
+  const close = document.getElementById('drawer-close');
+  const controls = [...document.querySelectorAll('#drawer-navigation [data-drawer-nav]')];
+
+  const closeDrawer = () => {
+    drawer.hidden = true;
+    backdrop.hidden = true;
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.focus();
+  };
+  const openDrawer = () => {
+    drawer.hidden = false;
+    backdrop.hidden = false;
+    toggle.setAttribute('aria-expanded', 'true');
+    controls[0]?.focus();
+  };
+
+  toggle.addEventListener('click', () => {
+    if (drawer.hidden) openDrawer();
+    else closeDrawer();
+  });
+  close.addEventListener('click', closeDrawer);
+  backdrop.addEventListener('click', closeDrawer);
+  document.addEventListener('keydown', (event) => {
+    if (drawer.hidden) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeDrawer();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = [
+      ...drawer.querySelectorAll(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex="0"]',
+      ),
+    ].filter((element) => !element.hidden);
+    const first = focusable[0];
+    const last = focusable.at(-1);
+    if (first === undefined || last === undefined) return;
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
+  for (const control of controls) {
+    control.addEventListener('click', () => {
+      const panelId = control.getAttribute('aria-controls');
+      const panel = panelId === null ? null : document.getElementById(panelId);
+      if (panel === null) return;
+      const opening = panel.hidden;
+      for (const other of controls) {
+        const otherPanel = document.getElementById(other.getAttribute('aria-controls'));
+        other.setAttribute('aria-expanded', 'false');
+        if (otherPanel !== null) otherPanel.hidden = true;
+      }
+      panel.hidden = !opening;
+      control.setAttribute('aria-expanded', String(opening));
+    });
+  }
+
+  return { openDrawer, closeDrawer, controls };
+}
+
+const drawer = setupDrawer();
 
 // Serialização compartilhada do painel de permissões (item 2.4 / SPEC-0038):
 // desabilitado enquanto houver um turno de chat OU um `ask` em voo — os dois
@@ -122,13 +704,12 @@ personaSelect.addEventListener('change', () => {
   personaErrorEl.textContent = '';
   window.atlas.persona
     .select(chosenId)
-    .then(() => {
-      document.getElementById('chat-transcript').textContent = '';
-      appendTranscriptLine(`Persona alterada para ${chosenId} — nova conversa iniciada`);
-      return window.atlas.chat.open().then((session) => {
-        chatSession = session;
-      });
-    })
+    .then(() =>
+      reopenChatSession(
+        'session-reopened-persona',
+        `Persona alterada para ${chosenId} — nova conversa iniciada`,
+      ),
+    )
     .then(() => loadStatus())
     .then((snapshot) => {
       personaSelect.dataset.activePersonaId = snapshot.persona.id;
@@ -143,10 +724,15 @@ personaSelect.addEventListener('change', () => {
     });
 });
 
-loadStatus().then((snapshot) => {
-  personaSelect.dataset.activePersonaId = snapshot.persona.id;
-  return loadPersonaOptions(snapshot.persona.id);
-});
+loadStatus()
+  .then((snapshot) => {
+    personaSelect.dataset.activePersonaId = snapshot.persona.id;
+    return loadPersonaOptions(snapshot.persona.id);
+  })
+  .catch((error) => {
+    bootSettled = true;
+    setGlobalAlert('boot-failure', error);
+  });
 
 // Recarrega o seletor de topo + o painel de gerência (lista com
 // Editar/Apagar) a partir do estado real — usado depois de toda mutação de
@@ -174,6 +760,20 @@ let cancelNoticePending = false;
 // Round-trip `ask` de tiro único (stateless — o Core sobe e desliga a cada
 // chamada). O traço de `steps` chega já formatado (`StepLine[]`, dado
 // plano); este renderer só pinta, sem conhecer `ExecutedStep`/contratos.
+function setAskResultDisclosure(open) {
+  const toggle = document.getElementById('ask-result-toggle');
+  const result = document.getElementById('ask-result');
+  toggle.hidden = !open && result.textContent === '';
+  toggle.setAttribute('aria-expanded', String(open));
+  toggle.textContent = open ? 'Ocultar resultado' : 'Ver resultado';
+  result.hidden = !open;
+}
+
+document.getElementById('ask-result-toggle').addEventListener('click', () => {
+  const toggle = document.getElementById('ask-result-toggle');
+  setAskResultDisclosure(toggle.getAttribute('aria-expanded') !== 'true');
+});
+
 document.getElementById('ask-form').addEventListener('submit', (event) => {
   event.preventDefault();
   // SPEC-0049/D2 e D4: guarda explícita, além do atributo `disabled` de
@@ -189,7 +789,8 @@ document.getElementById('ask-form').addEventListener('submit', (event) => {
     return;
   }
   const resultEl = document.getElementById('ask-result');
-  resultEl.textContent = 'Perguntando…';
+  resultEl.textContent = 'Processando…';
+  setAskResultDisclosure(true);
   askInFlight = true;
   refreshPermissionsPanelState();
   window.atlas
@@ -277,6 +878,63 @@ let chatSession = null;
 // `null`/no-op fora do modo hands-free. Nunca vive em `createSpeechOutputGlue`
 // (réplica vigiada) nem em `speech-output.ts` (diff vazio, D16/D20).
 let handsFreeUtteranceObserver = null;
+let speechFailureObserver = null;
+
+// SPEC-0053 (Escopo 7): sinal de início real do backend do SO — só o evento
+// nativo `start` da tentativa corrente ativa `playbackActive`. `null` fora de
+// uma tentativa de playback gerenciada por `speakText` (ex.: "Testar voz",
+// que fala direto por `synth.speak`, nunca alimenta o núcleo).
+let playbackStartObserver = null;
+
+// Token de identidade da tentativa corrente de playback (Escopo 7): eventos
+// de uma tentativa substituída por uma nova (`speakText` chamado de novo
+// antes da anterior assentar) são ignorados, nunca sobrescrevem o estado
+// visual da tentativa nova.
+let presencePlaybackAttempt = 0;
+
+function isCurrentPlaybackAttempt(token) {
+  return token === presencePlaybackAttempt;
+}
+
+// Solicitar fala aceita marca somente `playbackPending` — nunca `speaking`
+// por clique, resolução de IPC, `audio.play()` resolvido, criação do
+// utterance ou `canplay`.
+function beginPlaybackAttempt() {
+  presencePlaybackAttempt += 1;
+  playbackPending = true;
+  playbackActive = false;
+  refreshPresence();
+  return presencePlaybackAttempt;
+}
+
+function activatePlayback(token) {
+  if (!isCurrentPlaybackAttempt(token)) {
+    return;
+  }
+  playbackPending = false;
+  playbackActive = true;
+  refreshPresence();
+}
+
+// Falha Piper (antes OU depois de `playing`) volta a `playbackPending` — a
+// sequência visual só reativa `speaking` se o fallback do SO emitir `start`.
+function revertToPending(token) {
+  if (!isCurrentPlaybackAttempt(token)) {
+    return;
+  }
+  playbackActive = false;
+  playbackPending = true;
+  refreshPresence();
+}
+
+function endPlaybackAttempt(token) {
+  if (!isCurrentPlaybackAttempt(token)) {
+    return;
+  }
+  playbackPending = false;
+  playbackActive = false;
+  refreshPresence();
+}
 
 const synth = {
   speak(spec) {
@@ -290,20 +948,37 @@ const synth = {
       // R3 (SPEC-0052): nenhum utterance é criado — o observador pendente
       // (se houver) é resolvido AQUI, senão o modo hands-free ficaria preso
       // em `speaking` até o watchdog (mínimo de 8s de microfone fechado).
+      playbackStartObserver = null;
       if (handsFreeUtteranceObserver !== null) {
         const observer = handsFreeUtteranceObserver;
         handsFreeUtteranceObserver = null;
         observer();
       }
+      speechFailureObserver = null;
       return;
     }
     const utterance = new SpeechSynthesisUtterance(spec.text);
     utterance.voice = voice;
+    // SPEC-0053 (Escopo 7): só o evento nativo `start` da tentativa corrente
+    // ativa `playbackActive` — nunca a criação do utterance nem `speak()`.
+    if (playbackStartObserver !== null) {
+      const startObserver = playbackStartObserver;
+      playbackStartObserver = null;
+      utterance.addEventListener('start', startObserver);
+    }
     if (handsFreeUtteranceObserver !== null) {
       const observer = handsFreeUtteranceObserver;
       handsFreeUtteranceObserver = null;
       utterance.addEventListener('end', observer);
-      utterance.addEventListener('error', observer);
+      utterance.addEventListener('error', () => {
+        const failure = speechFailureObserver;
+        speechFailureObserver = null;
+        if (failure !== null) failure();
+        observer();
+      });
+      utterance.addEventListener('end', () => {
+        speechFailureObserver = null;
+      });
     }
     window.speechSynthesis.speak(utterance);
   },
@@ -559,25 +1234,41 @@ function currentVoiceBackend() {
 // `onDone` (SPEC-0052/D16) — opcional, chamado exatamente uma vez em `ended`
 // ou `error`; ausente para os chamadores que não precisam saber o fim (botão
 // "Testar voz").
-function playPiperAudio(audio, onDone) {
+function playPiperAudio(audio, onDone, onFailure, onPlaying) {
   const done = onDone || (() => {});
   try {
     const blob = new Blob([audio.wav], { type: 'audio/wav' });
     const url = URL.createObjectURL(blob);
     const player = new Audio(url);
     const revoke = () => URL.revokeObjectURL(url);
+    // SPEC-0053 (Escopo 7): só o evento nativo `playing` da tentativa
+    // corrente ativa `playbackActive` — nunca `audio.play()` resolvido nem a
+    // criação do `<audio>`.
+    if (onPlaying !== undefined) {
+      player.addEventListener('playing', () => {
+        onPlaying();
+      });
+    }
     player.addEventListener('ended', () => {
       revoke();
       done();
     });
     player.addEventListener('error', () => {
       revoke();
-      done();
+      if (onFailure !== undefined) {
+        onFailure();
+      } else {
+        done();
+      }
     });
     void player.play();
   } catch {
     // fail-safe: nunca propaga
-    done();
+    if (onFailure !== undefined) {
+      onFailure();
+    } else {
+      done();
+    }
   }
 }
 
@@ -598,6 +1289,10 @@ function speakText(text, onDone) {
   const done = onDone || (() => {});
   let settled = false;
   let watchdogTimer;
+  // SPEC-0053 (Escopo 7): sinais visuais locais compartilhados por playback
+  // manual e hands-free — só eventos nativos reais os movem, nunca o
+  // pedido/criação/resolução de IPC.
+  const token = beginPlaybackAttempt();
   const finish = () => {
     if (settled) {
       return;
@@ -606,6 +1301,7 @@ function speakText(text, onDone) {
     if (watchdogTimer !== undefined) {
       clearTimeout(watchdogTimer);
     }
+    endPlaybackAttempt(token);
     done();
   };
   if (onDone !== undefined) {
@@ -613,6 +1309,33 @@ function speakText(text, onDone) {
   }
 
   const backend = currentVoiceBackend();
+  const speakWithLocalFallback = () => {
+    if (!speechOutput.isAvailable()) {
+      finish();
+      return;
+    }
+    speechFailureObserver = () => {
+      setGlobalAlert('voice-failure', new Error('A reprodução de voz falhou.'));
+    };
+    handsFreeUtteranceObserver = finish;
+    playbackStartObserver = () => activatePlayback(token);
+    speechOutput.speak(text);
+    if (handsFreeUtteranceObserver !== null) {
+      // Sem utterance local real: indisponibilidade esperada, nunca erro global.
+      handsFreeUtteranceObserver = null;
+      playbackStartObserver = null;
+      speechFailureObserver = null;
+      finish();
+    }
+  };
+  const recoverFromPiperFailure = () => {
+    // A conclusão pertence ao fallback: encerrar antes dele reabre o microfone
+    // hands-free e remove o estado visual de fala prematuramente. Volta a
+    // `playbackPending` (nunca `speaking`) antes do fallback — a sequência
+    // visual só reativa `speaking` se o fallback do SO emitir `start`.
+    revertToPending(token);
+    speakWithLocalFallback();
+  };
   if (backend.backend === 'none') {
     finish();
     return;
@@ -622,35 +1345,18 @@ function speakText(text, onDone) {
       .speak(text, backend.voiceURI)
       .then((audio) => {
         if (audio === undefined) {
-          handsFreeUtteranceObserver = finish;
-          speechOutput.speak(text);
-          if (handsFreeUtteranceObserver !== null) {
-            // Nenhum utterance foi criado (createSpeechOutputGlue.speak fez
-            // no-op) — o observador nunca seria consumido: resolve aqui.
-            handsFreeUtteranceObserver = null;
-            finish();
-          }
+          speakWithLocalFallback();
           return;
         }
-        playPiperAudio(audio, finish);
+        playPiperAudio(audio, finish, recoverFromPiperFailure, () => activatePlayback(token));
       })
       .catch(() => {
-        handsFreeUtteranceObserver = finish;
-        speechOutput.speak(text);
-        if (handsFreeUtteranceObserver !== null) {
-          handsFreeUtteranceObserver = null;
-          finish();
-        }
+        speakWithLocalFallback();
       });
     return;
   }
   if (backend.backend === 'os') {
-    handsFreeUtteranceObserver = finish;
-    speechOutput.speak(text);
-    if (handsFreeUtteranceObserver !== null) {
-      handsFreeUtteranceObserver = null;
-      finish();
-    }
+    speakWithLocalFallback();
   }
 }
 
@@ -726,6 +1432,21 @@ const personaForm = document.getElementById('persona-form');
 const personaFormError = document.getElementById('persona-form-error');
 const personaVoiceSelect = document.getElementById('persona-voice-uri');
 const personaTestVoiceButton = document.getElementById('persona-test-voice');
+
+document.getElementById('persona-status-toggle').addEventListener('click', () => {
+  const toggle = document.getElementById('persona-status-toggle');
+  const status = document.getElementById('status');
+  const open = status.hidden;
+  status.hidden = !open;
+  toggle.setAttribute('aria-expanded', String(open));
+});
+
+function setPersonaFormDisclosure(open, invoker) {
+  personaForm.hidden = !open;
+  document.querySelectorAll('[aria-controls="persona-form"]').forEach((control) => {
+    control.setAttribute('aria-expanded', String(open && control === invoker));
+  });
+}
 
 // Resíduo (1) da SPEC-0043 (Decisão D2): `voiceURI` persistida que o modo
 // corrente não pode oferecer AGORA por razão ambiental, mas que a política
@@ -919,7 +1640,7 @@ function openPersonaForm(detail) {
   // ainda não ajustado ao desfecho — reavalia agora, com a seleção final.
   refreshTestVoiceButton();
 
-  personaForm.hidden = false;
+  setPersonaFormDisclosure(true, document.activeElement);
 }
 
 document.getElementById('persona-new').addEventListener('click', () => {
@@ -927,7 +1648,7 @@ document.getElementById('persona-new').addEventListener('click', () => {
 });
 
 document.getElementById('persona-form-cancel').addEventListener('click', () => {
-  personaForm.hidden = true;
+  setPersonaFormDisclosure(false);
   // Critério 11: retainedVoiceURI nunca vaza de uma Persona para outra.
   retainedVoiceURI = undefined;
 });
@@ -962,7 +1683,7 @@ personaForm.addEventListener('submit', (event) => {
 
   Promise.resolve(action)
     .then((result) => {
-      personaForm.hidden = true;
+      setPersonaFormDisclosure(false);
       // Critério 11: submit com sucesso limpa retainedVoiceURI — nunca vaza
       // de uma Persona para outra.
       retainedVoiceURI = undefined;
@@ -972,11 +1693,10 @@ personaForm.addEventListener('submit', (event) => {
         // edição sob identidade superada — a sessão corrente já foi
         // encerrada pelo bridge; o renderer limpa o transcript, avisa e
         // reabre a conversa.
-        document.getElementById('chat-transcript').textContent = '';
-        appendTranscriptLine('Persona atualizada — nova conversa iniciada');
-        return window.atlas.chat.open().then((session) => {
-          chatSession = session;
-        });
+        return reopenChatSession(
+          'session-reopened-persona',
+          'Persona atualizada — nova conversa iniciada',
+        );
       }
       return undefined;
     })
@@ -1021,6 +1741,8 @@ function renderPersonaList(options) {
       const editButton = document.createElement('button');
       editButton.type = 'button';
       editButton.textContent = 'Editar';
+      editButton.setAttribute('aria-controls', 'persona-form');
+      editButton.setAttribute('aria-expanded', 'false');
       editButton.addEventListener('click', () => openPersonaFormForEdit(option.id));
       const deleteButton = document.createElement('button');
       deleteButton.type = 'button';
@@ -1059,50 +1781,190 @@ populatePersonaVoiceSelect();
 loadPiperVoices();
 loadPersonaList();
 
-function appendTranscriptLine(text) {
-  const transcript = document.getElementById('chat-transcript');
-  const line = document.createElement('pre');
-  line.textContent = text;
-  transcript.appendChild(line);
+function timelineAtEnd(transcript) {
+  return transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight <= 48;
 }
 
-function appendReply(text) {
+function refreshNewActivity() {
+  const button = document.getElementById('new-activity');
+  button.hidden = unseenTimelineEvents === 0;
+  button.textContent = `${unseenTimelineEvents} nova${unseenTimelineEvents === 1 ? '' : 's'} atividade`;
+}
+
+function selectTimelineEvent(event) {
+  if (selectedTimelineEvent !== null) selectedTimelineEvent.dataset.eventSelected = 'false';
+  selectedTimelineEvent = event;
+  event.dataset.eventSelected = 'true';
+  const detail = document.getElementById('timeline-detail');
+  detail.textContent = event.dataset.eventDetail;
+  detail.hidden = false;
+  detail.focus();
+}
+
+function appendTimelineEvent(type, kind, detail, summary) {
   const transcript = document.getElementById('chat-transcript');
-  const wrapper = document.createElement('div');
-  const line = document.createElement('pre');
-  line.textContent = text;
+  const atEnd = timelineAtEnd(transcript);
+  const event = document.createElement('div');
+  event.tabIndex = 0;
+  event.setAttribute('role', 'button');
+  event.className = 'timeline-event';
+  event.dataset.eventType = type;
+  event.dataset.eventKind = kind;
+  event.dataset.eventDetail = detail;
+  const kindEl = document.createElement('span');
+  kindEl.className = 'timeline-event-kind';
+  kindEl.textContent = `${type}/${kind}`;
+  const summaryEl = document.createElement('span');
+  summaryEl.className = 'timeline-event-summary';
+  summaryEl.textContent = summary;
+  event.append(kindEl, summaryEl);
+  event.addEventListener('click', () => selectTimelineEvent(event));
+  event.addEventListener('keydown', (keyboardEvent) => {
+    if (keyboardEvent.key === 'Enter' || keyboardEvent.key === ' ') selectTimelineEvent(event);
+  });
+  transcript.appendChild(event);
+  if (atEnd) {
+    transcript.scrollTop = transcript.scrollHeight;
+  } else {
+    unseenTimelineEvents += 1;
+    refreshNewActivity();
+  }
+  return event;
+}
+
+function resetTimeline() {
+  document.getElementById('chat-transcript').textContent = '';
+  const detail = document.getElementById('timeline-detail');
+  detail.textContent = '';
+  detail.hidden = true;
+  selectedTimelineEvent = null;
+  unseenTimelineEvents = 0;
+  refreshNewActivity();
+  clearCurrentReply();
+}
+
+function reopenChatSession(kind, detail) {
+  return window.atlas.chat
+    .open()
+    .then((session) => {
+      chatSession = session;
+      resetTimeline();
+      appendTimelineEvent('system', kind, detail, detail);
+      clearGlobalAlert();
+    })
+    .catch((error) => {
+      setGlobalAlert('session-failure', error);
+      throw error;
+    });
+}
+
+function clearCurrentReply() {
+  currentReplyEvent = null;
+  const reply = document.getElementById('current-reply');
+  reply.textContent = '';
+  reply.dataset.preview = '';
+  document.getElementById('show-complete-reply').hidden = true;
+}
+
+function logicalLineCount(text) {
+  return text.split(/\r\n|[\n\r]/).length;
+}
+
+function renderCurrentReply(text, event) {
+  currentReplyEvent = event;
+  const reply = document.getElementById('current-reply');
+  reply.textContent = text;
+  const short = Array.from(text).length <= 480 && logicalLineCount(text) <= 4;
+  const long = !short;
+  reply.dataset.preview = long ? 'long' : '';
+  document.getElementById('show-complete-reply').hidden = !long;
+}
+
+// SPEC-0053 (Escopo 5/CA15): abre o drawer, seleciona o painel Sessão e o
+// evento `assistant/reply` correspondente — sem chamar `window.atlas`.
+function openSessionPanel() {
+  drawer.openDrawer();
+  for (const control of drawer.controls) {
+    const panelId = control.getAttribute('aria-controls');
+    const panel = panelId === null ? null : document.getElementById(panelId);
+    const isSession = panelId === 'panel-session';
+    control.setAttribute('aria-expanded', String(isSession));
+    if (panel !== null) {
+      panel.hidden = !isSession;
+    }
+  }
+}
+
+document.getElementById('show-complete-reply').addEventListener('click', () => {
+  if (currentReplyEvent !== null) {
+    openSessionPanel();
+    selectTimelineEvent(currentReplyEvent);
+  }
+});
+
+document.getElementById('new-activity').addEventListener('click', () => {
+  const transcript = document.getElementById('chat-transcript');
+  transcript.scrollTop = transcript.scrollHeight;
+  unseenTimelineEvents = 0;
+  refreshNewActivity();
+});
+
+document.getElementById('chat-transcript').addEventListener('scroll', () => {
+  const transcript = document.getElementById('chat-transcript');
+  if (timelineAtEnd(transcript)) {
+    unseenTimelineEvents = 0;
+    refreshNewActivity();
+  }
+});
+
+function appendTurn(snapshot) {
+  for (const step of snapshot.steps) {
+    const marker = step.denialKind !== undefined ? ` [${step.denialKind}]` : '';
+    appendTimelineEvent(
+      'tool',
+      'step',
+      `🔧 ${step.tool} → ${step.outcome}${marker}`,
+      `🔧 ${step.tool} → ${step.outcome}${marker}`,
+    );
+  }
+  const replyEvent = appendTimelineEvent('assistant', 'reply', snapshot.reply, snapshot.reply);
   const speakButton = document.createElement('button');
   speakButton.type = 'button';
-  speakButton.textContent = '🔊 Ouvir';
-  speakButton.addEventListener('click', () => {
+  // SPEC-0053 (Escopo 9/CA11): rótulo de controle sem emoji.
+  speakButton.textContent = 'Ouvir';
+  speakButton.addEventListener('click', (event) => {
+    event.stopPropagation();
     refreshSpeakButton(speakButton);
     if (!speakButton.disabled) {
-      speakText(text);
+      clearGlobalAlert();
+      // `playbackPending`/`playbackActive` (Escopo 7) são geridos dentro de
+      // `speakText`, atados a eventos nativos reais — nenhum sinalizador
+      // manual aqui.
+      speakText(snapshot.reply);
     }
   });
   refreshSpeakButton(speakButton);
   pendingSpeakButtons.add(speakButton);
-  wrapper.appendChild(line);
-  wrapper.appendChild(speakButton);
-  transcript.appendChild(wrapper);
-}
-
-function appendTurn(userInput, snapshot) {
-  appendTranscriptLine(`> ${userInput}`);
-  for (const step of snapshot.steps) {
-    const marker = step.denialKind !== undefined ? ` [${step.denialKind}]` : '';
-    appendTranscriptLine(`🔧 ${step.tool} → ${step.outcome}${marker}`);
-  }
-  appendReply(snapshot.reply);
+  replyEvent.appendChild(speakButton);
+  renderCurrentReply(snapshot.reply, replyEvent);
   for (const fact of snapshot.learned) {
-    appendTranscriptLine(`💡 lembrado: ${fact}`);
+    appendTimelineEvent('memory', 'learned', `💡 lembrado: ${fact}`, `💡 lembrado: ${fact}`);
   }
 }
 
-window.atlas.chat.open().then((session) => {
-  chatSession = session;
-  appendTranscriptLine('(sessão de chat aberta)');
-});
+window.atlas.chat
+  .open()
+  .then((session) => {
+    chatSession = session;
+    appendTimelineEvent(
+      'system',
+      'session-opened',
+      '(sessão de chat aberta)',
+      '(sessão de chat aberta)',
+    );
+    clearGlobalAlert();
+  })
+  .catch((error) => setGlobalAlert('session-failure', error));
 
 // Entrada por voz (STT, item 2.3-restante / SPEC-0046): push-to-talk por
 // alternância — um clique inicia a gravação, outro a encerra (D4). Captura
@@ -1156,13 +2018,15 @@ function refreshChatControlsForMic() {
 
 function setMicStatus(text) {
   micStatusEl.textContent = text;
+  refreshPresence();
 }
 
 function refreshMicButtons() {
   const externalBusy = chatTurnInFlight || askInFlight;
   if (micState === 'unavailable') {
     micButton.disabled = true;
-    micButton.textContent = '🎤 Falar';
+    // SPEC-0053 (Escopo 9/CA11): rótulo de controle sem emoji.
+    micButton.textContent = 'Falar';
     micButton.title = micUnavailableReason;
     micCancelButton.hidden = true;
     return;
@@ -1170,11 +2034,12 @@ function refreshMicButtons() {
   micButton.title = '';
   if (micState === 'idle') {
     micButton.disabled = externalBusy;
-    micButton.textContent = '🎤 Falar';
+    // SPEC-0053 (Escopo 9/CA11): rótulo de controle sem emoji.
+    micButton.textContent = 'Falar';
     micCancelButton.hidden = true;
   } else if (micState === 'recording') {
     micButton.disabled = false;
-    micButton.textContent = '⏹ Parar gravação';
+    micButton.textContent = 'Parar gravação';
     micCancelButton.hidden = false;
     micCancelButton.disabled = false;
   } else if (micState === 'transcribing') {
@@ -1186,6 +2051,7 @@ function refreshMicButtons() {
     micCancelButton.hidden = false;
     micCancelButton.disabled = false;
   }
+  refreshPresence();
 }
 
 const STT_FAILURE_MESSAGES = {
@@ -1204,6 +2070,12 @@ const STT_FAILURE_MESSAGES = {
 // distinguível (CA33) — nunca um estado silencioso.
 function describeSttFailure(reason) {
   return STT_FAILURE_MESSAGES[reason] || 'Falha na transcrição por voz.';
+}
+
+function reportVoiceFailure(reason, detail) {
+  if (['io-failed', 'engine-failed', 'timeout'].includes(reason)) {
+    setGlobalAlert('voice-failure', new Error(detail || describeSttFailure(reason)));
+  }
 }
 
 // Converte os buffers `Float32` acumulados por `onaudioprocess` (faixa
@@ -1318,6 +2190,7 @@ async function finishRecording(reason) {
   // 'stop' ou 'limit' — em ambos os casos a gravação SEGUE para a
   // transcrição, nunca descarta o áudio em silêncio (D14).
   micState = 'transcribing';
+  clearGlobalAlert();
   setMicStatus(
     reason === 'limit' ? 'Tempo máximo de gravação atingido — transcrevendo…' : 'Transcrevendo…',
   );
@@ -1332,10 +2205,12 @@ async function finishRecording(reason) {
       setMicStatus('');
     } else {
       setMicStatus(describeSttFailure(result && result.reason));
+      reportVoiceFailure(result && result.reason);
     }
   } catch {
     // fail-safe: nunca propaga para o fluxo do chat
     setMicStatus('Falha inesperada na transcrição.');
+    setGlobalAlert('voice-failure', new Error('Falha inesperada na transcrição.'));
   } finally {
     micState = 'idle';
     refreshMicButtons();
@@ -1367,6 +2242,7 @@ async function startRecording() {
     refreshChatControlsForMic();
     return;
   }
+  clearGlobalAlert();
 
   // Rearme (R1): `begin` de novo assim que `getUserMedia` resolve — o
   // watchdog de 35s volta a contar do início REAL da captura, não da
@@ -1447,6 +2323,9 @@ document.getElementById('chat-form').addEventListener('submit', (event) => {
   if (input === '') {
     return;
   }
+  clearCurrentReply();
+  clearGlobalAlert();
+  appendTimelineEvent('user', 'message', `> ${input}`, `> ${input}`);
   const sendButton = document.getElementById('chat-send');
   inputEl.disabled = true;
   sendButton.disabled = true;
@@ -1457,6 +2336,7 @@ document.getElementById('chat-form').addEventListener('submit', (event) => {
   // O painel de permissões entra na mesma serialização (SPEC-0038): também
   // desabilitado durante um turno de chat, além de um `ask` em voo.
   chatTurnInFlight = true;
+  refreshPresence();
   // SPEC-0052/D23: gancho de início confirmado — chamado IMEDIATAMENTE após
   // marcar o turno em voo e ANTES de `window.atlas.chat.send`. `dispatchEvent`
   // é síncrono, então o modo hands-free lê a flag logo depois de despachar o
@@ -1468,17 +2348,25 @@ document.getElementById('chat-form').addEventListener('submit', (event) => {
   window.atlas.chat
     .send(chatSession, input)
     .then((snapshot) => {
-      appendTurn(input, snapshot);
+      appendTurn(snapshot);
       inputEl.value = '';
       notifyHandsFreeTurnSettled(snapshot);
     })
     .catch((error) => {
-      appendTranscriptLine(`⚠️ ${error.message ?? error}`);
-      // SPEC-0051: se a rejeição veio de um cancelamento bem-sucedido,
-      // acrescenta o aviso de transparência DEPOIS — uma única vez.
       if (cancelNoticePending) {
-        appendTranscriptLine(CANCEL_NOTICE);
+        const cancelledEvent = appendTimelineEvent(
+          'system',
+          'cancelled',
+          `⚠️ ${error.message ?? error}\n${CANCEL_NOTICE}`,
+          `⚠️ ${error.message ?? error}`,
+        );
+        const notice = document.createElement('span');
+        notice.hidden = true;
+        notice.textContent = CANCEL_NOTICE;
+        cancelledEvent.appendChild(notice);
         cancelNoticePending = false;
+      } else {
+        setGlobalAlert('chat-failure', error);
       }
       notifyHandsFreeTurnFailed(error);
     })
@@ -1492,6 +2380,7 @@ document.getElementById('chat-form').addEventListener('submit', (event) => {
       personaSelect.disabled = false;
       chatTurnInFlight = false;
       refreshPermissionsPanelState();
+      refreshPresence();
       inputEl.focus();
     });
 });
@@ -1513,31 +2402,83 @@ document.getElementById('chat-cancel').addEventListener('click', () => {
 // esquecer um por vez — round-trips stateless (`atlas.memory.list`/`forget`,
 // o Core sobe e desliga por chamada). O renderer só pinta `FactSnapshot[]`
 // plano, sem conhecer `Fact`/`packages/*`.
+function memoryTitle(text) {
+  const first = text
+    .split(/\r\n|[\n\r]/)
+    .map((line) => line.trim())
+    .find((line) => line !== '');
+  if (first === undefined) return 'Memória sem título';
+  const points = Array.from(first);
+  return points.length > 72 ? `${points.slice(0, 69).join('')}…` : first;
+}
+
 function renderMemoryList(facts) {
   const listEl = document.getElementById('memory-list');
   listEl.textContent = '';
   for (const fact of facts) {
     const item = document.createElement('li');
-    const subjectSuffix = fact.subject !== undefined ? ` — projeto: ${fact.subject}` : '';
-    const label = document.createElement('span');
-    label.textContent = `[${fact.id}] ${fact.text} (${fact.createdAt}) — origem: ${fact.source} — categoria: ${fact.category}${subjectSuffix}`;
+    const title = document.createElement('button');
+    const detail = document.createElement('pre');
+    detail.className = 'memory-detail';
+    detail.id = `memory-detail-${fact.id}`;
+    detail.hidden = true;
+    title.type = 'button';
+    title.textContent = memoryTitle(fact.text);
+    title.setAttribute('aria-controls', detail.id);
+    title.setAttribute('aria-expanded', 'false');
+    title.addEventListener('click', () => {
+      const opening = detail.hidden;
+      listEl.querySelectorAll('.memory-detail').forEach((other) => {
+        other.hidden = true;
+      });
+      listEl.querySelectorAll('[aria-controls^="memory-detail-"]').forEach((other) => {
+        other.setAttribute('aria-expanded', 'false');
+      });
+      detail.hidden = !opening;
+      title.setAttribute('aria-expanded', String(opening));
+    });
+    detail.textContent = [
+      fact.text,
+      '',
+      `id: ${fact.id}`,
+      `data: ${fact.createdAt}`,
+      `origem: ${fact.source}`,
+      `categoria: ${fact.category}`,
+      ...(fact.subject !== undefined ? [`subject: ${fact.subject}`] : []),
+    ].join('\n');
     const forgetButton = document.createElement('button');
     forgetButton.type = 'button';
     forgetButton.textContent = 'Esquecer';
     forgetButton.addEventListener('click', () => {
       forgetButton.disabled = true;
-      window.atlas.memory.forget(fact.id).finally(() => {
-        loadMemoryList();
-      });
+      window.atlas.memory
+        .forget(fact.id)
+        .then(() => loadMemoryList())
+        .catch((error) => {
+          document.getElementById('memory-error').textContent = `⚠️ ${error.message ?? error}`;
+          return loadMemoryList().finally(() => {
+            document.getElementById('memory-error').textContent = `⚠️ ${error.message ?? error}`;
+          });
+        });
     });
-    item.appendChild(label);
+    item.appendChild(title);
     item.appendChild(forgetButton);
+    item.appendChild(detail);
     listEl.appendChild(item);
   }
 }
 
 function loadMemoryList() {
-  window.atlas.memory.list().then(renderMemoryList);
+  const errorEl = document.getElementById('memory-error');
+  return window.atlas.memory
+    .list()
+    .then((facts) => {
+      errorEl.textContent = '';
+      renderMemoryList(facts);
+    })
+    .catch((error) => {
+      errorEl.textContent = `⚠️ ${error.message ?? error}`;
+    });
 }
 
 document.getElementById('memory-refresh').addEventListener('click', () => {
@@ -1555,6 +2496,19 @@ loadMemoryList();
 // renderer; só viram a política de verdade ao clicar em "Aplicar".
 let pendingReadRoots = [];
 let pendingWriteRoots = [];
+
+function setupRootsDisclosure(toggleId, detailId) {
+  const toggle = document.getElementById(toggleId);
+  const detail = document.getElementById(detailId);
+  toggle.addEventListener('click', () => {
+    const open = detail.hidden;
+    detail.hidden = !open;
+    toggle.setAttribute('aria-expanded', String(open));
+  });
+}
+
+setupRootsDisclosure('read-roots-toggle', 'read-roots-detail');
+setupRootsDisclosure('write-roots-toggle', 'write-roots-detail');
 
 function paintRootsList(listEl, roots, onRemove) {
   listEl.textContent = '';
@@ -1596,6 +2550,9 @@ function paintWriteRootsList() {
 function renderPermissionLists(readRoots, writeRoots) {
   pendingReadRoots = [...readRoots];
   pendingWriteRoots = [...writeRoots];
+  document.getElementById('read-roots-toggle').textContent = `Leitura (${pendingReadRoots.length})`;
+  document.getElementById('write-roots-toggle').textContent =
+    `Escrita (${pendingWriteRoots.length})`;
   paintReadRootsList();
   paintWriteRootsList();
 }
@@ -1631,11 +2588,10 @@ document.getElementById('permissions-apply').addEventListener('click', () => {
       // Sucesso: nenhum Core sobrevive à aplicação sob política superada
       // (D7) — a sessão de chat corrente já foi encerrada pelo bridge;
       // o renderer limpa o transcript, avisa e reabre a conversa.
-      document.getElementById('chat-transcript').textContent = '';
-      appendTranscriptLine('Permissões alteradas — nova conversa iniciada');
-      return window.atlas.chat.open().then((session) => {
-        chatSession = session;
-      });
+      return reopenChatSession(
+        'session-reopened-permissions',
+        'Permissões alteradas — nova conversa iniciada',
+      );
     })
     .then(() => loadStatus())
     .catch((error) => {
@@ -1855,19 +2811,19 @@ function handsFreeIndicatorText(state) {
     // `getUserMedia` abre o diálogo nativo de permissão) — o indicador
     // precisa dizer explicitamente que está esperando o SISTEMA, não travado.
     case 'arming':
-      return '⏳ Aguardando permissão do sistema…';
+      return 'Aguardando permissão do sistema…';
     case 'listening':
-      return '🎙️ Ouvindo…';
+      return 'Ouvindo…';
     case 'capturing':
-      return '🗣️ Capturando fala…';
+      return 'Capturando fala…';
     case 'transcribing':
-      return '⌛ Transcrevendo…';
+      return 'Transcrevendo…';
     case 'sending':
-      return '📤 Enviando…';
+      return 'Enviando…';
     case 'thinking':
-      return '🤔 Pensando…';
+      return 'Pensando…';
     case 'speaking':
-      return '🔊 Falando…';
+      return 'Falando…';
     default:
       return '';
   }
@@ -1875,6 +2831,11 @@ function handsFreeIndicatorText(state) {
 
 function refreshHandsFreeIndicator() {
   handsFreeIndicatorEl.textContent = handsFreeIndicatorText(handsFreeState);
+  // SPEC-0053 (D6/CA13): gancho presentacional puro — o CSS colore o
+  // indicador por estado via `[data-state='…']` (CA 22), sem depender do
+  // texto pinado.
+  handsFreeIndicatorEl.dataset.state = handsFreeState;
+  refreshPresence();
 }
 
 function handsFreeVoiceOutputAvailable() {
@@ -1921,8 +2882,9 @@ function refreshHandsFreeToggle() {
   handsFreeToggleEl.disabled = busy && handsFreeState === 'off';
   handsFreeToggleEl.title =
     busy && handsFreeState === 'off' ? 'turno de chat/ask em andamento' : '';
+  // SPEC-0053 (Escopo 9/CA11): rótulo de controle sem emoji.
   handsFreeToggleEl.textContent =
-    handsFreeState === 'off' ? '🎙️ Ligar conversa contínua' : '⏹️ Desligar conversa contínua';
+    handsFreeState === 'off' ? 'Ligar conversa contínua' : 'Desligar conversa contínua';
   refreshHandsFreeIndicator();
 }
 
@@ -1975,6 +2937,7 @@ function handsFreeStartThinkingWatchdog() {
   handsFreeStopThinkingWatchdog();
   handsFreeThinkingTimer = setTimeout(() => {
     handsFreeThinkingTimer = null;
+    setGlobalAlert('voice-failure', new Error('O turno demorou demais.'));
     handsFreeDispatch('thinkingTimeout');
     setHandsFreeStatus('O turno demorou demais — modo desligado.');
   }, HF_THINKING_WATCHDOG_MS);
@@ -2025,6 +2988,7 @@ function handsFreeForceOff(reason, statusText) {
 }
 
 function handsFreeHandleOverrun() {
+  setGlobalAlert('voice-failure', new Error('O detector de voz não acompanhou o áudio.'));
   handsFreeForceOff('vadOverrun', 'O detector de voz não acompanhou o áudio — modo desligado.');
 }
 
@@ -2158,9 +3122,11 @@ async function handsFreeCloseMicAndTranscribe(triggerEvent) {
     }
     handsFreeDispatch('transcriptFailed');
     setHandsFreeStatus(describeSttFailure(result && result.reason));
+    reportVoiceFailure(result && result.reason);
   } catch {
     handsFreeDispatch('transcriptFailed');
     setHandsFreeStatus('Falha inesperada na transcrição.');
+    setGlobalAlert('voice-failure', new Error('Falha inesperada na transcrição.'));
   }
 }
 
@@ -2347,6 +3313,7 @@ async function handsFreeEnable() {
   handsFreeUtteranceChunks = [];
   handsFreeStartCaptureGraph(stream);
   handsFreeDispatch('armed'); // arming → listening
+  clearGlobalAlert();
   handsFreeStartRearmTimer();
   setHandsFreeStatus('');
 }

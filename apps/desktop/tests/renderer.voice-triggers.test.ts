@@ -48,14 +48,15 @@ function findSpeakButton(f: RendererFixture): HtmlSpeakButton {
   const buttons = [
     ...f.document.querySelectorAll('#chat-transcript button'),
   ] as unknown as HtmlSpeakButton[];
-  const speakButton = buttons.find((b) => b.textContent === '🔊 Ouvir');
+  // SPEC-0053 (Escopo 9/CA11): rótulo de controle sem emoji.
+  const speakButton = buttons.find((b) => b.textContent === 'Ouvir');
   if (speakButton === undefined) {
-    throw new Error('botão "🔊 Ouvir" não encontrado no transcript');
+    throw new Error('botão "Ouvir" não encontrado no transcript');
   }
   return speakButton;
 }
 
-describe('botão "🔊 Ouvir": sem voz nenhuma', () => {
+describe('botão "Ouvir": sem voz nenhuma', () => {
   it('fica desabilitado com title de indisponibilidade (nunca ativo-porém-mudo)', async () => {
     fixture = await loadRenderer({ osVoices: [], piperAvailable: false, piperVoices: [] });
     const f = fixture;

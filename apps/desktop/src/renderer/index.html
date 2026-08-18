@@ -6,83 +6,203 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; media-src 'self' blob:"
     />
+    <link rel="stylesheet" href="./styles.css" />
     <title>Atlas</title>
   </head>
   <body>
-    <pre id="status">Carregando…</pre>
-    <label for="persona-select">Persona:</label>
-    <select id="persona-select"></select>
-    <span id="persona-error"></span>
-    <hr />
-    <h2>Personas</h2>
-    <ul id="persona-list"></ul>
-    <button id="persona-new" type="button">Nova Persona</button>
-    <form id="persona-form" hidden>
-      <input id="persona-form-id" type="hidden" />
-      <label>Nome: <input id="persona-name" type="text" /></label>
-      <label>Tom: <input id="persona-tone" type="text" /></label>
-      <label>Formalidade: <input id="persona-formality" type="text" /></label>
-      <label>Idioma: <input id="persona-language" type="text" /></label>
-      <label>Estilo: <input id="persona-style" type="text" /></label>
-      <label
-        >Regras de comunicação (uma por linha):
-        <textarea id="persona-communication-rules"></textarea>
-      </label>
-      <label>Voz (descrição): <input id="persona-voice" type="text" /></label>
-      <label>Emoção: <input id="persona-emotion" type="text" /></label>
-      <label
-        >Voz:
-        <select id="persona-voice-uri"></select>
-      </label>
-      <span id="persona-voice-legacy"></span>
-      <button id="persona-test-voice" type="button">Testar voz</button>
-      <button id="persona-form-save" type="submit">Salvar</button>
-      <button id="persona-form-cancel" type="button">Cancelar</button>
-    </form>
-    <span id="persona-form-error"></span>
-    <hr />
-    <form id="ask-form">
-      <input id="objective" type="text" placeholder="Digite um objetivo" />
-      <button id="ask-submit" type="submit">Perguntar</button>
-      <button id="ask-cancel" type="button" hidden>Cancelar</button>
-    </form>
-    <pre id="ask-result"></pre>
-    <hr />
-    <div id="chat-transcript"></div>
-    <form id="chat-form">
-      <input id="chat-input" type="text" placeholder="Digite uma mensagem" autocomplete="off" />
-      <button id="chat-send" type="submit">Enviar</button>
-      <button id="chat-cancel" type="button" hidden>Cancelar</button>
-      <button id="mic-button" type="button">🎤 Falar</button>
-      <button id="mic-cancel-button" type="button" hidden>Cancelar</button>
-      <span id="mic-status"></span>
-    </form>
-    <hr />
-    <h2>Modo hands-free</h2>
-    <button id="hands-free-toggle" type="button">🎙️ Ligar conversa contínua</button>
-    <span id="hands-free-indicator"></span>
-    <span id="hands-free-status"></span>
-    <hr />
-    <h2>Memória</h2>
-    <button id="memory-refresh" type="button">Atualizar</button>
-    <ul id="memory-list"></ul>
-    <hr />
-    <h2>Permissões</h2>
-    <div>
-      <h3>Leitura</h3>
-      <ul id="read-roots-list"></ul>
-      <input id="read-root-input" type="text" placeholder="/caminho/absoluto" />
-      <button id="read-root-add" type="button">Adicionar</button>
+    <div class="app-shell">
+      <button id="menu-toggle" type="button" aria-controls="panel-drawer" aria-expanded="false">
+        Menu
+      </button>
+      <div id="drawer-backdrop" hidden></div>
+      <aside
+        id="panel-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Navegação e painéis do Atlas"
+        hidden
+      >
+        <button id="drawer-close" type="button">Fechar</button>
+        <nav id="drawer-navigation" aria-label="Painéis">
+          <button type="button" data-drawer-nav aria-controls="panel-persona" aria-expanded="false">
+            Persona
+          </button>
+          <button
+            type="button"
+            data-drawer-nav
+            aria-controls="panel-personas"
+            aria-expanded="false"
+          >
+            Personas
+          </button>
+          <button type="button" data-drawer-nav aria-controls="panel-memory" aria-expanded="false">
+            Memória
+          </button>
+          <button
+            type="button"
+            data-drawer-nav
+            aria-controls="panel-permissions"
+            aria-expanded="false"
+          >
+            Permissões
+          </button>
+          <button
+            type="button"
+            data-drawer-nav
+            aria-controls="panel-objective"
+            aria-expanded="false"
+          >
+            Objetivo
+          </button>
+          <button type="button" data-drawer-nav aria-controls="panel-session" aria-expanded="false">
+            Sessão
+          </button>
+        </nav>
+        <div id="drawer-panels">
+          <section id="panel-persona" data-panel hidden aria-label="Persona">
+            <label for="persona-select">Persona:</label>
+            <select id="persona-select"></select>
+            <span id="persona-error"></span>
+            <button
+              id="persona-status-toggle"
+              type="button"
+              aria-controls="status"
+              aria-expanded="false"
+            >
+              Detalhes da Persona
+            </button>
+            <pre id="status" hidden>Carregando…</pre>
+          </section>
+          <section id="panel-personas" data-panel hidden aria-label="Personas">
+            <ul id="persona-list"></ul>
+            <button
+              id="persona-new"
+              type="button"
+              aria-controls="persona-form"
+              aria-expanded="false"
+            >
+              Nova Persona
+            </button>
+            <span id="persona-form-error"></span>
+            <form id="persona-form" hidden>
+              <input id="persona-form-id" type="hidden" />
+              <label>Nome: <input id="persona-name" type="text" /></label>
+              <label>Tom: <input id="persona-tone" type="text" /></label>
+              <label>Formalidade: <input id="persona-formality" type="text" /></label>
+              <label>Idioma: <input id="persona-language" type="text" /></label>
+              <label>Estilo: <input id="persona-style" type="text" /></label>
+              <label
+                >Regras de comunicação (uma por linha):
+                <textarea id="persona-communication-rules"></textarea>
+              </label>
+              <label>Voz (descrição): <input id="persona-voice" type="text" /></label>
+              <label>Emoção: <input id="persona-emotion" type="text" /></label>
+              <label
+                >Voz:
+                <select id="persona-voice-uri"></select
+              ></label>
+              <span id="persona-voice-legacy"></span>
+              <button id="persona-test-voice" type="button">Testar voz</button>
+              <button id="persona-form-save" type="submit">Salvar</button>
+              <button id="persona-form-cancel" type="button">Cancelar</button>
+            </form>
+          </section>
+          <section id="panel-memory" data-panel hidden aria-label="Memória">
+            <button id="memory-refresh" type="button">Atualizar</button>
+            <span id="memory-error"></span>
+            <ul id="memory-list"></ul>
+          </section>
+          <section id="panel-permissions" data-panel hidden aria-label="Permissões">
+            <button
+              id="read-roots-toggle"
+              type="button"
+              aria-controls="read-roots-detail"
+              aria-expanded="false"
+            >
+              Leitura (0)
+            </button>
+            <div id="read-roots-detail" hidden>
+              <ul id="read-roots-list"></ul>
+              <input id="read-root-input" type="text" placeholder="/caminho/absoluto" />
+              <button id="read-root-add" type="button">Adicionar</button>
+            </div>
+            <button
+              id="write-roots-toggle"
+              type="button"
+              aria-controls="write-roots-detail"
+              aria-expanded="false"
+            >
+              Escrita (0)
+            </button>
+            <div id="write-roots-detail" hidden>
+              <ul id="write-roots-list"></ul>
+              <input id="write-root-input" type="text" placeholder="/caminho/absoluto" />
+              <button id="write-root-add" type="button">Adicionar</button>
+            </div>
+            <button id="permissions-apply" type="button">Aplicar</button>
+            <span id="permissions-error"></span>
+          </section>
+          <section id="panel-objective" data-panel hidden aria-label="Objetivo">
+            <form id="ask-form">
+              <input id="objective" type="text" placeholder="Digite um objetivo" />
+              <button id="ask-submit" type="submit">Perguntar</button>
+              <button id="ask-cancel" type="button" hidden>Cancelar</button>
+            </form>
+            <button
+              id="ask-result-toggle"
+              type="button"
+              aria-controls="ask-result"
+              aria-expanded="false"
+              hidden
+            >
+              Ver resultado
+            </button>
+            <pre id="ask-result" hidden></pre>
+          </section>
+          <section id="panel-session" data-panel hidden aria-label="Sessão">
+            <section id="timeline-region" class="timeline-region" aria-label="Timeline da sessão">
+              <div class="timeline-heading">
+                <span>Sessão</span>
+                <button id="new-activity" type="button" hidden>0 nova atividade</button>
+              </div>
+              <div id="chat-transcript" class="timeline-list" aria-label="Eventos da sessão"></div>
+              <pre id="timeline-detail" tabindex="-1" hidden></pre>
+            </section>
+          </section>
+        </div>
+      </aside>
+      <main class="atlas-main">
+        <section id="presence-stage" class="presence-stage" aria-label="Presença Atlas">
+          <div id="presence-core" data-state="booting" aria-live="polite">
+            <canvas id="presence-canvas" aria-hidden="true"></canvas>
+            <span id="presence-persona">Atlas</span>
+            <strong id="presence-state">Iniciando</strong>
+          </div>
+          <div id="global-alert" role="alert" hidden></div>
+          <div id="current-reply" aria-live="polite"></div>
+          <button id="show-complete-reply" type="button" hidden>Ver resposta completa</button>
+          <div class="voice-deck">
+            <button id="mic-button" type="button">Falar</button>
+            <button id="mic-cancel-button" type="button" hidden>Cancelar</button>
+            <span id="mic-status"></span>
+            <button id="hands-free-toggle" type="button">Ligar conversa contínua</button>
+            <span id="hands-free-indicator"></span>
+            <span id="hands-free-status"></span>
+          </div>
+          <form id="chat-form" class="composer">
+            <input
+              id="chat-input"
+              type="text"
+              placeholder="Digite uma mensagem"
+              autocomplete="off"
+            />
+            <button id="chat-send" type="submit">Enviar</button>
+            <button id="chat-cancel" type="button" hidden>Cancelar</button>
+          </form>
+        </section>
+      </main>
     </div>
-    <div>
-      <h3>Escrita</h3>
-      <ul id="write-roots-list"></ul>
-      <input id="write-root-input" type="text" placeholder="/caminho/absoluto" />
-      <button id="write-root-add" type="button">Adicionar</button>
-    </div>
-    <button id="permissions-apply" type="button">Aplicar</button>
-    <span id="permissions-error"></span>
-    <script src="./vendor/vad/ort.min.js"></script>
+    <script type="module" src="./vad-bootstrap.mjs"></script>
     <script src="./renderer.js"></script>
   </body>
 </html>

@@ -2,7 +2,7 @@
 
 > **Project Atlas — Estado do Trabalho Atual**
 
-Atualizado em: 2026-08-06 (SPEC-0052)
+Atualizado em: 2026-08-17 (SPEC-0053)
 
 ---
 
@@ -64,5 +64,6 @@ Objetivo: plataforma mínima operável + primeira interface executável (CLI) + 
 | [SPEC-0050](../implementation/specs/SPEC-0050-core-bridge-structural-gesture-serialization.md) | Desktop: `resolveAskSnapshot`/`sendChatTurn` no `core-bridge` passam a **ler** `hasInFlightOperation()` como guarda de entrada (não só marcar), tornando "um round-trip contra o Core por vez" estrutural no main process; `hasInFlightOperation()` passa a ter quatro consumidores nominais/cinco chamadas (`updatePersona`, `selectPermissionRoots` ×2, `resolveAskSnapshot`, `sendChatTurn`); fecha o resíduo D7 da SPEC-0049; zero diff em `packages/*`/`apps/cli`/renderer | Done |
 | [SPEC-0051](../implementation/specs/SPEC-0051-desktop-cancel-in-flight-operation.md) | Desktop: gesto de escape — botão "Cancelar" por painel (`#ask-cancel`/`#chat-cancel`) → `cancelInFlightOperation()` (síncrona, idempotente) abandona a operação em voo (`ask`/turno de chat), rejeitando a promessa na hora; `busySessions`/`inFlightOperations` viram um registro único `Set<OperationRecord>` com quatro predicados nomeados; `ConfirmPort` do chat contido **por sessão** (pegajoso), do `ask` por operação; quarentena de sessão para turno abandonado não assentado; desistência, não cancelamento real dentro do Core (dono previsto: Runtime/Task Manager, candidato com ADR); zero diff em `packages/*`/`apps/cli` | Done |
 | [SPEC-0052](../implementation/specs/SPEC-0052-desktop-hands-free-voice-conversation.md) | Desktop: modo hands-free (conversa por voz contínua) — toggle único abre o microfone entre turnos; fim de fala por Silero VAD (WASM no renderer, primeira inferência do projeto fora do main process); transcrição vai direto ao Core sem revisão pelo mesmo `submit` de `#chat-form`; resposta falada; microfone fechado durante processamento e fala; consome o [ADR-0023](../06-adr/ADR-0023-hands-free-voice-conversation.md) (novo, `Accepted`, supersede parcial do ADR-0022 — só a cláusula de auto-envio, só no modo; `ConfirmPort` intocado); sem barge-in; zero módulo/Tool/campo novo em `Persona`, zero diff em `packages/*`/`@atlas/contracts` | Done |
+| [SPEC-0053](../implementation/specs/SPEC-0053-desktop-visual-layout.md) | Desktop v3.0: núcleo holográfico volumétrico (Canvas 2D nativo, 400 pontos determinísticos, digest SHA-256 pinado, sete perfis de estado ligados a sinais reais de voz) substitui a esfera CSS-only da v2.0; navegação por drawer overlay sob demanda (seis painéis, Sessão absorve a timeline inteira), progressive disclosure e paleta roxo-realeza sem emoji substituem a sidebar/trilho/timeline permanentes reprovadas no smoke humano; substitui integralmente as direções v1.x/v2.0; smoke visual humano confirma os 15 itens `OK` (1ª confirmação real em ~20 fatias visuais consecutivas); zero IPC/contrato/dependência nova, zero diff em `packages/*`/`apps/cli`/`core-bridge.ts` | Done |
 
 Detalhes de retomada: `docs/05-context/NEXT_CONTEXT.md`.

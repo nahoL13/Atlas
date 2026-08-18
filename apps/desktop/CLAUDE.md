@@ -2,7 +2,7 @@
 
 Interface gráfica do Atlas sobre Electron ([ADR-0019](../../docs/06-adr/ADR-0019-desktop-electron-stack.md)) — equivalente desktop de `@atlas/cli`. Abre a Fase 2 do Roadmap.
 
-Este arquivo descreve o **estado atual** e as **regras em vigor**. O histórico fatia a fatia vive nas SPECs (`docs/implementation/specs/`, SPEC-0031 a 0052) e em `CLAUDE-ARCHIVE.md` (versão anterior deste arquivo, congelada — não leia no arranque).
+Este arquivo descreve o **estado atual** e as **regras em vigor**. O histórico fatia a fatia vive nas SPECs (`docs/implementation/specs/`, SPEC-0031 a 0053) e em `CLAUDE-ARCHIVE.md` (versão anterior deste arquivo, congelada — não leia no arranque).
 
 ---
 
@@ -283,21 +283,25 @@ Ao aplicar uma mudança que encerra sessões (Persona, permissões, update da Pe
 
 Desde a SPEC-0051, `#ask-cancel`/`#chat-cancel` (molde de `#mic-cancel-button`) ficam visíveis/habilitados **sse** `askInFlight`/`chatTurnInFlight`, calculados só em `refreshAskControls()`/`refreshChatControlsForMic()` (origem única, nenhum `.finally` atribui `hidden`/`disabled` direto). Ver "Gesto de escape" acima para a semântica completa (desistência × cancelamento real, contenção do `ConfirmPort`, quarentena de sessão).
 
-### Painéis
+### Layout visual v3.0 — núcleo holográfico e drawer (desde a SPEC-0053)
 
-`renderer/index.html` tem: status, seletor + CRUD de Personas, chat (transcript multi-turno com `🔧 <tool> → <outcome>`, `💡 lembrado`, botão "🔊 Ouvir" por resposta), memória (lista + Esquecer por fato), permissões (listas de leitura/escrita + Adicionar/Remover/Aplicar).
+`renderer/index.html`/`styles.css`/`renderer.js` substituíram integralmente o layout de duas colunas das versões v1.x/v2.0 (reprovado no smoke humano — ver "Pendência estrutural" abaixo). A área principal é uma única pilha central: `#presence-core` (com `#presence-canvas`, `#presence-persona`, `#presence-state`) → resposta corrente (`#current-reply`/`#show-complete-reply`) → voz → `#chat-form`. Nenhuma sidebar/trilho/timeline permanente. `#menu-toggle` (44×44 CSS px, canto superior esquerdo) abre `#panel-drawer`, um overlay `role="dialog"` com backdrop, foco contido e zero-ou-um painel visível entre os seis de `#drawer-navigation` (`data-drawer-nav`): Persona, Personas, Memória, Permissões, Objetivo, Sessão. **Sessão** é a única casa de `#timeline-region`/`#chat-transcript`/`#timeline-detail` — não existe mais timeline fora do drawer.
 
-CSP inclui `media-src 'self' blob:` (playback do Piper por `Blob`/`<audio>`, buffer completo).
+Todo painel usa *progressive disclosure* determinístico (containers começam fechados salvo ação em curso, `aria-expanded`/`aria-controls`/`hidden` sincronizados, nunca `position: absolute`/truncamento sem controle de revelar): título de Memória por regra 72/69+reticências, `#persona-status-toggle` recolhendo `#status`, `#persona-form` recolhido em Personas, `#ask-result-toggle` recolhendo `#ask-result` em Objetivo, `#read-roots-toggle`/`#write-roots-toggle` recolhendo as listas de Permissões.
+
+O núcleo é uma nuvem determinística de 400 pontos (320 Fibonacci na superfície + 80 internos por `mulberry32(0x0a71a5)`, SHA-256 pinado, sem `Math.random`) renderizada em **Canvas 2D nativo** (`#presence-canvas`, sem WebGL/lib nova), com projeção 3D, depth-sort e reação a `pointermove` (±12°). Sete perfis fecham `#presence-core[data-state]` — `ready`/`booting`/`listening`/`transcribing`/`thinking`/`speaking`/`error` — sobre a mesma origem de sinais já emitida pelas SPECs 0040/0046/0052 (nada de IPC/canal novo); `speaking` só ativa em `<audio>.playing`/`SpeechSynthesisUtterance.onstart` reais (`playbackPending`/`playbackActive`), nunca por clique/`canplay`/estado isolado do hands-free. Um único `requestAnimationFrame`; `prefers-reduced-motion: reduce` cancela o loop e desenha um frame estático por estado, preservando texto/interação. Paleta roxo-realeza (custom properties, variantes clara/escura por `prefers-color-scheme`) e nenhum emoji em rótulo/controle.
+
+CSP inclui `media-src 'self' blob:` (playback do Piper por `Blob`/`<audio>`). Zero canal IPC, contrato, dependência ou módulo novo — a fatia inteira vive no renderer; diff confinado a `apps/desktop/src/renderer/*` + `apps/desktop/tests/renderer.layout.test.ts`. Detalhe normativo completo (manifesto dos 77 IDs estáticos, tabela dos sete perfis, algoritmo exato da nuvem, contratos de disclosure por painel): [SPEC-0053](../../docs/implementation/specs/SPEC-0053-desktop-visual-layout.md).
 
 O painel de permissões mostra `config.permissions` (o que o `loadConfig` validou), **não** a política resolvida por `realpath` no `PermissionService`, que pode ser mais restritiva. A divergência erra sempre para o lado restritivo.
 
 ---
 
-## Pendência estrutural: smoke visual nunca confirmado
+## Pendência estrutural: smoke de voz/áudio real ainda não confirmado
 
-**19 fatias visuais seguidas (SPEC-0031 a 0052) foram fechadas sem confirmação visual/sonora real.** O shell de automação não tem WindowServer (`app.whenReady()` nunca resolve; `screencapture` falha por não haver display); desde a SPEC-0040, soma-se a ausência do binário Piper; desde a SPEC-0046, soma-se a ausência de microfone e do binário `whisper-cli`; desde a SPEC-0052, soma-se a ausência do runtime WASM/modelo Silero e, mais grave, **o item mais difícil de dublar**: um laço de conversa em tempo real (microfone real, VAD real, latência acumulada fala→resposta falada).
+**A pendência de layout/renderização foi fechada pela SPEC-0053**: pela primeira vez em ~20 fatias visuais consecutivas (SPEC-0031 a 0052), o smoke humano rodou de fato numa janela real, reprovou a v2.0 (sidebar/trilho/timeline permanentes, painel de Memória sobrepondo conteúdo, esfera CSS-only sem volume) apesar de gates técnicos verdes, e confirmou `OK` nos 15 itens da v3.0 (núcleo holográfico, drawer, disclosure, paleta, estados/movimento, reduced motion — tabela completa na SPEC-0053, "Registro do smoke visual humano").
 
-A cadeia de carregamento é validada programaticamente (zero erro de módulo, handlers registrados, `whenReady` sem exceção), mas **nada visual/sonoro foi verificado de fato**. Não bloqueia o fechamento documental — mas não conte como verificado. Lista item a item no Critério de Aceitação 25 da SPEC-0040, ampliada pelas SPECs 0041/0043/0046/0052. **A cobertura automatizada da SPEC-0045 não fecha esta pendência**: um DOM de teste prova lógica e fiação, não pixel nem som — as APIs de voz (saída, entrada e, desde a SPEC-0052, o modo hands-free) seguem dubladas, nenhum áudio real é exercitado. Pendente de confirmação humana: captura de microfone real, transcrição real em PT-BR, latência do modelo `small`, o diálogo nativo de permissão do macOS (inclusive o tempo de leitura que motivou o rearme do watchdog em `media-permission.ts`), a negativa do usuário nesse diálogo, eco com alto-falante aberto, a qualidade real do Silero em ambiente ruidoso, o acerto dos 3 s da janela de silêncio em uso, e o rearme da janela de captura ao longo de vários minutos de escuta contínua.
+**O que segue sem confirmação em hardware real** é o eixo de áudio: o shell de automação não tem WindowServer nem microfone, e desde a SPEC-0040/0046/0052 soma-se a ausência dos binários Piper/`whisper-cli` e do runtime WASM/modelo Silero. Continuam pendentes: transcrição real em PT-BR, latência do modelo `small`, o diálogo nativo de permissão do macOS (inclusive o rearme do watchdog em `media-permission.ts`), eco com alto-falante aberto, a qualidade real do Silero em ambiente ruidoso, o acerto dos 3 s da janela de silêncio em uso, e **o item mais difícil de dublar**: o laço de conversa em tempo real do modo hands-free ponta a ponta (microfone real, VAD real, latência acumulada fala→resposta falada). A cobertura automatizada (SPEC-0045/0047) prova lógica e fiação, não som — as APIs de voz seguem dubladas em teste. Não bloqueia fechamento documental, mas não conte como verificado.
 
 ## Candidatos futuros já nomeados
 

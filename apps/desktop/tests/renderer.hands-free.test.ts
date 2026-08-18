@@ -815,7 +815,7 @@ describe('speakText(text, onDone) — caminhos de conclusão (CA41/R3)', () => {
     expect(called).toBe(1);
   });
 
-  it('Piper: error do <audio> chama onDone exatamente uma vez', async () => {
+  it('Piper: error do <audio> aguarda o fim do fallback local antes de chamar onDone', async () => {
     const f = await open({
       piperAvailable: true,
       piperVoices: [
@@ -852,6 +852,8 @@ describe('speakText(text, onDone) — caminhos de conclusão (CA41/R3)', () => {
     });
     await f.flush();
     f.audio.fireEvent(0, 'error');
+    expect(called).toBe(0);
+    f.speechSynthesis.fireUtteranceEvent(0, 'end');
     expect(called).toBe(1);
   });
 
@@ -1018,24 +1020,39 @@ describe('rearme periódico e sua cessação (CA35)', () => {
 void SPEECH_ENTER;
 
 describe('superfície e CSP (CA20/CA21/CA22)', () => {
-  it('index.html contém os três elementos do modo e EXATAMENTE um <script src="vendor/vad/…">', async () => {
+  it('index.html contém os três elementos do modo e EXATAMENTE um <script> externo (não-inline) que leva a vendor/vad/…', async () => {
     const { readFileSync } = await import('node:fs');
     const { dirname, join } = await import('node:path');
     const { fileURLToPath } = await import('node:url');
-    const indexPath = join(
-      dirname(fileURLToPath(import.meta.url)),
-      '..',
-      'src',
-      'renderer',
-      'index.html',
-    );
+    const rendererDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'renderer');
+    const indexPath = join(rendererDir, 'index.html');
     const html = readFileSync(indexPath, 'utf8');
     expect(html).toContain('id="hands-free-toggle"');
     expect(html).toContain('id="hands-free-indicator"');
     expect(html).toContain('id="hands-free-status"');
-    const vadScriptMatches =
-      html.match(/<script[^>]*src="[^"]*vendor\/vad\/[^"]*"[^>]*><\/script>/g) ?? [];
-    expect(vadScriptMatches.length).toBe(1);
+    // O runtime onnxruntime-web@1.20.1 exige um ES module de verdade
+    // (export{...}) para embutir a cola do Emscripten sem import() dinâmico
+    // (achado ao popular vendor/vad/ pela 1ª vez — ver README.md do
+    // diretório, "Desvio observado"). O bridge para window.ort precisa ser
+    // um <script type="module" src="…"> EXTERNO: a CSP (script-src 'self',
+    // sem 'unsafe-inline') bloqueia em silêncio qualquer <script> inline,
+    // inclusive type="module" — um achado real (não hipotético: reproduziu
+    // o toggle "travando" sem nenhum erro visível).
+    const scriptTagMatches = html.match(/<script\b[^>]*>[\s\S]*?<\/script>/g) ?? [];
+    for (const tag of scriptTagMatches) {
+      expect(tag).toMatch(/\bsrc="[^"]+"/);
+    }
+    const vadBridgeSrc = scriptTagMatches
+      .map((tag) => tag.match(/\bsrc="([^"]+)"/)?.[1])
+      .filter((src): src is string => src !== undefined)
+      .find((src) => {
+        if (src.includes('vendor/vad/')) return true;
+        const resolved = readFileSync(join(rendererDir, src), 'utf8');
+        return /from\s+['"][^'"]*vendor\/vad\/[^'"]*['"]/.test(resolved);
+      });
+    expect(vadBridgeSrc).toBeDefined();
+    const bridgeContent = readFileSync(join(rendererDir, vadBridgeSrc!), 'utf8');
+    expect(bridgeContent).not.toContain('import(');
   });
 
   it("CSP é EXATAMENTE default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; media-src 'self' blob:", async () => {
