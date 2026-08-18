@@ -50,3 +50,35 @@ Contrato completo — máquina de estados, constantes pinadas, contrato do grafo
 de inferência, tabela de desfechos:
 [SPEC-0052](../../../../../docs/implementation/specs/SPEC-0052-desktop-hands-free-voice-conversation.md),
 seção *Contrato do detector, dos recursos e do laço*.
+
+## Desvio observado ao popular os recursos pela 1ª vez (2026-08-06)
+
+A distribuição "wasm-only" nomeada (`ort.wasm.min.js` do pacote npm
+`onnxruntime-web@1.20.1`) **exige `import()` dinâmico** de um `.mjs`
+companheiro (`ort-wasm-simd-threaded.mjs`) mesmo com `wasmBinary` fornecido —
+confirmado empiricamente (`ERR_MODULE_NOT_FOUND`). Isso colide com o ponto 5
+da cláusula de parada da SPEC-0052 (nenhum carregamento dinâmico de script).
+
+`ort.min.js` deste diretório é hoje o conteúdo de `ort.bundle.min.mjs` (mesmo
+pacote/versão) — embute a "cola" do Emscripten inline, sem `import()` em
+runtime; testado ponta a ponta (sessão criada, inferência real rodada contra
+`silero_vad.onnx`, formas batendo com o contrato pinado). Custo: é um ES
+Module de verdade (`export{...}`), então precisa de um `<script
+type="module">` para ser importado — e esse `<script>` **tem que ser
+externo** (`src=`), nunca inline: a CSP de `index.html` é `script-src 'self'
+'wasm-unsafe-eval'` (sem `'unsafe-inline'`), e o Chromium bloqueia em
+silêncio um `<script type="module">` inline sob essa CSP (nenhum erro
+visível — só `window.ort` nunca fica definido). Reproduzido na prática: o
+toggle "hands-free" travava sem feedback nenhum na 1ª tentativa com um
+`<script type="module">` inline. A ponte real é
+`apps/desktop/src/renderer/vad-bootstrap.mjs` (rastreado no git, fora deste
+diretório ignorado — é código autoral, não artefato binário), carregado por
+`<script type="module" src="./vad-bootstrap.mjs"></script>` em `index.html`.
+`ort-wasm.wasm` é `ort-wasm-simd-threaded.wasm` do mesmo pacote — sem par
+não-threaded disponível nesta versão do onnxruntime-web; `numThreads=1`/
+`proxy=false` (já fixados em `renderer.js`) evitam Worker/`SharedArrayBuffer`
+em runtime.
+
+**Não verificado como decisão formal** — é o registro do que foi preciso para
+sair do estado "indisponível" na prática. Pendente: levar ao `spec-drafter`
+para decidir se isso vira nota de implementação da SPEC-0052 ou exige ADR.

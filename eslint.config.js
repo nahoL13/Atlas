@@ -3,7 +3,9 @@ import tseslint from 'typescript-eslint';
 import prettierConfig from 'eslint-config-prettier';
 
 export default tseslint.config(
-  { ignores: ['**/node_modules/', '**/dist/', '**/coverage/'] },
+  {
+    ignores: ['**/node_modules/', '**/dist/', '**/coverage/', 'apps/desktop/src/renderer/vendor/'],
+  },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   prettierConfig,
@@ -20,7 +22,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['apps/desktop/src/renderer/**/*.js'],
+    files: ['apps/desktop/src/renderer/**/*.js', 'apps/desktop/src/renderer/**/*.mjs'],
     languageOptions: {
       globals: {
         window: 'readonly',

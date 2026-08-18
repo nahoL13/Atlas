@@ -4,3 +4,5 @@ dist/
 coverage/
 **/*.md
 docs/.obsidian/
+.superpowers/
+.pnpm-store/

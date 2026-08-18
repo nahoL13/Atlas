@@ -9,6 +9,11 @@ coverage/
 __pycache__/
 *.pyc
 .worktrees/
+.pnpm-store/
+
+# Estado local do skill Superpowers (brainstorming, scratch) — não é
+# documentação do Atlas nem artefato de nenhuma SPEC.
+.superpowers/
 
 # Obsidian: docs/ é vault — versiona config compartilhada (app.json, plugins),
 # ignora estado local de sessão/máquina
