@@ -11,7 +11,8 @@
   },
   "dependencies": {
     "@atlas/contracts": "workspace:*",
-    "@atlas/core": "workspace:*"
+    "@atlas/core": "workspace:*",
+    "systeminformation": "^5.27.10"
   },
   "devDependencies": {
     "@types/jsdom": "^28.0.3",

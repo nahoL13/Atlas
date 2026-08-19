@@ -9,6 +9,22 @@ import { ModelGatewayError } from '../errors.js';
 
 interface OpenAiChatResponse {
   choices?: Array<{ message?: { content?: string } }>;
+  usage?: {
+    prompt_tokens?: unknown;
+    completion_tokens?: unknown;
+    total_tokens?: unknown;
+  };
+}
+
+/**
+ * Normaliza um campo de contagem de tokens (SPEC-0054, Escopo 2): só entram
+ * números finitos e maiores ou iguais a zero, arredondados com `Math.round`.
+ */
+function toValidTokenCount(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    return undefined;
+  }
+  return Math.round(value);
 }
 
 export function createRemoteProvider(
@@ -61,7 +77,28 @@ export function createRemoteProvider(
       if (typeof text !== 'string') {
         throw new ModelGatewayError('Resposta do provedor remoto sem conteúdo de texto.');
       }
-      return { text };
+
+      // SPEC-0054/ADR-0025(b): mapeia os três campos já trazidos pela
+      // resposta OpenAI-compatible; `totalTokens` NUNCA é derivado aqui — o
+      // provedor é a autoridade do próprio total.
+      const promptTokens = toValidTokenCount(data.usage?.prompt_tokens);
+      const completionTokens = toValidTokenCount(data.usage?.completion_tokens);
+      const totalTokens = toValidTokenCount(data.usage?.total_tokens);
+      if (
+        promptTokens === undefined &&
+        completionTokens === undefined &&
+        totalTokens === undefined
+      ) {
+        return { text };
+      }
+      return {
+        text,
+        usage: {
+          ...(promptTokens !== undefined ? { promptTokens } : {}),
+          ...(completionTokens !== undefined ? { completionTokens } : {}),
+          ...(totalTokens !== undefined ? { totalTokens } : {}),
+        },
+      };
     },
   };
 }

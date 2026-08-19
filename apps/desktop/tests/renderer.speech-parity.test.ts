@@ -18,6 +18,8 @@ import * as piperTtsModule from '../src/piper-tts.js';
 import { PIPER_VOICE_PREFIX, resolveDefaultPiperVoiceURI } from '../src/piper-tts.js';
 import * as sttEngineModule from '../src/stt-engine.js';
 import * as handsFreeModule from '../src/hands-free.js';
+import * as systemMetricsModule from '../src/system-metrics.js';
+import * as tokenUsageModule from '../src/token-usage.js';
 import {
   CAPTURE_REARM_MS,
   FRAME_MS,
@@ -53,14 +55,17 @@ import { loadRenderer } from './helpers/renderer-harness.js';
 // reexportar) — o lado módulo desta entrada importa diretamente de
 // `piper-tts.js`.
 
-/** Módulos-fonte vigiados pelo gate (SPEC-0047/D1, generalizado a 4 pela SPEC-0052) — a FONTE da enumeração é o `import * as` em runtime, nunca uma lista escrita à mão dos nomes exportados. */
-type WatchedModule = 'speech-output' | 'piper-tts' | 'stt-engine' | 'hands-free';
+/** Módulos-fonte vigiados pelo gate (SPEC-0047/D1, generalizado a 4 pela SPEC-0052, a 6 pela SPEC-0054) — a FONTE da enumeração é o `import * as` em runtime, nunca uma lista escrita à mão dos nomes exportados. */
+type WatchedModule =
+  'speech-output' | 'piper-tts' | 'stt-engine' | 'hands-free' | 'system-metrics' | 'token-usage';
 
 const WATCHED_MODULES: Readonly<Record<WatchedModule, Record<string, unknown>>> = {
   'speech-output': speechOutputModule as unknown as Record<string, unknown>,
   'piper-tts': piperTtsModule as unknown as Record<string, unknown>,
   'stt-engine': sttEngineModule as unknown as Record<string, unknown>,
   'hands-free': handsFreeModule as unknown as Record<string, unknown>,
+  'system-metrics': systemMetricsModule as unknown as Record<string, unknown>,
+  'token-usage': tokenUsageModule as unknown as Record<string, unknown>,
 };
 
 const LOCAL_1: VoiceInfo = { voiceURI: 'local-1', name: 'Local Um', localService: true };
@@ -310,6 +315,18 @@ const NOT_MIRRORED: readonly NotMirroredEntry[] = [
     symbol: 'createSttEngine',
     reason:
       'invoca o subprocesso whisper-cli — roda só no main process (src/main.ts), nunca no renderer',
+  },
+  {
+    moduleSource: 'system-metrics',
+    symbol: 'createSystemMetrics',
+    reason:
+      'lê systeminformation (CPU/RAM/GPU/rede do host) — roda só no main process (src/main.ts), nunca no renderer; o renderer só formata o SystemMetricsSnapshot recebido por IPC',
+  },
+  {
+    moduleSource: 'token-usage',
+    symbol: 'createTokenUsageAccumulator',
+    reason:
+      'acumulador de estado de módulo — vive só no main process (src/core-bridge.ts), nunca no renderer; o renderer só formata o TokenUsageSnapshot recebido por IPC',
   },
 ];
 
@@ -918,10 +935,17 @@ describe('paridade: constantes pinadas de hands-free.ts', () => {
 // --- Frente 3 (SPEC-0045) / Frente 1 (SPEC-0047) / SPEC-0052: gate mecânico
 // da próxima réplica, generalizado à lista de módulos-fonte vigiados -------
 
-describe('gate mecânico da próxima réplica, generalizado a speech-output/piper-tts/stt-engine/hands-free (SPEC-0052)', () => {
-  it('a lista de módulos vigiados contém exatamente speech-output, piper-tts, stt-engine e hands-free', () => {
+describe('gate mecânico da próxima réplica, generalizado a speech-output/piper-tts/stt-engine/hands-free/system-metrics/token-usage (SPEC-0052/SPEC-0054)', () => {
+  it('a lista de módulos vigiados contém exatamente speech-output, piper-tts, stt-engine, hands-free, system-metrics e token-usage', () => {
     expect(Object.keys(WATCHED_MODULES).sort()).toEqual(
-      ['speech-output', 'piper-tts', 'stt-engine', 'hands-free'].sort(),
+      [
+        'speech-output',
+        'piper-tts',
+        'stt-engine',
+        'hands-free',
+        'system-metrics',
+        'token-usage',
+      ].sort(),
     );
   });
 

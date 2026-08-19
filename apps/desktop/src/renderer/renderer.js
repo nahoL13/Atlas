@@ -546,6 +546,9 @@ function setupDrawer() {
     backdrop.hidden = true;
     toggle.setAttribute('aria-expanded', 'false');
     toggle.focus();
+    // SPEC-0054 (Escopo 9/CA24): fechar o drawer por botão/Escape/backdrop
+    // cancela o timer do painel `Sistema`, se estiver vivo (idempotente).
+    stopSystemPanelTimer();
   };
   const openDrawer = () => {
     drawer.hidden = false;
@@ -597,6 +600,14 @@ function setupDrawer() {
       }
       panel.hidden = !opening;
       control.setAttribute('aria-expanded', String(opening));
+      // SPEC-0054 (Escopo 9/CA24): o painel `Sistema` só tem timer vivo
+      // enquanto ele PRÓPRIO estiver visível — abrir outro painel, fechar
+      // este ou reabri-lo (re)inicia/cancela o ciclo, sempre idempotente.
+      if (panelId === 'panel-system' && opening) {
+        startSystemPanelTimer();
+      } else {
+        stopSystemPanelTimer();
+      }
     });
   }
 
@@ -1893,6 +1904,9 @@ function openSessionPanel() {
       panel.hidden = !isSession;
     }
   }
+  // SPEC-0054 (Escopo 9): troca programática de painel — se `Sistema`
+  // estava aberto, seu timer cessa (mesma disciplina do clique manual).
+  stopSystemPanelTimer();
 }
 
 document.getElementById('show-complete-reply').addEventListener('click', () => {
@@ -3367,3 +3381,220 @@ function loadHandsFreeAvailability() {
 
 refreshHandsFreeToggle();
 loadHandsFreeAvailability();
+
+// ---------------------------------------------------------------------------
+// SPEC-0054 — painel `Sistema`: métricas de host (CPU/RAM/GPU/rede), consumo
+// de tokens da sessão corrente e relógio (data/dia da semana/horário).
+// Formatação inteiramente pinada (Escopo 10 da SPEC), sem `Intl`/
+// `toLocaleString` — determinística e independente do locale do SO. Lógica
+// exclusiva do renderer, sem gêmeo em TypeScript (limite (i) do gate de
+// paridade, `renderer.speech-parity.test.ts`): os módulos que ALIMENTAM este
+// painel por IPC (`system-metrics.ts`/`token-usage.ts`) entram na lista
+// vigiada só como tripwire — não há função de formatação para replicar.
+//
+// Nunca entra na serialização de gestos (Escopo 9): não marca operação em
+// voo, não é bloqueada por turno de chat/`ask`, não desabilita nada.
+
+const SYSTEM_WEEKDAY_NAMES = [
+  'domingo',
+  'segunda-feira',
+  'terça-feira',
+  'quarta-feira',
+  'quinta-feira',
+  'sexta-feira',
+  'sábado',
+];
+
+const SYSTEM_METRIC_UNAVAILABLE_TEXT = {
+  unsupported: 'Indisponível nesta plataforma',
+  'read-failed': 'Indisponível: falha de leitura',
+  timeout: 'Indisponível: leitura expirou',
+};
+
+function systemPad2(value) {
+  return String(value).padStart(2, '0');
+}
+
+function systemGroupThousands(digits) {
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
+/** Formata `value` no padrão pt-BR pinado (vírgula decimal, ponto de milhar), sem `Intl`. */
+function formatSystemFixed(value, decimals) {
+  const factor = 10 ** decimals;
+  const rounded = Math.round(value * factor) / factor;
+  const sign = rounded < 0 ? '-' : '';
+  const [intPart, fracPart = ''] = Math.abs(rounded).toFixed(decimals).split('.');
+  const grouped = systemGroupThousands(intPart);
+  return decimals > 0 ? `${sign}${grouped},${fracPart}` : `${sign}${grouped}`;
+}
+
+/** Base 1000 — unidades B/kB/MB/GB/TB; zero casas decimais em B, uma casa nas demais (Escopo 10). */
+function formatSystemBytes(bytes) {
+  const units = ['B', 'kB', 'MB', 'GB', 'TB'];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1000 && unitIndex < units.length - 1) {
+    value /= 1000;
+    unitIndex += 1;
+  }
+  const decimals = unitIndex === 0 ? 0 : 1;
+  return `${formatSystemFixed(value, decimals)} ${units[unitIndex]}`;
+}
+
+function formatSystemBytesPerSecond(bytes) {
+  return `${formatSystemBytes(bytes)}/s`;
+}
+
+function formatSystemClockDate(date) {
+  const weekday = SYSTEM_WEEKDAY_NAMES[date.getDay()];
+  return `${weekday}, ${systemPad2(date.getDate())}/${systemPad2(date.getMonth() + 1)}/${date.getFullYear()}`;
+}
+
+function formatSystemClockTime(date) {
+  return `${systemPad2(date.getHours())}:${systemPad2(date.getMinutes())}:${systemPad2(date.getSeconds())}`;
+}
+
+function formatSystemCpuLine(sample) {
+  if (!sample.available) return `CPU: ${SYSTEM_METRIC_UNAVAILABLE_TEXT[sample.reason]}`;
+  return `CPU: ${formatSystemFixed(sample.value.loadPercent, 1)} %`;
+}
+
+function formatSystemMemoryLine(sample) {
+  if (!sample.available) return `Memória: ${SYSTEM_METRIC_UNAVAILABLE_TEXT[sample.reason]}`;
+  const { usedBytes, totalBytes, usedPercent } = sample.value;
+  return `Memória: ${formatSystemBytes(usedBytes)} de ${formatSystemBytes(totalBytes)} (${formatSystemFixed(usedPercent, 1)} %)`;
+}
+
+function formatSystemGpuLine(sample) {
+  if (!sample.available) return `GPU: ${SYSTEM_METRIC_UNAVAILABLE_TEXT[sample.reason]}`;
+  return `GPU: ${formatSystemFixed(sample.value.loadPercent, 1)} %`;
+}
+
+function formatSystemNetworkLine(sample) {
+  if (!sample.available) return `Rede: ${SYSTEM_METRIC_UNAVAILABLE_TEXT[sample.reason]}`;
+  const { rxBytesPerSecond, txBytesPerSecond } = sample.value;
+  return `Rede: recebendo ${formatSystemBytesPerSecond(rxBytesPerSecond)} · enviando ${formatSystemBytesPerSecond(txBytesPerSecond)}`;
+}
+
+/** Quatro desfechos exaustivos sobre `TokenUsageSnapshot` (Escopo 10). */
+function formatSystemTokensLine(snapshot) {
+  const { promptTokens, completionTokens, totalTokens, reportedTurns, unreportedTurns } = snapshot;
+  if (reportedTurns === 0 && unreportedTurns === 0) {
+    return 'Tokens desta sessão: 0';
+  }
+  if (reportedTurns === 0 && unreportedTurns > 0) {
+    return 'Tokens desta sessão: indisponível (o provedor não reporta consumo)';
+  }
+  const base =
+    `Tokens desta sessão: ${formatSystemFixed(totalTokens, 0)} ` +
+    `(entrada ${formatSystemFixed(promptTokens, 0)} · saída ${formatSystemFixed(completionTokens, 0)})`;
+  return unreportedTurns === 0 ? base : `${base} · ${unreportedTurns} turno(s) sem relato`;
+}
+
+function renderSystemMetrics(snapshot) {
+  document.getElementById('system-cpu').textContent = formatSystemCpuLine(snapshot.cpu);
+  document.getElementById('system-memory').textContent = formatSystemMemoryLine(snapshot.memory);
+  document.getElementById('system-gpu').textContent = formatSystemGpuLine(snapshot.gpu);
+  document.getElementById('system-network').textContent = formatSystemNetworkLine(snapshot.network);
+}
+
+/** Rejeição de qualquer um dos dois `invoke` (CA27): as quatro células de host mostram o mesmo texto de falha de leitura. */
+function renderSystemMetricsUnavailable() {
+  const text = SYSTEM_METRIC_UNAVAILABLE_TEXT['read-failed'];
+  document.getElementById('system-cpu').textContent = `CPU: ${text}`;
+  document.getElementById('system-memory').textContent = `Memória: ${text}`;
+  document.getElementById('system-gpu').textContent = `GPU: ${text}`;
+  document.getElementById('system-network').textContent = `Rede: ${text}`;
+}
+
+function renderSystemTokens(snapshot) {
+  document.getElementById('system-tokens').textContent = formatSystemTokensLine(snapshot);
+}
+
+function renderSystemTokensUnavailable() {
+  document.getElementById('system-tokens').textContent =
+    `Tokens desta sessão: ${SYSTEM_METRIC_UNAVAILABLE_TEXT['read-failed']}`;
+}
+
+function updateSystemClock() {
+  const now = new Date(Date.now());
+  document.getElementById('system-clock-date').textContent = formatSystemClockDate(now);
+  document.getElementById('system-clock-time').textContent = formatSystemClockTime(now);
+}
+
+function setSystemStatus(text) {
+  document.getElementById('system-status').textContent = text;
+}
+
+let systemPanelTimerId = null;
+let systemPanelTickCount = 0;
+let systemPanelReadInFlight = false;
+let systemPanelEpoch = 0;
+
+/**
+ * Dispara `metrics.read()`/`tokens.read()` em paralelo (Escopo 9), guardado
+ * por `systemPanelReadInFlight` (sem reentrância — nenhuma chamada
+ * concorrente ao mesmo canal, CA25) e por `epoch` (descarte pós-fechamento,
+ * CA26 — mais forte que checar só "painel visível", cobre também um
+ * fechar+reabrir rápido).
+ */
+function readSystemPanelData(epoch) {
+  if (systemPanelReadInFlight) return;
+  systemPanelReadInFlight = true;
+  Promise.all([window.atlas.metrics.read(), window.atlas.tokens.read()])
+    .then(([metrics, tokens]) => {
+      systemPanelReadInFlight = false;
+      if (epoch !== systemPanelEpoch) return;
+      renderSystemMetrics(metrics);
+      renderSystemTokens(tokens);
+      setSystemStatus(`Atualizado às ${formatSystemClockTime(new Date(Date.now()))}`);
+    })
+    .catch(() => {
+      systemPanelReadInFlight = false;
+      if (epoch !== systemPanelEpoch) return;
+      renderSystemMetricsUnavailable();
+      renderSystemTokensUnavailable();
+      setSystemStatus('Falha ao ler as métricas do sistema.');
+    });
+}
+
+/**
+ * Cancela o timer do painel `Sistema`, se houver (idempotente) — chamado nos
+ * cinco gatilhos de fechamento (Escopo 9/CA24): fechar o painel, trocar de
+ * painel, fechar o drawer por botão/Escape/backdrop, e o teardown da página.
+ */
+function stopSystemPanelTimer() {
+  if (systemPanelTimerId !== null) {
+    window.clearInterval(systemPanelTimerId);
+    systemPanelTimerId = null;
+  }
+  systemPanelEpoch += 1;
+}
+
+/**
+ * Abre o ciclo de atualização do painel `Sistema` (Escopo 9): leitura IPC
+ * imediata + atualização imediata do relógio, antes do primeiro tick; um
+ * único `setInterval(1000)`; a cada dois ticks (2000ms) dispara uma leitura.
+ */
+function startSystemPanelTimer() {
+  stopSystemPanelTimer();
+  const epoch = systemPanelEpoch;
+  systemPanelTickCount = 0;
+  updateSystemClock();
+  setSystemStatus('Lendo…');
+  readSystemPanelData(epoch);
+  systemPanelTimerId = window.setInterval(() => {
+    updateSystemClock();
+    systemPanelTickCount += 1;
+    if (systemPanelTickCount % 2 === 0) {
+      readSystemPanelData(epoch);
+    }
+  }, 1000);
+}
+
+// Teardown da página (5º gatilho de CA24): nenhum timer desta fatia sobrevive
+// ao fechamento/recarregamento da janela.
+window.addEventListener('beforeunload', () => {
+  stopSystemPanelTimer();
+});

@@ -12,8 +12,20 @@ export interface GenerateRequest {
   maxTokens?: number;
 }
 
+/**
+ * Consumo de tokens de uma chamada `generate` (SPEC-0054, ADR-0025(a)): forma
+ * estruturalmente idêntica à fixada pelo ADR. Todos os campos são opcionais
+ * porque nem todo provedor reporta os três.
+ */
+export interface TokenUsage {
+  readonly promptTokens?: number;
+  readonly completionTokens?: number;
+  readonly totalTokens?: number;
+}
+
 export interface GenerateResult {
   text: string;
+  readonly usage?: TokenUsage;
 }
 
 export interface ModelGateway {

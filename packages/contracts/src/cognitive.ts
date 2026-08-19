@@ -1,4 +1,4 @@
-import type { Message } from './model.js';
+import type { Message, TokenUsage } from './model.js';
 import type { ExecutedStep } from './execution.js';
 
 export interface Conversation {
@@ -10,12 +10,16 @@ export interface ConversationTurn {
   readonly conversation: Conversation;
   readonly steps?: readonly ExecutedStep[];
   readonly learned?: readonly string[];
+  /** Soma do consumo de tokens de todas as `generate` do turno (SPEC-0054). */
+  readonly usage?: TokenUsage;
 }
 
 export interface AskResult {
   readonly text: string;
   readonly steps?: readonly ExecutedStep[];
   readonly learned?: readonly string[];
+  /** Soma do consumo de tokens de todas as `generate` do turno (SPEC-0054). */
+  readonly usage?: TokenUsage;
 }
 
 export interface CognitiveCore {

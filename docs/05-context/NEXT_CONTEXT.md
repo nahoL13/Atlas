@@ -2,7 +2,7 @@
 
 > **Project Atlas — Contexto de Retomada para a Próxima Sessão**
 
-Atualizado em: 2026-08-17 (SPEC-0053)
+Atualizado em: 2026-08-19 (SPEC-0054)
 
 Este documento responde a uma pergunta só: **o que fazer agora**. Ele é lido no arranque de toda sessão e de todo subagent, então é mantido curto por design — teto de ~8 KB.
 
@@ -17,15 +17,15 @@ Este documento responde a uma pergunta só: **o que fazer agora**. Ele é lido n
 
 # Estado Imediato
 
-**Fase 2 (`apps/desktop`) em andamento.** Fase 1 fechada por inteiro (todos os gates). Itens 2.1, 2.2 (1ª linha), 2.3 e 2.4 fechados; wake word (dentro do 2.3, mas explicitamente "candidato, não comprometido") segue em aberto.
+**Fase 2 (`apps/desktop`) em andamento.** Fase 1 fechada por inteiro. Itens 2.1, 2.2 (1ª linha), 2.3 e 2.4 fechados; wake word (2.3, "candidato, não comprometido") segue em aberto. *Observabilidade do Ambiente* — exceção consciente sem item prévio de Roadmap — foi entregue por inteiro pela SPEC-0054.
 
 Últimas três fatias (detalhe completo em `PLATFORM_STATE.md` e na SPEC de cada uma):
 
-- **SPEC-0053** `Done` (2026-08-17) — desktop v3.0: redirecionamento integral do layout visual (v2.0 passou nos quatro gates técnicos e ainda assim reprovou no smoke humano — sidebar/trilho/timeline permanentes, Memória sobrepondo conteúdo, esfera CSS-only sem volume). Núcleo holográfico volumétrico em **Canvas 2D nativo** (400 pontos determinísticos, sete perfis de estado ligados a sinais reais de voz), navegação por **drawer overlay** (seis painéis, Sessão absorve a timeline inteira), progressive disclosure, paleta roxo-realeza sem emoji. Smoke humano confirmou os 15 itens `OK` — 1ª confirmação real em ~20 fatias visuais consecutivas. Zero IPC/contrato/dependência nova, diff confinado ao renderer. Detalhe: `apps/desktop/CLAUDE.md` ("Layout visual v3.0").
-- **SPEC-0052** `Done` (2026-08-06) — modo hands-free (conversa por voz contínua): toggle único abre o microfone entre turnos; fim de fala por Silero VAD (WASM no renderer, **primeira inferência do projeto fora do main**); transcrição vai **direto ao Core, sem revisão**; resposta falada; microfone comprovadamente fechado ao processar/falar. Consome o [ADR-0023](../06-adr/ADR-0023-hands-free-voice-conversation.md) (novo, `Accepted`, supersede parcial do ADR-0022 — só auto-envio, só no modo; `ConfirmPort` intocado). Sem barge-in. Detalhe: `apps/desktop/CLAUDE.md` ("Voz — modo hands-free"). Zero diff em `packages/*`/`apps/cli`.
-- **SPEC-0051** `Done` (2026-08-05) — gesto de escape: botão "Cancelar" por painel → `cancelInFlightOperation()` abandona a operação em voo e rejeita a promessa na hora. `busySessions`/`inFlightOperations` viram um registro `Set<OperationRecord>` com quatro predicados nomeados. `ConfirmPort` do chat contido por sessão (pegajoso), do `ask` por operação; quarentena de sessão. **Desistência, não cancelamento real** — Core sem `AbortSignal`. Zero diff em `packages/*`/`apps/cli`.
+- **SPEC-0054** `Done` (2026-08-19) — painel `Sistema` no drawer (sétimo/último item): CPU/memória/GPU/rede do host (`system-metrics.ts`, fail-closed por métrica), tokens da sessão (`token-usage.ts`) e relógio, atualizados a cada 2 s por um único timer só com o painel visível. `TokenUsage` novo em `@atlas/contracts` (`GenerateResult`/`AskResult`/`ConversationTurn.usage?`, aditivo), preenchido pelo `@atlas/model-gateway` e somado por turno no `@atlas/cognitive`. Consome [ADR-0024](../06-adr/ADR-0024-desktop-host-resource-metrics.md)/[ADR-0025](../06-adr/ADR-0025-desktop-token-usage-accounting.md) (novos, `Accepted`). Detalhe: `apps/desktop/CLAUDE.md` ("Observabilidade do ambiente").
+- **SPEC-0053** `Done` (2026-08-17) — desktop v3.0: a v2.0 reprovou no smoke humano apesar de gates técnicos verdes; redirecionamento visual completo — núcleo holográfico em **Canvas 2D** (400 pontos determinísticos), navegação por **drawer overlay** (seis painéis, Sessão absorve a timeline), progressive disclosure, paleta roxo-realeza sem emoji. 15/15 `OK` no smoke humano — 1ª confirmação real em ~20 fatias visuais. Zero IPC/contrato/dependência nova. Detalhe: `apps/desktop/CLAUDE.md` ("Layout visual v3.0").
+- **SPEC-0052** `Done` (2026-08-06) — modo hands-free: microfone aberto entre turnos, fim de fala por Silero VAD (WASM no renderer), transcrição direto ao Core sem revisão, resposta falada, microfone fechado ao processar/falar. Consome [ADR-0023](../06-adr/ADR-0023-hands-free-voice-conversation.md) (supersede parcial do ADR-0022, só auto-envio). Sem barge-in. Zero diff em `packages/*`/`apps/cli`.
 
-Suíte atual: **1353 testes / 80 arquivos**. `lint`/`typecheck`/`test`/`format:check` verdes.
+Suíte atual: **1461 testes / 84 arquivos**. `lint`/`typecheck`/`test`/`format:check` verdes.
 
 ---
 
@@ -35,19 +35,14 @@ Suíte atual: **1353 testes / 80 arquivos**. `lint`/`typecheck`/`test`/`format:c
 
 ## Candidatos abertos
 
-- **Canal de push (`webContents.send`) avisando o renderer quando o trabalho abandonado assenta** — hoje todos os canais são `invoke`/`handle`; sem ele, painéis voltam a parecer habilitados cedo demais (SPEC-0051/D12) **e** a quarentena de sessão desliga o modo hands-free a cada tentativa (SPEC-0052) — mais atraente agora que duas fatias o pedem.
-- **Barge-in** — interromper a fala do assistente falando por cima; candidato nomeado pelo ADR-0023, exige microfone aberto durante o TTS + cancelamento de eco.
-- **Fallback de limiar de energia** para o VAD, atrás da porta `VoiceActivityDetector` (D8 da SPEC-0052) — só cogitável se o Silero se mostrar insuficiente em uso real.
-- **Wake word / ativação por voz.** Único candidato direto restante da Fase 2 (item 2.3, reserva reafirmada pelo ADR-0022/0023). **Exige decisão humana + ADR novo. Começar por brainstorming humano, não pelo `spec-drafter`.**
-- **Cancelamento cooperativo real no Runtime/Task Manager** (`AbortSignal`/fila/retry/timeout) — dono já atribuído pelo Module Catalog; a SPEC-0051 entregou só desistência. Atravessa `@atlas/contracts` e ≥ 3 módulos ⇒ **exige ADR + decisão humana**.
+- **Canal de push (`webContents.send`)** avisando o renderer quando o trabalho abandonado assenta — sem ele, painéis reabilitam cedo demais (SPEC-0051) e a quarentena desliga o modo hands-free a cada tentativa (SPEC-0052).
+- **Barge-in** — interromper a fala do assistente falando por cima; nomeado pelo ADR-0023, exige microfone aberto durante o TTS + cancelamento de eco.
+- **Fallback de limiar de energia** para o VAD (D8 da SPEC-0052) — só cogitável se o Silero se mostrar insuficiente em uso real.
+- **Wake word / ativação por voz.** Único candidato direto restante da Fase 2 (2.3, reserva do ADR-0022/0023). **Exige decisão humana + ADR novo, brainstorming primeiro.**
+- **Cancelamento cooperativo real no Runtime/Task Manager** (`AbortSignal`/fila/retry/timeout) — dono já atribuído pelo Module Catalog; a SPEC-0051 entregou só desistência. **Exige ADR + decisão humana.**
 - **Diálogos nativos modais com `BrowserWindow` pai** — fecharia o "diálogo fantasma" da SPEC-0051 e a corrida A7 da SPEC-0038.
 - Candidatos menores (detalhe em `apps/desktop/CLAUDE.md`, "Candidatos futuros já nomeados"): mensagem de recusa distinguindo operação abandonada de ativa · liberar a quarentena de sessão sem reabrir a app · ajuste da janela de silêncio (3 s) do modo hands-free pelo usuário · pinar `micBusy()` fora de `#ask-submit` por teste · uniformizar `selectPersona` para `hasInFlightOperation()` · ditado ao vivo/processo de longa duração para STT · catálogo multi-modelo STT.
-- **Fase 1, itens `candidato`** (não são gates, todos os gates fecharam):
-  - **Memória** — retenção/curadoria de fatos aprendidos, relações entre informações, teto por bytes (resíduo da SPEC-0030), `/lembrar` e `/esquecer` ao vivo numa sessão de chat.
-  - **Execução/permissão** — troca de ancestral em `delete_file`/`mkdir` (resíduo consciente do ADR-0014); `list_dir` sem fecho atômico (`readdir` não expõe `O_NOFOLLOW`); Windows (`O_NOFOLLOW` é POSIX); `rmdir`/remoção recursiva; flag de auto-aprovação não interativa para `confirm`; dependência de dados entre passos; Task Manager completo (fila/retry/timeout/cancelamento).
-  - **Contexto de ambiente** (cwd/repo/branch/arquivos) legível pelo Cognitive/Planner — ADR-0009 deixou fora da SPEC-0007.
-  - **Tools de desenvolvimento** além das de git somente-leitura (SPEC-0028).
-  - **Provedor nativo da Anthropic** no Model Gateway; **config por arquivo** (slot `arquivo` do [ADR-0006](../06-adr/ADR-0006-config-source-precedence.md)).
+- **Fase 1, itens `candidato`** (todos os gates já fecharam) — memória (retenção/curadoria, relações, `/lembrar`/`/esquecer` ao vivo), execução/permissão (`rmdir`, `confirm` não interativo, Task Manager completo), contexto de ambiente para o Cognitive/Planner, Tools de desenvolvimento além de git somente-leitura, provedor nativo Anthropic, config por arquivo — lista completa em [Roadmap.md](../04-engineering/Roadmap.md) (1.1–1.4).
 - **Residuais de Observação/Aprendizado**: observador semântico guiado por modelo; teto de replan configurável; gatilho heurístico para a extração.
 - **Auto-gerência do Ollama** (subir/parar processo) e **health-check de startup** (`ModelGateway.health()`).
 - **Fase 3**: distribuição/empacotamento da CLI; Event Bus / Plugin Manager.
@@ -62,8 +57,8 @@ Ponto que o hook não cobre: `scripts/hooks/spec-prompt-nudge.sh` só dispara co
 
 # Pendências Conhecidas
 
-- **TypeScript pinado em `^5`**: typescript-eslint 8.63 quebra com TS 7.0.2 (`TypeError: Cannot read properties of undefined (reading 'Cjs')` em `typescript-estree`; 7 probes falharam entre 2026-07-10 e 2026-07-14). **Encaminhamento: parar de re-probar por hábito** — vincular a um release do typescript-eslint que declare suporte a TS7.
-- **Smoke de voz/áudio real das fatias desktop pendente de confirmação humana** — a SPEC-0053 fechou a pendência de **layout/renderização** (15/15 `OK` em janela real). Segue pendente só o eixo de **áudio real** (sem WindowServer/microfone/binários Piper-`whisper-cli`-Silero no shell de automação): transcrição, latência, eco, e o item mais difícil de dublar, o laço hands-free ponta a ponta. Detalhe: `apps/desktop/CLAUDE.md`, "Pendência estrutural".
+- **TypeScript pinado em `^5`**: typescript-eslint 8.63 quebra com TS 7.0.2 (7 probes falharam entre 2026-07-10 e 2026-07-14). **Encaminhamento: parar de re-probar por hábito** — vincular a um release do typescript-eslint que declare suporte a TS7.
+- **Smoke de voz/áudio real das fatias desktop pendente de confirmação humana** — a SPEC-0053 fechou **layout/renderização** (15/15 `OK`). Segue pendente só o eixo de **áudio real** (sem WindowServer/microfone/binários Piper/`whisper-cli`/Silero no shell de automação). Detalhe: `apps/desktop/CLAUDE.md`, "Pendência estrutural".
 - **Distribuição/empacotamento da CLI**: o `bin` usa shebang `#!/usr/bin/env -S npx tsx`, que atende só dev. Mapeado na Fase 3.
 - **Plugin Manager sem seção de detalhe no ModuleCatalog** — corrigir antes da SPEC que o implementar.
 - **Vizinhas da SPEC-0016 ainda abertas**: proteção de branch/ruleset, matriz multi-OS de Node, campo `packageManager` no `package.json` raiz.
@@ -88,7 +83,7 @@ O mapa de módulos, invariantes e gatilhos de leitura vive no **`CLAUDE.md` da r
 
 Atalhos que não estão nesses dois:
 
-- **SPECs, planos e lições**: `docs/implementation/` · **ADRs**: `docs/06-adr/` (0001–0023)
+- **SPECs, planos e lições**: `docs/implementation/` · **ADRs**: `docs/06-adr/` (0001–0025)
 - **Regras de estrutura e dependência**: `docs/03-architecture/ProjectStructure.md` (v2.1, regras 1–11)
 - **Estado do sprint**: `docs/05-context/CURRENT_SPRINT.md`
 - **Custo em tokens por SPEC**: `docs/05-context/TOKEN_USAGE_LOG.md` (regenerar com `python3 scripts/claude-usage-report.py`)

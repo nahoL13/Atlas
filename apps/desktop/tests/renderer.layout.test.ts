@@ -14,9 +14,10 @@ import { loadRenderer } from './helpers/renderer-harness.js';
 // SPEC-0053 v3.0 — núcleo holográfico volumétrico e navegação por drawer.
 // Substitui integralmente a suíte v2.0 (sidebar/trilho fixo, timeline
 // inferior permanente, esfera `.core-orb`/`.core-halo`), rejeitada no smoke
-// humano. Cobre o manifesto de 77 IDs, o drawer, o progressive disclosure, a
-// Sessão/timeline, a resposta corrente, a nuvem de pontos determinística e o
-// mapa de perfis/playback do núcleo Canvas.
+// humano. Cobre o manifesto de 86 IDs (77 da v3.0 + 9 do painel `Sistema` da
+// SPEC-0054), o drawer, o progressive disclosure, a Sessão/timeline, a
+// resposta corrente, a nuvem de pontos determinística e o mapa de
+// perfis/playback do núcleo Canvas.
 
 const rendererDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'renderer');
 const html = readFileSync(join(rendererDir, 'index.html'), 'utf8');
@@ -118,6 +119,18 @@ const ORIGINAL_47_IDS = [
   'permissions-error',
 ];
 
+const SPEC_0054_IDS = [
+  'panel-system',
+  'system-clock-date',
+  'system-clock-time',
+  'system-cpu',
+  'system-memory',
+  'system-gpu',
+  'system-network',
+  'system-tokens',
+  'system-status',
+];
+
 const V3_30_IDS = [
   'menu-toggle',
   'drawer-backdrop',
@@ -152,10 +165,11 @@ const V3_30_IDS = [
 ];
 
 describe('SPEC-0053 v3.0 — estrutura, manifesto e ausência dos artefatos v2', () => {
-  it('contém exatamente a união dos 77 IDs do manifesto, sem IDs estruturais extras', () => {
+  it('contém exatamente a união dos 86 IDs do manifesto (77 + 9 da SPEC-0054), sem IDs estruturais extras', () => {
     expect(ORIGINAL_47_IDS).toHaveLength(47);
     expect(V3_30_IDS).toHaveLength(30);
-    const expected = new Set([...ORIGINAL_47_IDS, ...V3_30_IDS]);
+    expect(SPEC_0054_IDS).toHaveLength(9);
+    const expected = new Set([...ORIGINAL_47_IDS, ...V3_30_IDS, ...SPEC_0054_IDS]);
     const found = [...html.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1] as string);
     expect(new Set(found).size).toBe(found.length); // sem duplicatas
     expect(new Set(found)).toEqual(expected);
@@ -208,10 +222,10 @@ describe('SPEC-0053 v3.0 — drawer e navegação (CA4-7)', () => {
     expect(css).toMatch(/#menu-toggle[\s\S]*?min-width:\s*44px/);
   });
 
-  it('produz exatamente seis controles de navegação, na ordem do Escopo 2', async () => {
+  it('produz exatamente sete controles de navegação, na ordem fixada (SPEC-0054 acrescenta Sistema)', async () => {
     const f = await open();
     const controls = navControls(f);
-    expect(controls).toHaveLength(6);
+    expect(controls).toHaveLength(7);
     expect(controls.map((c) => c.textContent?.trim())).toEqual([
       'Persona',
       'Personas',
@@ -219,6 +233,7 @@ describe('SPEC-0053 v3.0 — drawer e navegação (CA4-7)', () => {
       'Permissões',
       'Objetivo',
       'Sessão',
+      'Sistema',
     ]);
     for (const control of controls) {
       expect(control.hasAttribute('data-drawer-nav')).toBe(true);

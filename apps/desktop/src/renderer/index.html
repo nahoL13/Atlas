@@ -57,6 +57,9 @@
           <button type="button" data-drawer-nav aria-controls="panel-session" aria-expanded="false">
             Sessão
           </button>
+          <button type="button" data-drawer-nav aria-controls="panel-system" aria-expanded="false">
+            Sistema
+          </button>
         </nav>
         <div id="drawer-panels">
           <section id="panel-persona" data-panel hidden aria-label="Persona">
@@ -168,6 +171,16 @@
               <div id="chat-transcript" class="timeline-list" aria-label="Eventos da sessão"></div>
               <pre id="timeline-detail" tabindex="-1" hidden></pre>
             </section>
+          </section>
+          <section id="panel-system" data-panel hidden aria-label="Sistema">
+            <p id="system-clock-date"></p>
+            <p id="system-clock-time"></p>
+            <p id="system-tokens"></p>
+            <p id="system-cpu"></p>
+            <p id="system-memory"></p>
+            <p id="system-gpu"></p>
+            <p id="system-network"></p>
+            <p id="system-status"></p>
           </section>
         </div>
       </aside>

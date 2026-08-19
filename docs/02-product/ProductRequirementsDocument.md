@@ -164,6 +164,18 @@ Esse aprendizado deve ocorrer de maneira controlada e revisável.
 
 ---
 
+## Observabilidade do Ambiente
+
+O sistema deve permitir que o usuário visualize o consumo de recursos do ambiente local (processamento, memória, gráfico e rede) durante o uso.
+
+O sistema deve permitir que o usuário visualize o consumo de tokens gerado pelo uso corrente da plataforma.
+
+O sistema deve permitir que o usuário visualize a data, o dia da semana e o horário correntes.
+
+Essas informações são métricas de recurso e de contexto temporal, não detalhes internos da arquitetura do Atlas — sua exibição não conflita com a Restrição de não expor a arquitetura interna durante o uso normal.
+
+---
+
 # Requisitos Não Funcionais
 
 O sistema deverá apresentar arquitetura modular.

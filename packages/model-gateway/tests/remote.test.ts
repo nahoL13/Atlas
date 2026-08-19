@@ -86,4 +86,70 @@ describe('remote provider', () => {
       gateway.generate({ messages: [{ role: 'user', content: 'x' }] }),
     ).rejects.toBeInstanceOf(ModelGatewayError);
   });
+
+  // SPEC-0054 (Escopo 2/CA2): mapeia os três campos de `usage` da resposta
+  // OpenAI-compatible; `totalTokens` NUNCA é derivado neste provider.
+  describe('usage', () => {
+    it('mapeia os três campos válidos', async () => {
+      const { deps } = stubFetch(
+        jsonResponse({
+          choices: [{ message: { content: 'oi' } }],
+          usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+        }),
+      );
+      const gateway = createRemoteProvider({ ...base }, deps);
+      const result = await gateway.generate({ messages: [{ role: 'user', content: 'oi' }] });
+      expect(result.usage).toEqual({ promptTokens: 10, completionTokens: 5, totalTokens: 15 });
+    });
+
+    it('total divergente da soma é preservado tal e qual (nunca derivado)', async () => {
+      const { deps } = stubFetch(
+        jsonResponse({
+          choices: [{ message: { content: 'oi' } }],
+          usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 999 },
+        }),
+      );
+      const gateway = createRemoteProvider({ ...base }, deps);
+      const result = await gateway.generate({ messages: [{ role: 'user', content: 'oi' }] });
+      expect(result.usage?.totalTokens).toBe(999);
+    });
+
+    it('sem usage algum, resultado sai sem a propriedade', async () => {
+      const { deps } = stubFetch(jsonResponse({ choices: [{ message: { content: 'oi' } }] }));
+      const gateway = createRemoteProvider({ ...base }, deps);
+      const result = await gateway.generate({ messages: [{ role: 'user', content: 'oi' }] });
+      expect(result.usage).toBeUndefined();
+      expect('usage' in result).toBe(false);
+    });
+
+    it.each([
+      ['null', null],
+      ['string', '10'],
+      ['NaN', Number.NaN],
+      ['Infinity', Number.POSITIVE_INFINITY],
+      ['negativo', -1],
+    ])('campo inválido (%s) é omitido individualmente', async (_label, invalid) => {
+      const { deps } = stubFetch(
+        jsonResponse({
+          choices: [{ message: { content: 'oi' } }],
+          usage: { prompt_tokens: invalid, completion_tokens: 5, total_tokens: 15 },
+        }),
+      );
+      const gateway = createRemoteProvider({ ...base }, deps);
+      const result = await gateway.generate({ messages: [{ role: 'user', content: 'oi' }] });
+      expect(result.usage).toEqual({ completionTokens: 5, totalTokens: 15 });
+    });
+
+    it('valor fracionário é arredondado com Math.round', async () => {
+      const { deps } = stubFetch(
+        jsonResponse({
+          choices: [{ message: { content: 'oi' } }],
+          usage: { prompt_tokens: 10.6, completion_tokens: 5.4 },
+        }),
+      );
+      const gateway = createRemoteProvider({ ...base }, deps);
+      const result = await gateway.generate({ messages: [{ role: 'user', content: 'oi' }] });
+      expect(result.usage).toEqual({ promptTokens: 11, completionTokens: 5 });
+    });
+  });
 });

@@ -22,6 +22,8 @@ import { formatSteps } from './steps-view.js';
 import type { StepLine } from './steps-view.js';
 import type { GrantConfirmPort } from './permission-grant-dialog.js';
 import type { PersonaDeleteConfirmPort } from './persona-delete-dialog.js';
+import { createTokenUsageAccumulator } from './token-usage.js';
+import type { TokenUsageSnapshot } from './token-usage.js';
 
 export interface PersonaOption {
   readonly id: string;
@@ -135,6 +137,20 @@ interface OperationRecord {
 }
 
 const operations = new Set<OperationRecord>();
+
+/**
+ * Acumulador único de consumo de tokens da sessão corrente (SPEC-0054,
+ * Decisão D8): um contador só de módulo, no mesmo molde da seleção de
+ * Persona/permissões — não um por `SessionId` (o `ask` é stateless e não tem
+ * sessão à qual pertencer). Somado em `resolveAskSnapshot`/`sendChatTurn`,
+ * resetado em `openChatSession` bem-sucedida e por `__resetBridgeStateForTests`.
+ */
+const tokenUsage = createTokenUsageAccumulator();
+
+/** Leitura síncrona do consumo acumulado — nunca sobe o Core (SPEC-0054). */
+export function readTokenUsage(): TokenUsageSnapshot {
+  return tokenUsage.snapshot();
+}
 
 /**
  * Seleção de permissões em runtime (SPEC-0038, Decisão D2): estado de módulo
@@ -429,6 +445,7 @@ export function __resetBridgeStateForTests(): void {
   selectedPersona = undefined;
   selectedPermissions = undefined;
   operations.clear();
+  tokenUsage.reset();
 }
 
 /**
@@ -721,6 +738,10 @@ export async function resolveAskSnapshot(
       );
       try {
         const result = await atlas.cognitive.ask(objective);
+        // SPEC-0054 (Escopo 6): o consumo de tokens É contabilizado mesmo
+        // para trabalho abandonado — o gasto já ocorreu de fato (D9); só os
+        // efeitos de domínio (abaixo) continuam descartados.
+        tokenUsage.add(result.usage);
         // Contenção (D9): resultado do trabalho ABANDONADO é descartado por
         // inteiro — nenhum `remember` é chamado. A promessa devolvida ao
         // chamador já assentou por abandono; este valor nunca é observado.
@@ -822,6 +843,10 @@ export async function openChatSession(
     const session = atlas.context.openSession(atlas.cognitive.startConversation());
     sessionBox.current = session;
     chatSessions.set(session, { atlas });
+    // SPEC-0054 (Escopo 6): sessão nova de chat reseta o consumo de tokens
+    // acumulado — mesmo evento que já zera outros estados transitórios
+    // desta sessão (ADR-0025(c)).
+    tokenUsage.reset();
     return session;
   } finally {
     operations.delete(record);
@@ -886,6 +911,10 @@ export async function sendChatTurn(session: SessionId, input: string): Promise<T
   const work = (async (): Promise<TurnSnapshot> => {
     try {
       const turn = await atlas.cognitive.respond(atlas.context.getConversation(session), input);
+      // SPEC-0054 (Escopo 6): o consumo de tokens É contabilizado mesmo para
+      // trabalho abandonado — o gasto já ocorreu de fato (D9); só os efeitos
+      // de domínio (abaixo) continuam descartados.
+      tokenUsage.add(turn.usage);
       // Contenção (D9): resultado do trabalho ABANDONADO é descartado por
       // inteiro — nem `updateConversation` nem `remember` são chamados. A
       // conversa da sessão fica exatamente como estava antes deste turno.

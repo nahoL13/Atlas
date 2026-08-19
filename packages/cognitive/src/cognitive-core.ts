@@ -11,6 +11,7 @@ import type {
   Runtime,
   Skill,
   SkillDescriptor,
+  TokenUsage,
 } from '@atlas/contracts';
 import { createPlanner } from './planner.js';
 import { observe } from './observer.js';
@@ -139,6 +140,48 @@ interface PlanCycleResult {
   execution?: ExecutionResult;
   composedText?: string;
   learned: readonly string[];
+  usage?: TokenUsage;
+}
+
+/** Normaliza um campo de `TokenUsage` (SPEC-0054, Escopo 3): só números finitos ≥ 0. */
+function isValidTokenCount(value: number | undefined): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
+/**
+ * Soma o `usage` de todas as chamadas `generate` de um turno (SPEC-0054,
+ * Escopo 3): cada campo é somado INDEPENDENTEMENTE entre as chamadas, e
+ * permanece definido no resultado se e somente se ao menos uma chamada o
+ * reportou como número finito ≥ 0. Nenhuma derivação de `totalTokens` a
+ * partir dos outros dois acontece aqui — só o dado que cada `generate`
+ * reportou é somado.
+ */
+function sumUsage(usages: readonly (TokenUsage | undefined)[]): TokenUsage | undefined {
+  let promptTokens: number | undefined;
+  let completionTokens: number | undefined;
+  let totalTokens: number | undefined;
+  for (const usage of usages) {
+    if (usage === undefined) {
+      continue;
+    }
+    if (isValidTokenCount(usage.promptTokens)) {
+      promptTokens = (promptTokens ?? 0) + usage.promptTokens;
+    }
+    if (isValidTokenCount(usage.completionTokens)) {
+      completionTokens = (completionTokens ?? 0) + usage.completionTokens;
+    }
+    if (isValidTokenCount(usage.totalTokens)) {
+      totalTokens = (totalTokens ?? 0) + usage.totalTokens;
+    }
+  }
+  if (promptTokens === undefined && completionTokens === undefined && totalTokens === undefined) {
+    return undefined;
+  }
+  return {
+    ...(promptTokens !== undefined ? { promptTokens } : {}),
+    ...(completionTokens !== undefined ? { completionTokens } : {}),
+    ...(totalTokens !== undefined ? { totalTokens } : {}),
+  };
 }
 
 export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
@@ -167,12 +210,20 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
    * quebra o turno: qualquer erro do gateway ou saída inválida resolve em
    * lista vazia.
    */
-  async function extractLearned(messages: Message[]): Promise<readonly string[]> {
+  async function extractLearned(
+    messages: Message[],
+  ): Promise<{ learned: readonly string[]; usage?: TokenUsage }> {
     try {
       const result = await gateway.generate({ messages });
-      return learner.parse(result.text);
+      // SPEC-0054: falha do gateway/parse contribui com ZERO chamadas
+      // contabilizadas para a soma do turno — o `catch` abaixo nunca chega
+      // a acrescentar `usage`.
+      return {
+        learned: learner.parse(result.text),
+        ...(result.usage !== undefined ? { usage: result.usage } : {}),
+      };
     } catch {
-      return [];
+      return { learned: [] };
     }
   }
 
@@ -196,10 +247,21 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
   ): Promise<PlanCycleResult> {
     let messages = [...firstMessages];
     const first = await gateway.generate({ messages });
+    // SPEC-0054 (Escopo 3): acumula o `usage` de TODAS as chamadas
+    // `generate` do turno (planejamento, cada replanejamento, composição e
+    // extração) — somado ao final via `sumUsage`, campo a campo.
+    const usages: (TokenUsage | undefined)[] = [first.usage];
     const plan = planner.parse(first.text);
     if (plan === null) {
-      const learned = await extractLearned(buildLearnMessages(first.text));
-      return { firstText: first.text, plan: null, learned };
+      const extraction = await extractLearned(buildLearnMessages(first.text));
+      usages.push(extraction.usage);
+      const usage = sumUsage(usages);
+      return {
+        firstText: first.text,
+        plan: null,
+        learned: extraction.learned,
+        ...(usage !== undefined ? { usage } : {}),
+      };
     }
 
     let activeSkillId = plan.skillId;
@@ -224,6 +286,7 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
         },
       ];
       const replanResult = await gateway.generate({ messages });
+      usages.push(replanResult.usage);
       planText = replanResult.text;
       const replanPlan = planner.parse(replanResult.text);
       if (replanPlan === null) {
@@ -245,13 +308,17 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
     const composed = await gateway.generate({
       messages: buildComposeMessages(resultsSummary, resolvedSkill?.instructions),
     });
-    const learned = await extractLearned(buildLearnMessages(composed.text));
+    usages.push(composed.usage);
+    const extraction = await extractLearned(buildLearnMessages(composed.text));
+    usages.push(extraction.usage);
+    const usage = sumUsage(usages);
     return {
       firstText: first.text,
       plan,
       execution: { steps: allSteps },
       composedText: composed.text,
-      learned,
+      learned: extraction.learned,
+      ...(usage !== undefined ? { usage } : {}),
     };
   }
 
@@ -293,10 +360,11 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
       );
 
       const learned = cycle.learned.length > 0 ? { learned: cycle.learned } : {};
+      const usage = cycle.usage !== undefined ? { usage: cycle.usage } : {};
       if (cycle.plan === null) {
-        return { text: cycle.firstText, ...learned };
+        return { text: cycle.firstText, ...learned, ...usage };
       }
-      return { text: cycle.composedText!, steps: cycle.execution!.steps, ...learned };
+      return { text: cycle.composedText!, steps: cycle.execution!.steps, ...learned, ...usage };
     },
 
     startConversation(): Conversation {
@@ -358,9 +426,10 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
       );
 
       const learned = cycle.learned.length > 0 ? { learned: cycle.learned } : {};
+      const usage = cycle.usage !== undefined ? { usage: cycle.usage } : {};
       if (cycle.plan === null) {
         const messages: Message[] = [...withUser, { role: 'assistant', content: cycle.firstText }];
-        return { reply: cycle.firstText, conversation: { messages }, ...learned };
+        return { reply: cycle.firstText, conversation: { messages }, ...learned, ...usage };
       }
 
       const steps = cycle.execution!.steps;
@@ -369,7 +438,13 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
         { role: 'assistant', content: cycle.composedText! },
         { role: 'system', content: summarizeSteps(steps) },
       ];
-      return { reply: cycle.composedText!, conversation: { messages }, steps, ...learned };
+      return {
+        reply: cycle.composedText!,
+        conversation: { messages },
+        steps,
+        ...learned,
+        ...usage,
+      };
     },
   };
 }

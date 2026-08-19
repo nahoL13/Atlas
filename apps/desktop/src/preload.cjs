@@ -42,4 +42,10 @@ contextBridge.exposeInMainWorld('atlas', {
     available: () => ipcRenderer.invoke('atlas:vad:available'),
     resources: () => ipcRenderer.invoke('atlas:vad:resources'),
   },
+  metrics: {
+    read: () => ipcRenderer.invoke('atlas:metrics:read'),
+  },
+  tokens: {
+    read: () => ipcRenderer.invoke('atlas:tokens:read'),
+  },
 });

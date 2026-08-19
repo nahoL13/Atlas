@@ -73,4 +73,52 @@ describe('ollama provider', () => {
       gateway.generate({ messages: [{ role: 'user', content: 'x' }] }),
     ).rejects.toBeInstanceOf(ModelGatewayError);
   });
+
+  // SPEC-0054 (Escopo 2/CA3): mapeia `prompt_eval_count`/`eval_count` e
+  // deriva `totalTokens` como a soma dos dois campos válidos.
+  describe('usage', () => {
+    it('mapeia os dois campos e deriva o total como soma', async () => {
+      const { deps } = stubFetch(
+        jsonResponse({
+          message: { content: 'oi' },
+          prompt_eval_count: 10,
+          eval_count: 5,
+        }),
+      );
+      const gateway = createOllamaProvider({ provider: 'local', model: 'llama3.2' }, deps);
+      const result = await gateway.generate({ messages: [{ role: 'user', content: 'oi' }] });
+      expect(result.usage).toEqual({ promptTokens: 10, completionTokens: 5, totalTokens: 15 });
+    });
+
+    it('com apenas um dos dois presente, o total é igual a ele', async () => {
+      const { deps } = stubFetch(
+        jsonResponse({ message: { content: 'oi' }, prompt_eval_count: 7 }),
+      );
+      const gateway = createOllamaProvider({ provider: 'local', model: 'llama3.2' }, deps);
+      const result = await gateway.generate({ messages: [{ role: 'user', content: 'oi' }] });
+      expect(result.usage).toEqual({ promptTokens: 7, totalTokens: 7 });
+    });
+
+    it('sem os dois campos, não há usage', async () => {
+      const { deps } = stubFetch(jsonResponse({ message: { content: 'oi' } }));
+      const gateway = createOllamaProvider({ provider: 'local', model: 'llama3.2' }, deps);
+      const result = await gateway.generate({ messages: [{ role: 'user', content: 'oi' }] });
+      expect(result.usage).toBeUndefined();
+      expect('usage' in result).toBe(false);
+    });
+
+    it.each([
+      ['null', null],
+      ['string', '10'],
+      ['NaN', Number.NaN],
+      ['negativo', -1],
+    ])('campo inválido (%s) é omitido individualmente', async (_label, invalid) => {
+      const { deps } = stubFetch(
+        jsonResponse({ message: { content: 'oi' }, prompt_eval_count: invalid, eval_count: 5 }),
+      );
+      const gateway = createOllamaProvider({ provider: 'local', model: 'llama3.2' }, deps);
+      const result = await gateway.generate({ messages: [{ role: 'user', content: 'oi' }] });
+      expect(result.usage).toEqual({ completionTokens: 5, totalTokens: 5 });
+    });
+  });
 });

@@ -171,6 +171,14 @@ export interface AtlasDouble {
     available(): Promise<RendererVadAvailability>;
     resources(): Promise<RendererVadLoad>;
   };
+  /** SPEC-0054 — métricas de recurso do host, espelho de `window.atlas.metrics` em `src/preload.cjs`. */
+  metrics: {
+    read(): Promise<RendererSystemMetricsSnapshot>;
+  };
+  /** SPEC-0054 — consumo de tokens da sessão, espelho de `window.atlas.tokens` em `src/preload.cjs`. */
+  tokens: {
+    read(): Promise<RendererTokenUsageSnapshot>;
+  };
 }
 
 /** Espelho de `{ available, reason? }` (canal `'atlas:vad:available'`, SPEC-0052). */
@@ -183,6 +191,48 @@ export interface RendererVadAvailability {
 export type RendererVadLoad =
   | { readonly ok: true; readonly wasm: ArrayBuffer; readonly model: ArrayBuffer }
   | { readonly ok: false; readonly reason: string };
+
+/** Espelho de `MetricUnavailableReason`/`MetricSample`/`SystemMetricsSnapshot` (`src/system-metrics.ts`, SPEC-0054). */
+export type RendererMetricUnavailableReason = 'unsupported' | 'read-failed' | 'timeout';
+
+export type RendererMetricSample<T> =
+  | { readonly available: true; readonly value: T }
+  | { readonly available: false; readonly reason: RendererMetricUnavailableReason };
+
+export interface RendererCpuMetric {
+  readonly loadPercent: number;
+}
+
+export interface RendererMemoryMetric {
+  readonly usedBytes: number;
+  readonly totalBytes: number;
+  readonly usedPercent: number;
+}
+
+export interface RendererGpuMetric {
+  readonly loadPercent: number;
+}
+
+export interface RendererNetworkMetric {
+  readonly rxBytesPerSecond: number;
+  readonly txBytesPerSecond: number;
+}
+
+export interface RendererSystemMetricsSnapshot {
+  readonly cpu: RendererMetricSample<RendererCpuMetric>;
+  readonly memory: RendererMetricSample<RendererMemoryMetric>;
+  readonly gpu: RendererMetricSample<RendererGpuMetric>;
+  readonly network: RendererMetricSample<RendererNetworkMetric>;
+}
+
+/** Espelho de `TokenUsageSnapshot` (`src/token-usage.ts`, SPEC-0054). */
+export interface RendererTokenUsageSnapshot {
+  readonly promptTokens: number;
+  readonly completionTokens: number;
+  readonly totalTokens: number;
+  readonly reportedTurns: number;
+  readonly unreportedTurns: number;
+}
 
 type AtlasOverrides = {
   readonly [K in keyof AtlasDouble]?: AtlasDouble[K] extends (...args: never[]) => unknown
@@ -220,6 +270,9 @@ export interface RendererCalls {
   /** SPEC-0052 — modo hands-free: chamadas de IPC do VAD. */
   vadAvailableCalls: number;
   vadResourcesCalls: number;
+  /** SPEC-0054 — painel `Sistema`: nº de invocações de cada canal IPC. */
+  metricsReadCalls: number;
+  tokensReadCalls: number;
 }
 
 function createCalls(): RendererCalls {
@@ -242,6 +295,8 @@ function createCalls(): RendererCalls {
     scriptProcessorCreated: [],
     vadAvailableCalls: 0,
     vadResourcesCalls: 0,
+    metricsReadCalls: 0,
+    tokensReadCalls: 0,
     permissionsSelect: [],
     ttsSpeak: [],
     speechSynthesisSpeak: [],
@@ -288,6 +343,10 @@ export interface RendererFixtureOptions {
     readonly available?: boolean;
     readonly reason?: string;
   };
+  /** SPEC-0054 — snapshot default devolvido por `window.atlas.metrics.read()`. */
+  readonly metricsSnapshot?: RendererSystemMetricsSnapshot;
+  /** SPEC-0054 — snapshot default devolvido por `window.atlas.tokens.read()`. */
+  readonly tokensSnapshot?: RendererTokenUsageSnapshot;
   /** SPEC-0053 — `prefers-reduced-motion: reduce` inicial (default `false`). */
   readonly reducedMotion?: boolean;
   /** SPEC-0053 — `window.devicePixelRatio` dublado (default `1`). */
@@ -486,6 +545,33 @@ function buildAtlasDouble(options: RendererFixtureOptions, calls: RendererCalls)
         );
       },
     },
+    metrics: {
+      read: () => {
+        calls.metricsReadCalls += 1;
+        return Promise.resolve(
+          options.metricsSnapshot ?? {
+            cpu: { available: false, reason: 'unsupported' },
+            memory: { available: false, reason: 'unsupported' },
+            gpu: { available: false, reason: 'unsupported' },
+            network: { available: false, reason: 'unsupported' },
+          },
+        );
+      },
+    },
+    tokens: {
+      read: () => {
+        calls.tokensReadCalls += 1;
+        return Promise.resolve(
+          options.tokensSnapshot ?? {
+            promptTokens: 0,
+            completionTokens: 0,
+            totalTokens: 0,
+            reportedTurns: 0,
+            unreportedTurns: 0,
+          },
+        );
+      },
+    },
   };
 
   const overrides = options.atlas;
@@ -503,6 +589,8 @@ function buildAtlasDouble(options: RendererFixtureOptions, calls: RendererCalls)
     tts: { ...base.tts, ...overrides.tts },
     stt: { ...base.stt, ...overrides.stt },
     vad: { ...base.vad, ...overrides.vad },
+    metrics: { ...base.metrics, ...overrides.metrics },
+    tokens: { ...base.tokens, ...overrides.tokens },
   };
 }
 

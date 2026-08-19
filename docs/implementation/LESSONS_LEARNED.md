@@ -73,6 +73,24 @@ Lições que se repetiram em três ou mais SPECs. Este índice existe para sobre
 
 # Registro
 
+## [SPEC-0054](specs/SPEC-0054-desktop-environment-observability.md) — Painel `Sistema` no desktop: recursos do host, consumo de tokens e relógio (2026-08-19)
+
+**Descobrimos que...**
+
+O contrato "resultado do trabalho abandonado é descartado por inteiro" (SPEC-0051) precisava de uma exceção deliberada e nomeada (D9): o consumo de tokens de uma operação cancelada **é** contabilizado — o gasto já ocorreu de fato — enquanto os efeitos de domínio (`remember`/`updateConversation`) continuam descartados. A garantia viva em `apps/desktop/CLAUDE.md` já era precisa o bastante para acomodar isso sem reescrita (ela nomeia os dois efeitos descartados, nunca fala em "resultado inteiro"); só o comentário inline do próprio código ("descartado por inteiro") ficou por trás da nuance nova — não bloqueia nada, mas é o tipo de imprecisão que os Padrões Recorrentes já catalogam do lado da prosa absoluta. Descobrimos também, pela primeira vez desde a SPEC-0053, que acrescentar um painel novo ao drawer v3.0 sem tocar o núcleo/layout **não reabre a pendência de smoke visual**: os 8 itens do CA 34 vieram `OK` numa única passada, sem nenhuma rodada reprovada — diferente do padrão de várias fatias anteriores do desktop.
+
+**A arquitetura ajudou porque...**
+
+O padrão `steps?`/`learned?` (SPECs 0014/0020) generalizou de novo, sem desenho novo: `usage?` em `AskResult`/`ConversationTurn`, somado por um helper puro top-level em `@atlas/cognitive` e devolvido por spread condicional — a 3ª vez que o mesmo molde absorve um campo aditivo de saída do Cognitive. O ADR-0025(c) já tinha antecipado exatamente essa via ("quando o Cognitive Core as expuser"), então a Decisão de design D7 não teve alternativa real a pesar. O molde de porta injetável com import único em `main.ts` (Piper/`whisper.cpp`/VAD) generalizou de novo para `systeminformation` (`system-metrics.ts`) sem desenho novo. As três decisões estruturais de fundo (dependência nova, contabilidade de tokens, contrato técnico exato) já tinham sido resolvidas fora da SPEC pelos ADR-0024/ADR-0025 antes dela começar — a origem registrada da própria SPEC (três escaladas resolvidas em 2026-08-18) preveniu o padrão mais caro já catalogado no projeto: decisão estrutural descoberta em plena implementação.
+
+**A arquitetura atrapalhou porque...**
+
+Nada de estrutural. O único atrito visível foi de precisão de comentário (acima), não de desenho — a fatia inteira (dois módulos novos, dois canais IPC, um painel, três packages tocados aditivamente) fechou sem achado bloqueante do `spec-validator` além do próprio CA 34 (smoke humano), que é estrutural ao ambiente de automação, não a esta SPEC.
+
+**Precisamos mudar...**
+
+Nada de obrigatório — registrado como observação, sem encaminhamento próprio: o comentário inline de `core-bridge.ts` sobre o descarte de operação abandonada ("descartado por inteiro") pode ganhar a mesma precisão que a doc viva já tem na próxima SPEC que tocar aquele trecho, nomeando os dois efeitos descartados em vez da formulação absoluta; não justifica SPEC própria.
+
 ## [SPEC-0053](specs/SPEC-0053-desktop-visual-layout.md) — Núcleo holográfico volumétrico e navegação por drawer no desktop, v3.0 (2026-08-17)
 
 **Descobrimos que...**
@@ -145,24 +163,6 @@ Nada de estrutural. O atrito, de novo, foi de precisão de registro: a doc viva 
 
 (1) Um Critério de Aceitação que conta artefatos ("exatamente N consumidores") deve preferir enumeração nominal sempre que a lista puder crescer por SPECs futuras — encaminhamento: já aplicado nesta SPEC (D11, DoD-a); registrado aqui como padrão para o `spec-drafter` citar em CAs análogos. (2) `selectPersona` segue com condição **parcial** (`busySessions` inline, sem `inFlightOperations`) — um `ask` em voo não bloqueia a troca de Persona, embora bloqueie a edição da Persona ativa (D12); registrado, não corrigido — encaminhamento: candidato nomeado em `apps/desktop/CLAUDE.md`/`NEXT_CONTEXT.md` para uma fatia futura decidir se uniformiza. (3) `openChatSession` marca mas não recusa (D5): um `ask` disparado durante a abertura automática de sessão é recusado sem causa aparente ao usuário, e o renderer não tem hoje como preveni-lo — encaminhamento: nenhuma ação agora (mudaria o comportamento de um caminho automático que ninguém pediu), registrado como custo visível conhecido em `apps/desktop/CLAUDE.md`. (4) Cancelamento de uma operação em voo (A3 da SPEC-0049) fica **mais importante** depois desta SPEC — agora uma operação travada bloqueia também o main process, não só a UI — encaminhamento: candidato já nomeado, elevado em `apps/desktop/CLAUDE.md`/`NEXT_CONTEXT.md`.
 
-## [SPEC-0049](specs/SPEC-0049-desktop-ask-form-serialization-and-error-surfacing.md) — `#ask-form` na serialização de gestos (ask × ask e chat → ask) e erro de `ask` visível na tela (2026-08-03)
-
-**Descobrimos que...**
-
-A justificativa original de D4 desta própria SPEC ("o botão já está cinza, então o caminho normal do usuário não chega aqui; a guarda serve só para submissão implícita/programática") era **falsa**, achado do gate arquitetural (A1) dentro da mesma SPEC, antes de chegar ao `spec-validator`: como D3 mantém `#objective` habilitado (mesma decisão da SPEC-0048 para `#chat-input`) e um `<form>` com `<input type="text">` submete por Enter, o caminho implícito **é** o caminho normal aqui — diferente de `#chat-form`, onde `#chat-input` é desabilitado durante o turno (`renderer.js:1275`), tornando o Enter de fato inalcançável. A decisão (recusa silenciosa) seguiu válida pela razão certa (preservar o `#ask-result` em curso); só a premissa morreu. Descobrimos também, na verificação, um precedente novo: um teste pré-existente ("não-regressão do `.finally` do turno de chat") ficou estruturalmente irreprodutível com os dois guardas em pé (`#chat-form` da SPEC-0048 e `#ask-form` desta) — `askInFlight` nunca chega a `true` na ordem que o caso original descrevia — e foi **reescrito**, não removido, com comentário explícito no arquivo.
-
-**A arquitetura ajudou porque...**
-
-O molde inteiro (origem única de cálculo em `refreshAskControls()`, chamada por `refreshPermissionsPanelState()`; guarda no manipulador logo após `preventDefault()`) já vinha pronto da SPEC-0048/D1-D2 — generalizar para o painel que tinha ficado de fora foi aplicação literal, sem desenho novo. O harness `jsdom` da SPEC-0045/0047, com promessas controláveis de `ask`/`chatSend`, tornou os quatro casos novos (ask × ask, chat → ask, `.catch`, não-regressão de `#objective`) triviais de escrever RED antes da correção.
-
-**A arquitetura atrapalhou porque...**
-
-Nada de estrutural. O atrito ficou em precisão de registro — a mesma classe já catalogada em "Garantia em prosa absoluta tende a estar incompleta" (Padrões Recorrentes), agora na variante "justificativa de uma decisão, não só a garantia", pega pelo gate dentro da própria SPEC antes de chegar ao fechamento.
-
-**Precisamos mudar...**
-
-(1) A premissa original de D4 ("botão cinza ⇒ caminho normal não chega aqui") não pode ser propagada às docs vivas — já corrigida nesta própria SPEC/nesta entrada e em `apps/desktop/CLAUDE.md`, sem necessidade de ADR. (2) Resíduos deixados abertos por decisão, todos já registrados em `apps/desktop/CLAUDE.md`/`NEXT_CONTEXT.md`: **(a)** `micBusy()` fora da condição de `#ask-submit` (D5) segue sem prova mecânica — encaminhamento: candidato para a próxima SPEC que tocar a serialização de voz do painel `ask`; **(b)** o `.catch` também captura exceções lançadas dentro do próprio `.then` (pintura do traço de `steps`), efeito colateral benigno e não coberto por CA — encaminhamento: nenhum, registrado como observação; **(c)** "Esquecer" (memória) e `chat.open()` seguem sem `.catch` (D6) — encaminhamento: candidato registrado, escopo aberto por natureza, sem SPEC própria ainda; **(d)** `sendChatTurn`/`resolveAskSnapshot` seguem fora de `inFlightOperations` no `core-bridge` (D7) — a serialização continua garantia do renderer, não estrutural no main process — encaminhamento: candidato a SPEC própria, registrado em `apps/desktop/CLAUDE.md`. (3) Achado do gate (A3), não pedido: sem cancelamento de um `ask`/turno de chat em voo, um turno que não assenta (Core travado) deixa a app sem gesto de escape até ser reaberta — encaminhamento: candidato novo, registrado em `apps/desktop/CLAUDE.md`/`NEXT_CONTEXT.md` para avaliação de UX própria numa fatia futura.
-
 ---
 
-**Entradas anteriores (SPEC-0048 e mais antigas):** `LESSONS_LEARNED-ARCHIVE.md`.
+**Entradas anteriores (SPEC-0049 e mais antigas):** `LESSONS_LEARNED-ARCHIVE.md`.

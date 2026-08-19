@@ -7,6 +7,7 @@ import { access, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { createInterface } from 'node:readline';
 import { app, BrowserWindow, dialog, ipcMain, session } from 'electron';
+import * as si from 'systeminformation';
 import {
   cancelInFlightOperation,
   closeChatSession,
@@ -16,6 +17,7 @@ import {
   forgetFact,
   listPersonas,
   openChatSession,
+  readTokenUsage,
   resolveAskSnapshot,
   resolveMemorySnapshot,
   resolveStatusSnapshot,
@@ -35,6 +37,7 @@ import { createCaptureWindow, decideMediaPermission } from './media-permission.j
 import { createSttEngine } from './stt-engine.js';
 import type { SttProcess, SpawnStt, SttTranscribeInput } from './stt-engine.js';
 import { createVadResources } from './vad-resources.js';
+import { createSystemMetrics } from './system-metrics.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -258,6 +261,18 @@ const vadResources = createVadResources({
   stat: nodeVadStat(),
 });
 
+// Métricas de recurso do host (SPEC-0054, ADR-0024): `systeminformation` só
+// é importada aqui — `system-metrics.ts` recebe a biblioteca por porta
+// injetável e nunca a importa diretamente.
+const systemMetrics = createSystemMetrics({
+  si: {
+    currentLoad: () => si.currentLoad(),
+    mem: () => si.mem(),
+    graphics: () => si.graphics(),
+    networkStats: () => si.networkStats(),
+  },
+});
+
 // Janela de captura (SPEC-0046, D9/D17): único estado de `captureInFlight`
 // consumido pelos dois handlers de permissão de mídia abaixo — aberta/
 // rearmada por `'atlas:stt:capture:begin'`, fechada por
@@ -409,6 +424,11 @@ ipcMain.handle('atlas:vad:available', () => {
   return { available: true };
 });
 ipcMain.handle('atlas:vad:resources', () => vadResources.load());
+
+// Observabilidade do ambiente (SPEC-0054): dois canais IPC pinados, um por
+// módulo (D4) — leitura sob demanda, sem processo residente nem push.
+ipcMain.handle('atlas:metrics:read', () => systemMetrics.read());
+ipcMain.handle('atlas:tokens:read', () => readTokenUsage());
 
 // Gesto de escape (SPEC-0051): canal síncrono na semântica de `handle`
 // (nunca sobe/desliga um Core) — só marca como abandonada toda operação

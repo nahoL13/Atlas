@@ -2,7 +2,7 @@
 
 > **Project Atlas — Log de Custo de Token por SPEC**
 
-Atualizado em: 2026-08-17 (regenerado por `python3 scripts/agent-usage-report.py --executor all`)
+Atualizado em: 2026-08-19 (regenerado por `python3 scripts/agent-usage-report.py --executor all`)
 
 As métricas são separadas por executor. Tokens efetivos Claude usam os pesos históricos; Codex fica `N/D` até existir uma métrica comparável documentada. Snapshots de Codex são cumulativos e só o último total de cada transcript é lido.
 
@@ -63,7 +63,8 @@ As métricas são separadas por executor. Tokens efetivos Claude usam os pesos h
 | SPEC-0050 | Claude | Fechamento do resíduo D7 da SPEC-0049: o rastreio de operação em voo do `core-bridge` (`busySessions`/`inFlightOperations`) passa a ser guarda de entrada também de `resolveAskSnapshot` e `sendChatTurn` — somando-se aos consumidores que já existem (`updatePersona`, `selectPermissionRoots`) —, tornando o invariante "um round-trip contra o Core por vez" estrutural no main process, e não mais garantia exclusiva do renderer | Done | 2 | 2026-08-04 | 31.029.100 | 8.304.209 | complete |
 | SPEC-0051 | Claude | Cancelamento (desistência) de uma operação em voo no `apps/desktop`: um botão "Cancelar" por painel (`ask` e chat) faz a promessa do gesto assentar imediatamente com mensagem pinada, libera a interface e o main process para um gesto novo, e **contém** os efeitos do trabalho abandonado (nenhum `learned` persistido, nenhuma conversa atualizada, `ConfirmPort` fail-closed **pegajoso por sessão**, conversa afetada em quarentena), sem introduzir cancelamento real dentro do Core. | Done | 2 | 2026-08-05 | 99.432.888 | 13.842.602 | complete |
 | SPEC-0052 | Claude | Modo hands-free no `apps/desktop`: microfone aberto entre turnos sob toggle explícito, fim de fala detectado por VAD Silero em WASM no renderer, auto-envio da transcrição ao chat e resposta falada — com o microfone fechado durante o processamento e durante a fala | Draft | 5 | 2026-08-07 | 40.294.821 | 7.057.766 | complete |
-| SPEC-0053 | Claude | Desktop v3.0: núcleo holográfico volumétrico (Canvas 2D, 400 pontos determinísticos, sete perfis de estado ligados a sinais reais de voz) substitui a esfera CSS-only; navegação passa a drawer overlay sob demanda com Sessão absorvendo a timeline integralmente; substitui integralmente as direções v1.x/v2.0 reprovadas em smoke humano | Done | 20 | 2026-08-18 | 203.400.667 | 32.924.458 | complete |
+| SPEC-0053 | Claude | Desktop v3.0: núcleo holográfico volumétrico (Canvas 2D, 400 pontos determinísticos, sete perfis de estado ligados a sinais reais de voz) substitui a esfera CSS-only; navegação passa a drawer overlay sob demanda com Sessão absorvendo a timeline integralmente; substitui integralmente as direções v1.x/v2.0 reprovadas em smoke humano | Done | 21 | 2026-08-18 | 222.553.211 | 35.802.728 | complete |
+| SPEC-0054 | Claude | (SPEC não encontrada em docs/implementation/specs/) | ? | 11 | 2026-08-19 | 159.336.162 | 23.019.366 | complete |
 
 ## Detalhamento por fase
 
@@ -122,7 +123,8 @@ Valores em tokens efetivos. Codex não é somado nem comparado a Claude enquanto
 | SPEC-0050 | Claude | 826.040 | 3.578.699 | 867.789 | 864.266 | 695.112 | 1.472.303 | 0 |
 | SPEC-0051 | Claude | 1.107.198 | 23.450 | 935.085 | 8.915.134 | 1.178.794 | 1.682.941 | 0 |
 | SPEC-0052 | Claude | 2.837.170 | 0 | 794.333 | 0 | 994.857 | 2.431.406 | 0 |
-| SPEC-0053 | Claude | 7.372.239 | 1.996.006 | 1.000.863 | 18.752.363 | 3.097.778 | 705.209 | 0 |
+| SPEC-0053 | Claude | 7.965.554 | 1.996.006 | 1.000.863 | 18.752.363 | 3.097.778 | 2.990.164 | 0 |
+| SPEC-0054 | Claude | 2.944.913 | 2.394.055 | 1.135.657 | 13.556.745 | 2.987.996 | 0 | 0 |
 
 ## Eficiência de processo (overhead ÷ implementação)
 
@@ -169,8 +171,9 @@ Calculada separadamente por executor, apenas quando tokens efetivos comparáveis
 | SPEC-0049 | Claude | 1.052.170 | 2.861.408 | 2.7× |
 | SPEC-0050 | Claude | 864.266 | 7.439.943 | 8.6× |
 | SPEC-0051 | Claude | 8.915.134 | 4.927.468 | 0.6× |
-| SPEC-0053 | Claude | 18.752.363 | 14.172.095 | 0.8× |
+| SPEC-0053 | Claude | 18.752.363 | 17.050.365 | 0.9× |
+| SPEC-0054 | Claude | 13.556.745 | 9.462.621 | 0.7× |
 
 ## Como estimar antes de começar uma SPEC nova
 
-- Claude: SPECs concluídas: 48. Custo médio: **9.048.643 tokens efetivos**. Faixa: 2.795.790 – 35.026.030.
+- Claude: SPECs concluídas: 49. Custo médio: **9.594.645 tokens efetivos**. Faixa: 2.795.790 – 35.802.728.

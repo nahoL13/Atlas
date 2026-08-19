@@ -11,6 +11,19 @@ const DEFAULT_BASE_URL = 'http://localhost:11434';
 
 interface OllamaChatResponse {
   message?: { content?: string };
+  prompt_eval_count?: unknown;
+  eval_count?: unknown;
+}
+
+/**
+ * Normaliza um campo de contagem de tokens (SPEC-0054, Escopo 2): só entram
+ * números finitos e maiores ou iguais a zero, arredondados com `Math.round`.
+ */
+function toValidTokenCount(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    return undefined;
+  }
+  return Math.round(value);
 }
 
 export function createOllamaProvider(
@@ -56,7 +69,22 @@ export function createOllamaProvider(
       if (typeof text !== 'string') {
         throw new ModelGatewayError('Resposta do Ollama sem conteúdo de texto.');
       }
-      return { text };
+
+      // SPEC-0054/ADR-0025(b): `totalTokens` é a soma dos dois campos válidos
+      // (tratando o ausente como zero) — único provider que deriva o total.
+      const promptTokens = toValidTokenCount(data.prompt_eval_count);
+      const completionTokens = toValidTokenCount(data.eval_count);
+      if (promptTokens === undefined && completionTokens === undefined) {
+        return { text };
+      }
+      return {
+        text,
+        usage: {
+          ...(promptTokens !== undefined ? { promptTokens } : {}),
+          ...(completionTokens !== undefined ? { completionTokens } : {}),
+          totalTokens: (promptTokens ?? 0) + (completionTokens ?? 0),
+        },
+      };
     },
   };
 }

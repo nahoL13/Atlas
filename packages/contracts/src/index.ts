@@ -10,6 +10,7 @@ export type {
   ModelGateway,
   ModelGatewayConfig,
   ProviderName,
+  TokenUsage,
 } from './model.js';
 export type { AskResult, CognitiveCore, Conversation, ConversationTurn } from './cognitive.js';
 export type { ContextService, SessionId } from './context.js';

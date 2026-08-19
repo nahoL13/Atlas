@@ -939,3 +939,199 @@ describe('createCognitiveCore — consumo de Skills no laço cognitivo (SPEC-002
     expect(calls[0]!.messages[0]!.content).toBe(TASK_FRAMING);
   });
 });
+
+describe('createCognitiveCore — consumo de tokens (SPEC-0054/ADR-0025)', () => {
+  it('ask sem plano: usage soma a resposta direta + a extração (2 chamadas)', async () => {
+    let call = 0;
+    const { gateway, calls } = stubGateway(async () => {
+      call += 1;
+      if (call === 1) {
+        return {
+          text: 'resposta',
+          usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+        };
+      }
+      return { text: '[]', usage: { promptTokens: 3, completionTokens: 1, totalTokens: 4 } };
+    });
+    const core = createCognitiveCore({ gateway, runtime: emptyRuntime });
+
+    const answer = await core.ask('oi');
+
+    expect(calls).toHaveLength(2);
+    expect(answer.usage).toEqual({ promptTokens: 13, completionTokens: 6, totalTokens: 19 });
+  });
+
+  it('ask com plano (sem replan): usage soma planejamento + composição + extração (3 chamadas)', async () => {
+    let call = 0;
+    const { gateway, calls } = stubGateway(async () => {
+      call += 1;
+      if (call === 1) {
+        return { text: '{"steps":[{"tool":"clock","args":{}}]}', usage: { promptTokens: 10 } };
+      }
+      if (call === 2) {
+        return { text: 'composto', usage: { completionTokens: 20 } };
+      }
+      return { text: '[]', usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } };
+    });
+    const runtime = runtimeWith([{ name: 'clock', description: 'hora' }], {
+      steps: [{ tool: 'clock', args: {}, result: { ok: true, output: 'ok' } }],
+    });
+    const core = createCognitiveCore({ gateway, runtime });
+
+    const answer = await core.ask('que horas são?');
+
+    expect(calls).toHaveLength(3);
+    expect(answer.usage).toEqual({ promptTokens: 11, completionTokens: 21, totalTokens: 2 });
+  });
+
+  it('ask com replanejamento: usage soma também a chamada de replanejamento (4 chamadas)', async () => {
+    let call = 0;
+    const { gateway, calls } = stubGateway(async () => {
+      call += 1;
+      if (call === 1) {
+        return { text: '{"steps":[{"tool":"clock","args":{}}]}', usage: { promptTokens: 1 } };
+      }
+      if (call === 2) {
+        return { text: '{"steps":[{"tool":"clock","args":{}}]}', usage: { promptTokens: 2 } };
+      }
+      if (call === 3) {
+        return { text: 'Hoje é 2026-07-19.', usage: { promptTokens: 4 } };
+      }
+      return { text: '[]', usage: { promptTokens: 8 } };
+    });
+    const runtime = sequencedRuntime(
+      [{ name: 'clock', description: 'hora' }],
+      [
+        { steps: [{ tool: 'clock', args: {}, result: { ok: false, error: 'indisponível' } }] },
+        { steps: [{ tool: 'clock', args: {}, result: { ok: true, output: '2026-07-19' } }] },
+      ],
+    );
+    const core = createCognitiveCore({ gateway, runtime });
+
+    const answer = await core.ask('que dia é hoje?');
+
+    expect(calls).toHaveLength(4);
+    expect(answer.usage).toEqual({ promptTokens: 15 });
+  });
+
+  it('nenhuma chamada reporta usage: AskResult sai sem a propriedade (nunca usage:{} nem zeros)', async () => {
+    const { gateway } = stubGateway(async () => ({ text: 'resposta' }));
+    const core = createCognitiveCore({ gateway, runtime: emptyRuntime });
+
+    const answer = await core.ask('oi');
+
+    expect(answer.usage).toBeUndefined();
+    expect('usage' in answer).toBe(false);
+  });
+
+  it('reporte parcial: só os campos reportados aparecem, sem derivar totalTokens nesta camada', async () => {
+    let call = 0;
+    const { gateway } = stubGateway(async () => {
+      call += 1;
+      if (call === 1) {
+        return { text: 'resposta', usage: { promptTokens: 10 } };
+      }
+      return { text: '[]' };
+    });
+    const core = createCognitiveCore({ gateway, runtime: emptyRuntime });
+
+    const answer = await core.ask('oi');
+
+    expect(answer.usage).toEqual({ promptTokens: 10 });
+    expect(answer.usage).not.toHaveProperty('totalTokens');
+  });
+
+  it('falha da chamada de extração contribui com zero para a soma, sem quebrar o turno', async () => {
+    let call = 0;
+    const { gateway } = stubGateway(async () => {
+      call += 1;
+      if (call === 1) {
+        return {
+          text: 'resposta',
+          usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+        };
+      }
+      throw new Error('gateway indisponível');
+    });
+    const core = createCognitiveCore({ gateway, runtime: emptyRuntime });
+
+    const answer = await core.ask('oi');
+
+    expect(answer.text).toBe('resposta');
+    expect(answer.learned).toBeUndefined();
+    expect(answer.usage).toEqual({ promptTokens: 10, completionTokens: 5, totalTokens: 15 });
+  });
+
+  it('respond sem plano: ConversationTurn.usage soma as duas chamadas do turno', async () => {
+    let call = 0;
+    const { gateway, calls } = stubGateway(async () => {
+      call += 1;
+      if (call === 1) {
+        return { text: 'resposta', usage: { promptTokens: 10 } };
+      }
+      return { text: '[]', usage: { promptTokens: 2 } };
+    });
+    const core = createCognitiveCore({ gateway, runtime: emptyRuntime });
+    const conversation = core.startConversation();
+
+    const turn = await core.respond(conversation, 'oi');
+
+    expect(calls).toHaveLength(2);
+    expect(turn.usage).toEqual({ promptTokens: 12 });
+  });
+
+  it('respond com plano: ConversationTurn.usage soma planejamento + composição + extração', async () => {
+    let call = 0;
+    const { gateway, calls } = stubGateway(async () => {
+      call += 1;
+      if (call === 1) {
+        return { text: '{"steps":[{"tool":"clock","args":{}}]}', usage: { promptTokens: 5 } };
+      }
+      if (call === 2) {
+        return { text: 'composto', usage: { completionTokens: 7 } };
+      }
+      return { text: '[]', usage: { promptTokens: 1 } };
+    });
+    const runtime = runtimeWith([{ name: 'clock', description: 'hora' }], {
+      steps: [{ tool: 'clock', args: {}, result: { ok: true, output: 'ok' } }],
+    });
+    const core = createCognitiveCore({ gateway, runtime });
+    const conversation = core.startConversation();
+
+    const turn = await core.respond(conversation, 'que horas são?');
+
+    expect(calls).toHaveLength(3);
+    expect(turn.usage).toEqual({ promptTokens: 6, completionTokens: 7 });
+  });
+
+  it('nenhuma chamada reporta usage: ConversationTurn sai sem a propriedade', async () => {
+    const { gateway } = stubGateway(async () => ({ text: 'resposta' }));
+    const core = createCognitiveCore({ gateway, runtime: emptyRuntime });
+    const conversation = core.startConversation();
+
+    const turn = await core.respond(conversation, 'oi');
+
+    expect(turn.usage).toBeUndefined();
+    expect('usage' in turn).toBe(false);
+  });
+
+  it('não muda nada mais do ciclo: prompts, ordem, steps e learned seguem idênticos ao caminho já testado', async () => {
+    let call = 0;
+    const { gateway, calls } = stubGateway(async () => {
+      call += 1;
+      if (call === 1) return { text: 'resposta', usage: { promptTokens: 1 } };
+      return { text: '["fato novo"]', usage: { promptTokens: 1 } };
+    });
+    const core = createCognitiveCore({ gateway, runtime: emptyRuntime });
+
+    const answer = await core.ask('oi');
+
+    expect(calls).toHaveLength(2);
+    expect(answer.text).toBe('resposta');
+    expect(answer.learned).toEqual(['fato novo']);
+    expect(calls[0]!.messages).toEqual([
+      { role: 'system', content: TASK_FRAMING },
+      { role: 'user', content: 'oi' },
+    ]);
+  });
+});
