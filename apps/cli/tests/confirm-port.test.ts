@@ -57,4 +57,11 @@ describe('createLineReaderConfirmPort', () => {
     expect(prompts[0]).toContain('delete');
     expect(prompts[0]).toContain('/tmp/a.txt');
   });
+
+  it('narrowing de ResourceRef (D16, SPEC-0055): recurso de rede usa host, não path', async () => {
+    const { reader, prompts } = scriptedReader(['s']);
+    const port = createLineReaderConfirmPort(reader);
+    await port.request({ resource: { type: 'network', host: 'example.com' }, access: 'read' });
+    expect(prompts[0]).toContain('example.com');
+  });
 });

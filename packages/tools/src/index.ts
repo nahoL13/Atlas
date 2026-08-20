@@ -26,3 +26,8 @@ export { createGitDiffTool } from './git-diff.js';
 export type { GitDiffDeps } from './git-diff.js';
 export { createGitLogTool } from './git-log.js';
 export type { GitLogDeps } from './git-log.js';
+export { nodeHttpPort } from './http-port.js';
+export type { HttpPort, HttpResponse, FetchLike, NodeHttpPortDeps } from './http-port.js';
+export { createHttpGetTool, resolveHttpTarget } from './http-get.js';
+export type { HttpGetDeps, HttpTarget } from './http-get.js';
+export { HTTP_TIMEOUT_MS, HTTP_BODY_LIMIT_BYTES, HTTP_TRUNCATION_MARKER } from './http-port.js';

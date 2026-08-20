@@ -40,6 +40,11 @@ const read = (path: string, type: 'file' | 'directory' = 'file'): ActionRequest 
   access: 'read',
 });
 
+const net = (host: string, access: ActionRequest['access'] = 'read'): ActionRequest => ({
+  resource: { type: 'network', host },
+  access,
+});
+
 const write = (path: string): ActionRequest => ({
   resource: { type: 'file', path },
   access: 'write',
@@ -431,5 +436,121 @@ describe('isContained — método novo (SPEC-0017/ADR-0014), puro/síncrono sobr
     const result = service.isContained('/work/repo/a.txt', 'read');
     expect(result).not.toBeInstanceOf(Promise);
     expect(typeof result).toBe('boolean');
+  });
+});
+
+describe('createPermissionService.evaluate — portão de rede (ADR-0026, SPEC-0055)', () => {
+  it('sem netRoots injetado, toda ação de rede é blocked (fail-closed por omissão)', () => {
+    const service = createPermissionService({ readRoots: [], writeRoots: [] });
+    expect(service.evaluate(net('example.com')).verdict).toBe('blocked');
+  });
+
+  it('netRoots: [] bloqueia qualquer host', () => {
+    const service = createPermissionService({ readRoots: [], writeRoots: [], netRoots: [] });
+    expect(service.evaluate(net('example.com')).verdict).toBe('blocked');
+  });
+
+  it('host presente em netRoots é allowed; normalização (maiúsculas/espaços) nos dois lados', () => {
+    const service = createPermissionService({
+      readRoots: [],
+      writeRoots: [],
+      netRoots: ['example.com'],
+    });
+    expect(service.evaluate(net('example.com')).verdict).toBe('allowed');
+    expect(service.evaluate(net('EXAMPLE.COM')).verdict).toBe('allowed');
+    expect(service.evaluate(net('  example.com  ')).verdict).toBe('allowed');
+  });
+
+  it('subdomínio e sufixo enganoso são bloqueados (igualdade exata, sem wildcard)', () => {
+    const service = createPermissionService({
+      readRoots: [],
+      writeRoots: [],
+      netRoots: ['example.com'],
+    });
+    expect(service.evaluate(net('sub.example.com')).verdict).toBe('blocked');
+    expect(service.evaluate(net('example.com.evil.com')).verdict).toBe('blocked');
+    expect(service.evaluate(net('xample.com')).verdict).toBe('blocked');
+  });
+
+  it('normaliza também as entradas de netRoots na criação (maiúsculas/espaços)', () => {
+    const service = createPermissionService({
+      readRoots: [],
+      writeRoots: [],
+      netRoots: ['  EXAMPLE.com  '],
+    });
+    expect(service.evaluate(net('example.com')).verdict).toBe('allowed');
+  });
+
+  it('host vazio (ou só espaços) é blocked com motivo próprio, mesmo com netRoots não vazia', () => {
+    const service = createPermissionService({
+      readRoots: [],
+      writeRoots: [],
+      netRoots: ['example.com'],
+    });
+    const empty = service.evaluate(net(''));
+    expect(empty.verdict).toBe('blocked');
+    expect(empty.reason).toBe('host ausente ou não reconhecido');
+    const blank = service.evaluate(net('   '));
+    expect(blank.verdict).toBe('blocked');
+    expect(blank.reason).toBe('host ausente ou não reconhecido');
+  });
+
+  it('access write/delete sobre rede é blocked com motivo próprio, independente de netRoots', () => {
+    const service = createPermissionService({
+      readRoots: [],
+      writeRoots: [],
+      netRoots: ['example.com'],
+    });
+    const write = service.evaluate(net('example.com', 'write'));
+    expect(write.verdict).toBe('blocked');
+    expect(write.reason).toBeTypeOf('string');
+    const del = service.evaluate(net('example.com', 'delete'));
+    expect(del.verdict).toBe('blocked');
+    expect(del.reason).toBeTypeOf('string');
+  });
+
+  it('a mensagem de host fora da lista contém o host', () => {
+    const service = createPermissionService({
+      readRoots: [],
+      writeRoots: [],
+      netRoots: ['example.com'],
+    });
+    const decision = service.evaluate(net('evil.com'));
+    expect(decision.verdict).toBe('blocked');
+    expect(decision.reason).toContain('evil.com');
+  });
+
+  it('uma avaliação de rede NÃO consulta o PathResolverPort (spy: zero chamadas)', () => {
+    const { resolver, calls } = createFakeResolver({ real: {} });
+    const service = createPermissionService({
+      readRoots: [],
+      writeRoots: [],
+      netRoots: ['example.com'],
+      pathResolver: resolver,
+    });
+    service.evaluate(net('example.com'));
+    service.evaluate(net('evil.com'));
+    service.evaluate(net(''));
+    expect(calls).toHaveLength(0);
+  });
+
+  it('evaluate sobre file/directory segue exatamente o comportamento atual (não regressão)', () => {
+    const service = createPermissionService({
+      readRoots: ['/work/repo'],
+      writeRoots: [],
+      netRoots: ['example.com'],
+    });
+    expect(service.evaluate(read('/work/repo/a.txt')).verdict).toBe('allowed');
+    expect(service.evaluate(read('/etc/passwd')).verdict).toBe('blocked');
+  });
+
+  it('isContained continua julgando só FS: sem sobrecarga/rota de rede', () => {
+    const service = createPermissionService({
+      readRoots: ['/work/repo'],
+      writeRoots: [],
+      netRoots: ['example.com'],
+    });
+    expect(service.isContained('/work/repo/a.txt', 'read')).toBe(true);
+    // isContained não tem parâmetro de host/network — só path canônico + AccessMode.
   });
 });

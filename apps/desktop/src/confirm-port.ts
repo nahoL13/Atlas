@@ -40,14 +40,16 @@ export function createDialogConfirmPort(deps: { showMessageBox: ShowMessageBox }
   return {
     async request(action: ActionRequest): Promise<boolean> {
       try {
+        const resourceLabel =
+          action.resource.type === 'network' ? action.resource.host : action.resource.path;
         const result = await deps.showMessageBox({
           type: 'warning',
           buttons: ['Cancelar', 'Confirmar'],
           defaultId: CANCEL_BUTTON_INDEX,
           cancelId: CANCEL_BUTTON_INDEX,
           title: 'Confirmar ação irreversível',
-          message: `Confirmar ação irreversível (${action.access} em ${action.resource.path})?`,
-          detail: `recurso: ${action.resource.path}\nação: ${action.access}`,
+          message: `Confirmar ação irreversível (${action.access} em ${resourceLabel})?`,
+          detail: `recurso: ${resourceLabel}\nação: ${action.access}`,
         });
         return result.response === CONFIRM_BUTTON_INDEX;
       } catch {

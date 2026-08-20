@@ -13,8 +13,10 @@ export function createLineReaderConfirmPort(lineReader: LineReader): {
 } {
   return {
     async request(action: ActionRequest): Promise<boolean> {
+      const resourceLabel =
+        action.resource.type === 'network' ? action.resource.host : action.resource.path;
       const answer = await lineReader.next(
-        `Confirmar ação irreversível (${action.access} em ${action.resource.path})? [s/N] `,
+        `Confirmar ação irreversível (${action.access} em ${resourceLabel})? [s/N] `,
       );
       if (answer === null) {
         return false;

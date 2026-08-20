@@ -9,9 +9,10 @@ function fakeTtyInput(): Readable {
   return stream;
 }
 
-function sink(): Writable {
+function sink(chunks?: string[]): Writable {
   return new Writable({
-    write(_chunk, _encoding, callback) {
+    write(chunk, _encoding, callback) {
+      chunks?.push(String(chunk));
       callback();
     },
   });
@@ -48,5 +49,19 @@ describe('nodeReadlineConfirmPort', () => {
     const pending = port.request(action);
     input.push('n\n');
     await expect(pending).resolves.toBe(false);
+  });
+
+  it('narrowing de ResourceRef (D16, SPEC-0055): recurso de rede usa host, não path, na pergunta', async () => {
+    const netAction: ActionRequest = {
+      resource: { type: 'network', host: 'example.com' },
+      access: 'read',
+    };
+    const written: string[] = [];
+    const input = fakeTtyInput();
+    const port = nodeReadlineConfirmPort(input, sink(written));
+    const pending = port.request(netAction);
+    input.push('s\n');
+    await pending;
+    expect(written.join('')).toContain('example.com');
   });
 });

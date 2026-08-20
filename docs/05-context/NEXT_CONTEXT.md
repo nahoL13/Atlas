@@ -2,7 +2,7 @@
 
 > **Project Atlas — Contexto de Retomada para a Próxima Sessão**
 
-Atualizado em: 2026-08-19 (SPEC-0054)
+Atualizado em: 2026-08-20 (SPEC-0055)
 
 Este documento responde a uma pergunta só: **o que fazer agora**. Ele é lido no arranque de toda sessão e de todo subagent, então é mantido curto por design — teto de ~8 KB.
 
@@ -17,15 +17,15 @@ Este documento responde a uma pergunta só: **o que fazer agora**. Ele é lido n
 
 # Estado Imediato
 
-**Fase 2 (`apps/desktop`) em andamento.** Fase 1 fechada por inteiro. Itens 2.1, 2.2 (1ª linha), 2.3 e 2.4 fechados; wake word (2.3, "candidato, não comprometido") segue em aberto. *Observabilidade do Ambiente* — exceção consciente sem item prévio de Roadmap — foi entregue por inteiro pela SPEC-0054.
+**Fase 2 (`apps/desktop`) em andamento; Fase 1 fechada por inteiro, mas com candidatos ainda sendo entregues em paralelo** (item 1.4, ver SPEC-0055 abaixo). Itens 2.1, 2.2 (1ª linha), 2.3 e 2.4 fechados; wake word (2.3, "candidato, não comprometido") segue em aberto. *Observabilidade do Ambiente* — exceção consciente sem item prévio de Roadmap — foi entregue por inteiro pela SPEC-0054.
 
 Últimas três fatias (detalhe completo em `PLATFORM_STATE.md` e na SPEC de cada uma):
 
+- **SPEC-0055** `Done` (2026-08-20) — primeira Tool de rede do Atlas, `http_get` (`@atlas/tools`), sob o Network Access Gate: `ResourceType: 'network'` + `ResourceRef` como união discriminada em `@atlas/contracts`, política `netRoots` (allowlist de hostname, fail-closed) no Permission Service. Consome [ADR-0026](../06-adr/ADR-0026-network-access-gate.md) (novo, `Accepted`, aberto por escalação do `spec-drafter`). `--allow-net`/`ATLAS_ALLOW_NET` na CLI; `apps/desktop` sem política de rede nesta fatia (D17). **Não** fecha o item 1.4. Residuais abertos e não fechados (reabririam o ADR): URL como canal de exfiltração (portão julga só o host) e injeção indireta de prompt pelo corpo remoto. Detalhe: `packages/tools/CLAUDE.md`/`packages/permissions/CLAUDE.md`.
 - **SPEC-0054** `Done` (2026-08-19) — painel `Sistema` no drawer (sétimo/último item): CPU/memória/GPU/rede do host (`system-metrics.ts`, fail-closed por métrica), tokens da sessão (`token-usage.ts`) e relógio, atualizados a cada 2 s por um único timer só com o painel visível. `TokenUsage` novo em `@atlas/contracts` (`GenerateResult`/`AskResult`/`ConversationTurn.usage?`, aditivo), preenchido pelo `@atlas/model-gateway` e somado por turno no `@atlas/cognitive`. Consome [ADR-0024](../06-adr/ADR-0024-desktop-host-resource-metrics.md)/[ADR-0025](../06-adr/ADR-0025-desktop-token-usage-accounting.md) (novos, `Accepted`). Detalhe: `apps/desktop/CLAUDE.md` ("Observabilidade do ambiente").
 - **SPEC-0053** `Done` (2026-08-17) — desktop v3.0: a v2.0 reprovou no smoke humano apesar de gates técnicos verdes; redirecionamento visual completo — núcleo holográfico em **Canvas 2D** (400 pontos determinísticos), navegação por **drawer overlay** (seis painéis, Sessão absorve a timeline), progressive disclosure, paleta roxo-realeza sem emoji. 15/15 `OK` no smoke humano — 1ª confirmação real em ~20 fatias visuais. Zero IPC/contrato/dependência nova. Detalhe: `apps/desktop/CLAUDE.md` ("Layout visual v3.0").
-- **SPEC-0052** `Done` (2026-08-06) — modo hands-free: microfone aberto entre turnos, fim de fala por Silero VAD (WASM no renderer), transcrição direto ao Core sem revisão, resposta falada, microfone fechado ao processar/falar. Consome [ADR-0023](../06-adr/ADR-0023-hands-free-voice-conversation.md) (supersede parcial do ADR-0022, só auto-envio). Sem barge-in. Zero diff em `packages/*`/`apps/cli`.
 
-Suíte atual: **1461 testes / 84 arquivos**. `lint`/`typecheck`/`test`/`format:check` verdes.
+Suíte atual: **1546 testes / 88 arquivos**. `lint`/`typecheck`/`test`/`format:check` verdes.
 
 ---
 
@@ -42,7 +42,7 @@ Suíte atual: **1461 testes / 84 arquivos**. `lint`/`typecheck`/`test`/`format:c
 - **Cancelamento cooperativo real no Runtime/Task Manager** (`AbortSignal`/fila/retry/timeout) — dono já atribuído pelo Module Catalog; a SPEC-0051 entregou só desistência. **Exige ADR + decisão humana.**
 - **Diálogos nativos modais com `BrowserWindow` pai** — fecharia o "diálogo fantasma" da SPEC-0051 e a corrida A7 da SPEC-0038.
 - Candidatos menores (detalhe em `apps/desktop/CLAUDE.md`, "Candidatos futuros já nomeados"): mensagem de recusa distinguindo operação abandonada de ativa · liberar a quarentena de sessão sem reabrir a app · ajuste da janela de silêncio (3 s) do modo hands-free pelo usuário · pinar `micBusy()` fora de `#ask-submit` por teste · uniformizar `selectPersona` para `hasInFlightOperation()` · ditado ao vivo/processo de longa duração para STT · catálogo multi-modelo STT.
-- **Fase 1, itens `candidato`** (todos os gates já fecharam) — memória (retenção/curadoria, relações, `/lembrar`/`/esquecer` ao vivo), execução/permissão (`rmdir`, `confirm` não interativo, Task Manager completo), contexto de ambiente para o Cognitive/Planner, Tools de desenvolvimento além de git somente-leitura, provedor nativo Anthropic, config por arquivo — lista completa em [Roadmap.md](../04-engineering/Roadmap.md) (1.1–1.4).
+- **Fase 1, itens `candidato`** (todos os gates já fecharam) — memória (retenção/curadoria, relações, `/lembrar`/`/esquecer` ao vivo), execução/permissão (`rmdir`, `confirm` não interativo, Task Manager completo), contexto de ambiente para o Cognitive/Planner, Tools de desenvolvimento além de git somente-leitura, provedor nativo Anthropic, config por arquivo — lista completa em [Roadmap.md](../04-engineering/Roadmap.md) (1.1–1.4). Item 1.4 **Acesso à internet** ganhou a 1ª fatia pela SPEC-0055 (`http_get`/ADR-0026); seguem candidatas execução de comandos, leitura de estrutura de projeto e os residuais do próprio ADR-0026 (redirect por hop, wildcard de subdomínio, IP resolvido, painel de rede na GUI, mitigação de exfiltração via URL) — reabrem o ADR se implementados sem novo desenho.
 - **Residuais de Observação/Aprendizado**: observador semântico guiado por modelo; teto de replan configurável; gatilho heurístico para a extração.
 - **Auto-gerência do Ollama** (subir/parar processo) e **health-check de startup** (`ModelGateway.health()`).
 - **Fase 3**: distribuição/empacotamento da CLI; Event Bus / Plugin Manager.
@@ -83,7 +83,7 @@ O mapa de módulos, invariantes e gatilhos de leitura vive no **`CLAUDE.md` da r
 
 Atalhos que não estão nesses dois:
 
-- **SPECs, planos e lições**: `docs/implementation/` · **ADRs**: `docs/06-adr/` (0001–0025)
+- **SPECs, planos e lições**: `docs/implementation/` · **ADRs**: `docs/06-adr/` (0001–0026)
 - **Regras de estrutura e dependência**: `docs/03-architecture/ProjectStructure.md` (v2.1, regras 1–11)
 - **Estado do sprint**: `docs/05-context/CURRENT_SPRINT.md`
 - **Custo em tokens por SPEC**: `docs/05-context/TOKEN_USAGE_LOG.md` (regenerar com `python3 scripts/claude-usage-report.py`)

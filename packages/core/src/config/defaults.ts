@@ -8,7 +8,7 @@ export function defaultConfig(): AtlasConfig {
     dataDir: join(homedir(), '.atlas'),
     persona: 'jarvis',
     memory: { path: join(homedir(), '.atlas', 'memory.json') },
-    permissions: { readRoots: [process.cwd()], writeRoots: [] },
+    permissions: { readRoots: [process.cwd()], writeRoots: [], netRoots: [] },
     model: {
       provider: 'local',
       model: 'llama3.2',

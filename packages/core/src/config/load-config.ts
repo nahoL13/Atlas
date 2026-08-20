@@ -13,6 +13,18 @@ import { DATA_DIR_ISSUE, isValidDataDir, mergeDataDir } from './data-dir.js';
 const PROVIDERS: readonly ProviderName[] = ['fake', 'local', 'remote'];
 
 /**
+ * Formato de hostname válido para `netRoots` (ADR-0026/Escopo 4): string não
+ * vazia, sem espaço em branco, sem `://`/`/`/`@`/`:`/`?`/`#`. Validação de
+ * *formato*, não de existência/DNS — a CLI repassa cru (ADR-0006), a
+ * validação vive só aqui.
+ */
+const INVALID_HOST_CHARS = /[:/@?#\s]/;
+
+function isValidNetRootEntry(value: unknown): boolean {
+  return typeof value === 'string' && value.trim() !== '' && !INVALID_HOST_CHARS.test(value);
+}
+
+/**
  * `options.personaIds` (aditivo, SPEC-0039/ADR-0020, Decisão D5): conjunto
  * de ids válidos para o campo `persona`, vindo do catálogo já carregado do
  * Persona Service (embutidas + custom). Ausente ⇒ valida contra
@@ -28,6 +40,7 @@ export function loadConfig(
   const permissions = {
     readRoots: override.permissions?.readRoots ?? defaults.permissions.readRoots,
     writeRoots: override.permissions?.writeRoots ?? defaults.permissions.writeRoots,
+    netRoots: override.permissions?.netRoots ?? defaults.permissions.netRoots,
   };
   const personaIds = options.personaIds ?? PERSONA_IDS;
   const merged: AtlasConfig = {
@@ -75,6 +88,15 @@ export function loadConfig(
   ) {
     issues.push(
       'permissions.writeRoots deve ser uma lista de caminhos não vazios (pode ser vazia)',
+    );
+  }
+
+  if (
+    !Array.isArray(permissions.netRoots) ||
+    permissions.netRoots.some((host) => !isValidNetRootEntry(host))
+  ) {
+    issues.push(
+      'permissions.netRoots deve ser uma lista de hostnames válidos (sem esquema/porta/caminho; pode ser vazia)',
     );
   }
 

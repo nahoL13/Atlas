@@ -12,6 +12,8 @@ export interface AtlasConfig {
   readonly permissions: {
     readonly readRoots: readonly string[];
     readonly writeRoots: readonly string[];
+    /** Allowlist de hostnames (ADR-0026(b)/(c)). Default: [] (fail-closed). */
+    readonly netRoots: readonly string[];
   };
   readonly model: ModelGatewayConfig;
 }
@@ -21,6 +23,10 @@ export interface AtlasConfigOverride {
   dataDir?: string;
   persona?: string;
   memory?: { path?: string };
-  permissions?: { readRoots?: readonly string[]; writeRoots?: readonly string[] };
+  permissions?: {
+    readRoots?: readonly string[];
+    writeRoots?: readonly string[];
+    netRoots?: readonly string[];
+  };
   model?: Partial<ModelGatewayConfig>;
 }

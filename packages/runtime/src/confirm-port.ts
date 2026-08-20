@@ -30,8 +30,10 @@ export function nodeReadlineConfirmPort(
           rl.close();
           resolvePrompt(approved);
         };
+        const resourceLabel =
+          action.resource.type === 'network' ? action.resource.host : action.resource.path;
         rl.question(
-          `Confirmar ação irreversível (${action.access} em ${action.resource.path})? [s/N] `,
+          `Confirmar ação irreversível (${action.access} em ${resourceLabel})? [s/N] `,
           (answer) => finish(/^s(im)?$/i.test(answer.trim())),
         );
         rl.on('close', () => finish(false));

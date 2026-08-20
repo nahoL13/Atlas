@@ -15,6 +15,9 @@ export function runStatus(atlas: AtlasPlatform, output: OutputGateway): void {
           ? config.permissions.writeRoots.join(', ')
           : '(nenhuma)'
       }`,
+      `netRoots: ${
+        config.permissions.netRoots.length > 0 ? config.permissions.netRoots.join(', ') : '(nenhum)'
+      }`,
       '',
     ].join('\n'),
   );

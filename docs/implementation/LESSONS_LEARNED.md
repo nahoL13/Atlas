@@ -51,7 +51,7 @@ A ausência de atrito também é informação.
 
 ---
 
-**Escopo deste arquivo:** o Registro abaixo mantém as **últimas 5 SPECs**. As entradas da SPEC-0048 e anteriores estão em `LESSONS_LEARNED-ARCHIVE.md`, preservadas sem edição (regra 2 intacta — nada é reescrito, só realocado).
+**Escopo deste arquivo:** o Registro abaixo mantém as **últimas 5 SPECs**. As entradas da SPEC-0049 e anteriores estão em `LESSONS_LEARNED-ARCHIVE.md`, preservadas sem edição (regra 2 intacta — nada é reescrito, só realocado).
 
 O corte existe porque este arquivo chegou a 157 KB (~39k tokens) e era relido no arranque de quase todo subagent, dominando o custo em tokens do pipeline. Ao fechar uma SPEC: adicione a entrada nova no topo do Registro e mova a mais antiga das 6 para o arquivo.
 
@@ -72,6 +72,24 @@ Lições que se repetiram em três ou mais SPECs. Este índice existe para sobre
 
 
 # Registro
+
+## [SPEC-0055](specs/SPEC-0055-http-get-network-access.md) — Primeiro acesso à internet sob o portão de permissão: Tool `http_get` e o Network Access Gate (ADR-0026) (2026-08-20)
+
+**Descobrimos que...**
+
+Esta é a primeira SPEC do projeto cuja origem é uma escalação de ADR nomeada dentro do próprio fluxo de rascunho: o `spec-drafter`, ao tentar desenhar a Tool, parou porque um host/URL não tem "raiz" a conter — política nova, classe de ameaça sem análogo decidido (SSRF, redirect para host não autorizado, exfiltração) — e o usuário aprovou abrir o ADR-0026 antes de qualquer SPEC (caso 3 da Emenda v1.1). O padrão "escalação → ADR → SPEC" já existia em prosa na Constituição, mas esta é a primeira vez que o Registro tem um exemplo concreto ponta a ponta para citar. Descobrimos também, do lado do gate, que "primeiro acesso à internet" era uma afirmação incorreta por omissão: `@atlas/model-gateway` já faz egress via `fetch` desde a SPEC-0004, sem portão — o 1º veto do `architecture-reviewer` (6 achados) pegou essa imprecisão junto com dois residuais não registrados (exfiltração via query string; injeção indireta pelo corpo remoto) e um comportamento não pinado como dado (`redirect: 'manual'` depende de o undici do Node **divergir deliberadamente** da spec WHATWG, algo que nenhum teste detectaria numa regressão de runtime sem uma guarda de código dedicada, D18). O `spec-validator` reprovou uma vez, na mesma linha (D18): a correção da 1ª rodada alinhou o texto da decisão, mas não a tabela de dado pinado duas linhas abaixo — a mesma classe "correção incompleta no mesmo trecho" que os Padrões Recorrentes já catalogam, agora dentro de uma única SPEC, entre uma decisão e sua tabela de apoio.
+
+**A arquitetura ajudou porque...**
+
+O portão puro/síncrono do ADR-0013 absorveu um `ResourceType` inteiramente novo (`'network'`) sem tocar o Runtime — a mesma garantia que o ADR-0013 já entregava para FS ("`evaluate` roteia por `access`/`resource.type`, o Runtime aplica sem conhecer nenhum dos dois") generalizou de graça para um eixo de política com semântica de comparação totalmente diferente (igualdade exata de hostname, não contenção lexical). O molde de porta injetável interna a `@atlas/tools`, sem 2º consumidor real (SPECs 0011/0012/0013/0015/0028), absorveu `HttpPort` sem desenho novo — inclusive a disciplina de D5 de recusar o `HttpDeps` do Model Gateway como "2º consumidor", porque é um contrato incompatível (POST, headers de auth) sob o mesmo nome de conceito. O helper único de derivação de alvo (`resolveHttpTarget`, D4) fechou por construção o problema que a SPEC-0028 precisou resolver com uma 2ª barreira (`verify` injetado no toplevel do git): aqui não existe distância entre o recurso julgado e o recurso requisitado, porque os dois vêm do mesmo `new URL(args.url).href` — o ADR-0026(b) proibiu expressamente estender `isContained`/TOCTOU a rede, e o desenho não precisou disso.
+
+**A arquitetura atrapalhou porque...**
+
+Nada de estrutural. O único atrito de arquitetura foi de honestidade documental, não de desenho: a versão inicial da SPEC descrevia a fatia como "primeiro acesso à internet" sem qualificar "sob o portão", e ambos os achados de residual (exfiltração via URL, injeção indireta) precisaram ser adicionados explicitamente depois do 1º veto, em vez de terem sido escritos no primeiro rascunho — o mesmo tipo de imprecisão que "Padrões Recorrentes" já cataloga como "garantia em prosa absoluta tende a estar incompleta", agora do lado da **motivação** de uma SPEC, não de um Critério de Aceitação.
+
+**Precisamos mudar...**
+
+(1) A URL como canal de saída de dados que o portão não julga (só o host, nunca o path/query) fica registrada como residual 10, deliberadamente não fechada — fechá-la (restrição de query string, `AccessMode` de saída, ou confirmação por requisição) reabriria o ADR-0026 — encaminhamento: candidato de ADR próprio, registrado na SPEC-0055 e neste Registro; nenhuma ação até um caso real de uso mostrar necessidade. (2) Injeção indireta de prompt pelo corpo remoto (residual 11) — primeira vez que texto de terceiro não confiável entra no prompt de planejamento/composição; mitigação por desenho de prompt (marcar/delimitar conteúdo remoto como não confiável) é candidata de fatia futura, sem marcação nesta — encaminhamento: candidato registrado em `NEXT_CONTEXT.md`, sem ADR necessário a priori (é ajuste de prompt, não de portão). (3) A assimetria `@atlas/model-gateway` × `@atlas/tools` (residual 12) — o Model Gateway segue fazendo egress sem `evaluate`/`netRoots` — fica registrada como fato estrutural permanente, não um bug: levá-lo para dentro do portão é decisão própria (endpoint configurado pelo usuário, não recurso escolhido pelo modelo) — encaminhamento: nenhum, candidato nomeado sem SPEC própria. (4) `apps/desktop` sem painel de rede nesta fatia (D17, residual 8) — repetir todo o desenho de consentimento da SPEC-0038 para o eixo de rede é fatia própria — encaminhamento: candidato registrado em `NEXT_CONTEXT.md`/`apps/desktop/CLAUDE.md`.
 
 ## [SPEC-0054](specs/SPEC-0054-desktop-environment-observability.md) — Painel `Sistema` no desktop: recursos do host, consumo de tokens e relógio (2026-08-19)
 
@@ -145,24 +163,6 @@ Um atrito técnico real, não de registro: `HttpDeps = { fetch: globalThis.fetch
 
 (1) Registrar o padrão de teste do `HttpDeps`/`globalThis.fetch` capturado por valor na criação do Core, para a próxima SPEC que testar múltiplos turnos na mesma sessão viva não redescobrir do zero — encaminhamento: registrado nesta entrada; sem ADR, é lição de teste. (2) **Cancelamento cooperativo real no Core** (`AbortSignal`/Task Manager) segue como candidato nomeado — atravessa `@atlas/contracts` e ≥ 3 módulos, exige ADR novo + decisão humana; dono previsto Runtime/Task Manager — encaminhamento: candidato registrado em `NEXT_CONTEXT.md`, aguardando brainstorming humano. (3) **Diálogos nativos modais com `BrowserWindow` pai** (D16) — fecharia o "diálogo fantasma" (um `dialog.showMessageBox` já aberto permanece na tela após o cancelamento, clique sem efeito) e, de carona, a origem da corrida A7 da SPEC-0038 — encaminhamento: candidato nomeado pelo gate, registrado em `NEXT_CONTEXT.md`/`apps/desktop/CLAUDE.md` para fatia própria. (4) **Liberar a quarentena de sessão** se o trabalho abandonado nunca assentar (candidato (iv) do DoD-(c)) — hoje aquela conversa morre até a app reabrir — encaminhamento: candidato registrado, sem SPEC própria ainda. (5) Desvio de processo declarado: o arquivo novo de testes de cancelamento foi escrito depois das Frentes 1–4 (RED não estritamente anterior à implementação); o validador julgou que as falhas iniciais eram de desenho do próprio teste, não da implementação, e que isso não compromete a DoD — encaminhamento: nenhum, registrado como nota de processo, não recorrência ainda (uma ocorrência só).
 
-## [SPEC-0050](specs/SPEC-0050-core-bridge-structural-gesture-serialization.md) — Rastreio de operação em voo vira guarda estrutural de `resolveAskSnapshot`/`sendChatTurn` no main process (2026-08-04)
-
-**Descobrimos que...**
-
-A v1.0 desta própria SPEC repetiu, num nível mais perigoso, um padrão já catalogado: afirmou que `hasInFlightOperation()` tinha um único consumidor (`selectPermissionRoots`), quando `updatePersona` já a consultava desde a SPEC-0039 — a própria seção "Rastreio de operação em voo" de `apps/desktop/CLAUDE.md` sustentava o engano, ao descrever só quem **marca** o contador, nunca quem o **lê**. O gate arquitetural (1º veto) pegou antes da implementação, mas o CA 3 na forma antiga ("exatamente três consumidores") teria induzido um implementador literal a **apagar** a guarda de `updatePersona` só para fazer o número fechar — um critério que **conta** artefatos pode virar armadilha, o oposto de um critério que os **enumera** nominalmente.
-
-**A arquitetura ajudou porque...**
-
-`hasInFlightOperation()` já existia, já era mantida por `resolveAskSnapshot`/`sendChatTurn`/`openChatSession` e já era consultada por duas outras funções — acrescentar consumidores foi reusar uma condição pronta, sem contador novo, sem contrato novo, sem tocar `packages/*` ou o renderer. O padrão "erro de estrutura antes de erro de estado" (`selectPersona`/`updatePersona`) generalizou sem desenho novo para `sendChatTurn` (valida `mustGetChatSession` antes da guarda nova). A divisão da suíte de `core-bridge` por assunto (SPEC-0042) permitiu estender exatamente os três arquivos certos, sem criar arquivo novo.
-
-**A arquitetura atrapalhou porque...**
-
-Nada de estrutural. O atrito, de novo, foi de precisão de registro: a doc viva descrevia só metade da garantia (quem marca) e essa lacuna documental produziu uma premissa de fato errada no próprio rascunho — a mesma classe "garantia em prosa incompleta" já catalogada nos Padrões Recorrentes, agora na variante "contagem de consumidores", não só "formulação absoluta".
-
-**Precisamos mudar...**
-
-(1) Um Critério de Aceitação que conta artefatos ("exatamente N consumidores") deve preferir enumeração nominal sempre que a lista puder crescer por SPECs futuras — encaminhamento: já aplicado nesta SPEC (D11, DoD-a); registrado aqui como padrão para o `spec-drafter` citar em CAs análogos. (2) `selectPersona` segue com condição **parcial** (`busySessions` inline, sem `inFlightOperations`) — um `ask` em voo não bloqueia a troca de Persona, embora bloqueie a edição da Persona ativa (D12); registrado, não corrigido — encaminhamento: candidato nomeado em `apps/desktop/CLAUDE.md`/`NEXT_CONTEXT.md` para uma fatia futura decidir se uniformiza. (3) `openChatSession` marca mas não recusa (D5): um `ask` disparado durante a abertura automática de sessão é recusado sem causa aparente ao usuário, e o renderer não tem hoje como preveni-lo — encaminhamento: nenhuma ação agora (mudaria o comportamento de um caminho automático que ninguém pediu), registrado como custo visível conhecido em `apps/desktop/CLAUDE.md`. (4) Cancelamento de uma operação em voo (A3 da SPEC-0049) fica **mais importante** depois desta SPEC — agora uma operação travada bloqueia também o main process, não só a UI — encaminhamento: candidato já nomeado, elevado em `apps/desktop/CLAUDE.md`/`NEXT_CONTEXT.md`.
-
 ---
 
-**Entradas anteriores (SPEC-0049 e mais antigas):** `LESSONS_LEARNED-ARCHIVE.md`.
+**Entradas anteriores (SPEC-0050 e mais antigas):** `LESSONS_LEARNED-ARCHIVE.md`.

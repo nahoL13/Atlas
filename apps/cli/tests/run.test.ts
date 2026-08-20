@@ -943,5 +943,14 @@ describe('run (integração apps → core)', () => {
       expect(text).toContain('piper:<id>');
       expect(text).toContain('voiceURI de');
     });
+
+    it('HELP_TEXT documenta --allow-net como repetível e ATLAS_ALLOW_NET por vírgula (SPEC-0055)', async () => {
+      const h = harness();
+      await run(['--help'], {}, h.gateways, '0.1.0');
+      const text = h.out();
+      expect(text).toContain('--allow-net');
+      expect(text).toContain('ATLAS_ALLOW_NET');
+      expect(text).toContain('vírgula');
+    });
   });
 });

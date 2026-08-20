@@ -21,12 +21,15 @@ import {
   createGitStatusTool,
   createGitDiffTool,
   createGitLogTool,
+  createHttpGetTool,
   nodeFsReadPort,
   nodeFsWritePort,
   nodeGitReadPort,
+  nodeHttpPort,
   type FsReadPort,
   type FsWritePort,
   type GitReadPort,
+  type HttpPort,
 } from '@atlas/tools';
 import { loadConfig } from './config/load-config.js';
 import { createLifecycle } from './lifecycle/lifecycle.js';
@@ -49,6 +52,7 @@ export interface CreateAtlasDeps {
   fsRead?: FsReadPort;
   fsWrite?: FsWritePort;
   git?: GitReadPort;
+  http?: HttpPort;
   confirm?: ConfirmPort;
 }
 
@@ -72,11 +76,13 @@ export async function createAtlas(
   const permissions = createPermissionService({
     readRoots: config.permissions.readRoots,
     writeRoots: config.permissions.writeRoots,
+    netRoots: config.permissions.netRoots,
   });
   const verify = permissions.isContained.bind(permissions);
   const fsRead = deps.fsRead ?? nodeFsReadPort({ verify });
   const fsWrite = deps.fsWrite ?? nodeFsWritePort({ verify });
   const git = deps.git ?? nodeGitReadPort({ verify });
+  const http = deps.http ?? nodeHttpPort();
   const registry = createToolRegistry();
   registry.register(createClockTool());
   registry.register(createCalcTool());
@@ -89,6 +95,7 @@ export async function createAtlas(
   registry.register(createGitStatusTool({ git }));
   registry.register(createGitDiffTool({ git }));
   registry.register(createGitLogTool({ git }));
+  registry.register(createHttpGetTool({ http }));
   const runtime = createRuntime({ registry, permissions, confirm });
   const skills = createSkillRegistry({ skills: BUILTIN_SKILLS });
   const skillBuilder = createSkillBuilder({ gateway, registry: skills, tools: registry });

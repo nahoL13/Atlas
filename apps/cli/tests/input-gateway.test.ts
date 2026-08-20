@@ -239,6 +239,89 @@ describe('CliInputGateway.normalize', () => {
     expect(parsed.configOverride.permissions).toBeUndefined();
   });
 
+  describe('--allow-net / ATLAS_ALLOW_NET (SPEC-0055, ADR-0026)', () => {
+    it('mapeia ATLAS_ALLOW_NET (lista por vírgula) para permissions.netRoots', () => {
+      const gateway = createCliInputGateway();
+      const parsed = gateway.normalize(['status'], {
+        ATLAS_ALLOW_NET: 'a.com,b.com',
+      } as NodeJS.ProcessEnv);
+      expect(parsed.configOverride.permissions).toEqual({ netRoots: ['a.com', 'b.com'] });
+    });
+
+    it('ATLAS_ALLOW_NET aplica trim e filtra segmentos vazios (", " e vírgula final)', () => {
+      const gateway = createCliInputGateway();
+      const parsed = gateway.normalize(['status'], {
+        ATLAS_ALLOW_NET: 'a.com, b.com,',
+      } as NodeJS.ProcessEnv);
+      expect(parsed.configOverride.permissions).toEqual({ netRoots: ['a.com', 'b.com'] });
+    });
+
+    it('ATLAS_ALLOW_NET vazia ou só vírgula não define netRoots (cai no default)', () => {
+      const gateway = createCliInputGateway();
+      const empty = gateway.normalize(['status'], { ATLAS_ALLOW_NET: '' } as NodeJS.ProcessEnv);
+      expect(empty.configOverride.permissions).toBeUndefined();
+      const onlyComma = gateway.normalize(['status'], {
+        ATLAS_ALLOW_NET: ',',
+      } as NodeJS.ProcessEnv);
+      expect(onlyComma.configOverride.permissions).toBeUndefined();
+    });
+
+    it('ATLAS_ALLOW_NET NÃO é dividido por path.delimiter: "a.com:b.com" produz uma única entrada', () => {
+      const gateway = createCliInputGateway();
+      const parsed = gateway.normalize(['status'], {
+        ATLAS_ALLOW_NET: 'a.com:b.com',
+      } as NodeJS.ProcessEnv);
+      expect(parsed.configOverride.permissions).toEqual({ netRoots: ['a.com:b.com'] });
+      expect(() => loadConfig(parsed.configOverride)).toThrow();
+    });
+
+    it('--allow-net repetido produz múltiplas netRoots, em ordem', () => {
+      const gateway = createCliInputGateway();
+      const parsed = gateway.normalize(
+        ['status', '--allow-net', 'a.com', '--allow-net', 'b.com'],
+        {} as NodeJS.ProcessEnv,
+      );
+      expect(parsed.configOverride.permissions).toEqual({ netRoots: ['a.com', 'b.com'] });
+    });
+
+    it('flag --allow-net presente substitui por inteiro a env (sem merge)', () => {
+      const gateway = createCliInputGateway();
+      const parsed = gateway.normalize(['status', '--allow-net', 'x.com'], {
+        ATLAS_ALLOW_NET: 'y.com,z.com',
+      } as NodeJS.ProcessEnv);
+      expect(parsed.configOverride.permissions).toEqual({ netRoots: ['x.com'] });
+    });
+
+    it('sem flag/env, não define permissions no override', () => {
+      const gateway = createCliInputGateway();
+      const parsed = gateway.normalize(['status'], {} as NodeJS.ProcessEnv);
+      expect(parsed.configOverride.permissions).toBeUndefined();
+    });
+
+    it('read/write/net coexistem no mesmo override.permissions', () => {
+      const gateway = createCliInputGateway();
+      const parsed = gateway.normalize(
+        ['status', '--allow-read', '/in', '--allow-write', '/out', '--allow-net', 'a.com'],
+        {} as NodeJS.ProcessEnv,
+      );
+      expect(parsed.configOverride.permissions).toEqual({
+        readRoots: ['/in'],
+        writeRoots: ['/out'],
+        netRoots: ['a.com'],
+      });
+    });
+
+    it('override com --allow-net passa intacto pelo loadConfig do core', () => {
+      const gateway = createCliInputGateway();
+      const parsed = gateway.normalize(
+        ['status', '--allow-net', 'a.com', '--allow-net', 'b.com'],
+        {} as NodeJS.ProcessEnv,
+      );
+      const config = loadConfig(parsed.configOverride);
+      expect(config.permissions.netRoots).toEqual(['a.com', 'b.com']);
+    });
+  });
+
   it('override com múltiplas raízes de read e write passa intacto pelo loadConfig do core', () => {
     const gateway = createCliInputGateway();
     const parsed = gateway.normalize(

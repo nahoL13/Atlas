@@ -10,7 +10,16 @@ import { nodePathResolverPort, type PathResolverPort } from './path-resolver-por
 export interface PermissionServiceDeps {
   readonly readRoots: readonly string[];
   readonly writeRoots: readonly string[];
+  /** Ausente ⇒ [] (nenhum host alcançável) — fail-closed por omissão. */
+  readonly netRoots?: readonly string[];
   readonly pathResolver?: PathResolverPort;
+}
+
+/** trim() + toLowerCase() — a normalização mínima que torna a igualdade
+ * exata do ADR-0026(b)/D13 utilizável. Nenhuma outra normalização (ponto
+ * final de FQDN, IDN/punycode, wildcard) é aplicada aqui. */
+function normalizeHost(host: string): string {
+  return host.trim().toLowerCase();
 }
 
 /** Contenção lexical: path resolvido igual à raiz ou sob ela (com fronteira de separador). */
@@ -74,17 +83,38 @@ function resolveRoots(roots: readonly string[], pathResolver: PathResolverPort):
 }
 
 /**
- * Avaliador puro/síncrono. Roteia por access: 'read' contra readRoots,
- * 'write'/'delete' contra writeRoots ('delete' produz confirm, não allowed).
- * Não faz IO diretamente — a resolução de caminho real (realpath) acontece
- * via PathResolverPort injetável, síncrona, e nunca lança (fail-closed).
+ * Avaliador puro/síncrono. Roteia primeiro por resource.type: 'network'
+ * (ADR-0026) julga resource.host por igualdade exata (case-insensitive,
+ * normalizado nos dois lados) contra netRoots — sem IO, sem PathResolverPort,
+ * access !== 'read' sempre blocked; 'file'/'directory' seguem a rota
+ * existente: 'read' contra readRoots, 'write'/'delete' contra writeRoots
+ * ('delete' produz confirm, não allowed). Não faz IO diretamente — a
+ * resolução de caminho real (realpath) acontece via PathResolverPort
+ * injetável, síncrona, e nunca lança (fail-closed).
  */
 export function createPermissionService(deps: PermissionServiceDeps): PermissionService {
   const pathResolver = deps.pathResolver ?? nodePathResolverPort();
   const readRoots = resolveRoots(deps.readRoots, pathResolver);
   const writeRoots = resolveRoots(deps.writeRoots, pathResolver);
+  const netRoots = (deps.netRoots ?? []).map(normalizeHost).filter((host) => host.length > 0);
   return {
     evaluate(action: ActionRequest): PermissionDecision {
+      if (action.resource.type === 'network') {
+        if (action.access !== 'read') {
+          return {
+            verdict: 'blocked',
+            reason: `acesso "${action.access}" não suportado para recurso de rede`,
+          };
+        }
+        const host = normalizeHost(action.resource.host);
+        if (host === '') {
+          return { verdict: 'blocked', reason: 'host ausente ou não reconhecido' };
+        }
+        return netRoots.includes(host)
+          ? { verdict: 'allowed' }
+          : { verdict: 'blocked', reason: `host fora da lista permitida: ${host}` };
+      }
+
       let target: string;
       try {
         target = resolveExisting(action.resource.path, pathResolver);

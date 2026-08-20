@@ -75,6 +75,7 @@ interface CliValues {
   'memory-path'?: string | undefined;
   'allow-read'?: string[] | undefined;
   'allow-write'?: string[] | undefined;
+  'allow-net'?: string[] | undefined;
   provider?: string | undefined;
   model?: string | undefined;
   'base-url'?: string | undefined;
@@ -139,22 +140,25 @@ function filterNonEmpty(segments: readonly string[]): string[] {
 }
 
 /**
- * Resolve a lista final de raízes (read ou write) a partir da env (string
- * separada por `path.delimiter`) e da flag repetível (`string[]`), aplicando
- * a precedência `flag > env` por **substituição** (nunca merge) e tratando o
+ * Resolve a lista final de raízes (read/write/net) a partir da env (string
+ * separada por `separator`) e da flag repetível (`string[]`), aplicando a
+ * precedência `flag > env` por **substituição** (nunca merge) e tratando o
  * colapso de qualquer fonte para uma lista vazia como "não fornecida".
+ * Generalizada por um parâmetro de separador (SPEC-0055, D14): `path.delimiter`
+ * para read/write (caminhos de arquivo), `','` para net (hostnames não são
+ * caminhos — `ATLAS_ALLOW_NET` nunca é dividido por `path.delimiter`).
  */
 function resolveRootList(
   envValue: string | undefined,
   flagValue: string[] | undefined,
+  separator: string = path.delimiter,
 ): string[] | undefined {
   const fromFlag = flagValue !== undefined ? filterNonEmpty(flagValue) : undefined;
   if (fromFlag !== undefined && fromFlag.length > 0) {
     return fromFlag;
   }
 
-  const fromEnv =
-    envValue !== undefined ? filterNonEmpty(envValue.split(path.delimiter)) : undefined;
+  const fromEnv = envValue !== undefined ? filterNonEmpty(envValue.split(separator)) : undefined;
   if (fromEnv !== undefined && fromEnv.length > 0) {
     return fromEnv;
   }
@@ -200,13 +204,23 @@ function resolveConfigOverride(values: CliValues, env: NodeJS.ProcessEnv): Atlas
 
   const readRoots = resolveRootList(env.ATLAS_ALLOW_READ, values['allow-read']);
   const writeRoots = resolveRootList(env.ATLAS_ALLOW_WRITE, values['allow-write']);
-  if (readRoots !== undefined || writeRoots !== undefined) {
-    const permissions: { readRoots?: readonly string[]; writeRoots?: readonly string[] } = {};
+  // ATLAS_ALLOW_NET é lista por vírgula, não por path.delimiter — hostname
+  // não é caminho de arquivo (ADR-0026(c)/D14).
+  const netRoots = resolveRootList(env.ATLAS_ALLOW_NET, values['allow-net'], ',');
+  if (readRoots !== undefined || writeRoots !== undefined || netRoots !== undefined) {
+    const permissions: {
+      readRoots?: readonly string[];
+      writeRoots?: readonly string[];
+      netRoots?: readonly string[];
+    } = {};
     if (readRoots !== undefined) {
       permissions.readRoots = readRoots;
     }
     if (writeRoots !== undefined) {
       permissions.writeRoots = writeRoots;
+    }
+    if (netRoots !== undefined) {
+      permissions.netRoots = netRoots;
     }
     override.permissions = permissions;
   }
@@ -308,6 +322,7 @@ function parseArgvOrThrow(argv: string[]) {
         'memory-path': { type: 'string' },
         'allow-read': { type: 'string', multiple: true },
         'allow-write': { type: 'string', multiple: true },
+        'allow-net': { type: 'string', multiple: true },
         provider: { type: 'string' },
         model: { type: 'string' },
         'base-url': { type: 'string' },

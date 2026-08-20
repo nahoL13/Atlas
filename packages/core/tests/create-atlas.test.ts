@@ -13,8 +13,27 @@ import {
   createWriteFileTool,
   nodeGitReadPort,
 } from '@atlas/tools';
-import type { ExecGit, FsReadPort, FsWritePort, GitReadPort } from '@atlas/tools';
+import type { ExecGit, FsReadPort, FsWritePort, GitReadPort, HttpPort } from '@atlas/tools';
 import { createAtlas } from '../src/index.js';
+
+function fakeHttp(overrides: Partial<HttpPort> = {}): { http: HttpPort; calls: string[] } {
+  const calls: string[] = [];
+  const http: HttpPort = {
+    get: async (url: string) => {
+      calls.push(url);
+      if (overrides.get) return overrides.get(url);
+      return {
+        url,
+        status: 200,
+        contentType: 'text/plain',
+        body: 'conteúdo remoto',
+        truncated: false,
+        bodyOmitted: false,
+      };
+    },
+  };
+  return { http, calls };
+}
 
 function fakeStorage(initial: Fact[] = []): MemoryStorage {
   let facts: Fact[] = [...initial];
@@ -437,6 +456,131 @@ describe('createAtlas', () => {
 
     const planningSystem = requestBodies[0]!.messages.find((m) => m.role === 'system')!.content;
     expect(planningSystem).toContain(seededSkillId);
+    await atlas.shutdown();
+  });
+});
+
+describe('createAtlas + http_get (ADR-0026, SPEC-0055)', () => {
+  function fetchFakePlanningHttpGet(deps: {
+    requestBodies: { messages: { role: string; content: string }[] }[];
+    url: string;
+    composedReply?: string;
+  }): typeof fetch {
+    let callIndex = 0;
+    return (async (_url: string, init?: RequestInit) => {
+      deps.requestBodies.push(JSON.parse((init?.body as string) ?? '{}'));
+      callIndex += 1;
+      if (callIndex === 1) {
+        return new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    steps: [{ tool: 'http_get', args: { url: deps.url } }],
+                  }),
+                },
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: deps.composedReply ?? 'ok' } }] }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+  }
+
+  it('registra http_get e, com netRoots: [], o passo vira ExecutedStep negado (blocked) sem tocar a porta', async () => {
+    const { http, calls } = fakeHttp();
+    const requestBodies: { messages: { role: string; content: string }[] }[] = [];
+    const fetchFake = fetchFakePlanningHttpGet({ requestBodies, url: 'https://example.com/a' });
+
+    const atlas = await createAtlas(
+      {
+        config: {
+          model: { provider: 'remote', baseUrl: 'http://fake.local', apiKey: 'k', model: 'gpt' },
+        },
+      },
+      { memoryStorage: fakeStorage(), fetch: fetchFake, http },
+    );
+
+    const answer = await atlas.cognitive.ask('busque https://example.com/a');
+
+    const step = answer.steps?.find((s) => s.tool === 'http_get');
+    expect(step).toBeDefined();
+    expect(step!.result.ok).toBe(false);
+    expect(step!.denialKind).toBe('blocked');
+    expect(calls).toHaveLength(0);
+    await atlas.shutdown();
+  });
+
+  it('host fora de netRoots produz passo negado com o motivo contendo o host', async () => {
+    const { http, calls } = fakeHttp();
+    const requestBodies: { messages: { role: string; content: string }[] }[] = [];
+    const fetchFake = fetchFakePlanningHttpGet({ requestBodies, url: 'https://evil.com/a' });
+
+    const atlas = await createAtlas(
+      {
+        config: {
+          model: { provider: 'remote', baseUrl: 'http://fake.local', apiKey: 'k', model: 'gpt' },
+          permissions: { netRoots: ['permitido.com'] },
+        },
+      },
+      { memoryStorage: fakeStorage(), fetch: fetchFake, http },
+    );
+
+    const answer = await atlas.cognitive.ask('busque https://evil.com/a');
+
+    const step = answer.steps?.find((s) => s.tool === 'http_get');
+    expect(step).toBeDefined();
+    expect(step!.result.ok).toBe(false);
+    expect(step!.denialKind).toBe('blocked');
+    expect(step!.result.error).toContain('evil.com');
+    expect(calls).toHaveLength(0);
+    await atlas.shutdown();
+  });
+
+  it('netRoots: ["example.com"] + porta fake: atlas.cognitive.ask produz steps com sucesso e o corpo devolvido chega à composição', async () => {
+    const { http } = fakeHttp({
+      get: async (url) => ({
+        url,
+        status: 200,
+        contentType: 'text/plain',
+        body: 'conteúdo-remoto-marcador-unico',
+        truncated: false,
+        bodyOmitted: false,
+      }),
+    });
+    const requestBodies: { messages: { role: string; content: string }[] }[] = [];
+    const fetchFake = fetchFakePlanningHttpGet({
+      requestBodies,
+      url: 'https://example.com/a',
+      composedReply: 'resumo do conteúdo remoto',
+    });
+
+    const atlas = await createAtlas(
+      {
+        config: {
+          model: { provider: 'remote', baseUrl: 'http://fake.local', apiKey: 'k', model: 'gpt' },
+          permissions: { netRoots: ['example.com'] },
+        },
+      },
+      { memoryStorage: fakeStorage(), fetch: fetchFake, http },
+    );
+
+    const answer = await atlas.cognitive.ask('resuma o conteúdo de https://example.com/a');
+
+    expect(answer.steps).toBeDefined();
+    expect(answer.steps!.some((step) => step.tool === 'http_get' && step.result.ok)).toBe(true);
+    // A 2ª chamada ao gateway (composição) recebeu o output da Tool no histórico.
+    const composedRequest = requestBodies[1];
+    expect(composedRequest).toBeDefined();
+    const allComposedContent = composedRequest!.messages.map((m) => m.content).join('\n');
+    expect(allComposedContent).toContain('conteúdo-remoto-marcador-unico');
+    expect(answer.text).toBe('resumo do conteúdo remoto');
     await atlas.shutdown();
   });
 });

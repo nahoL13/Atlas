@@ -1,9 +1,10 @@
-export type ResourceType = 'file' | 'directory';
+export type ResourceType = 'file' | 'directory' | 'network';
 
-export interface ResourceRef {
-  readonly type: ResourceType;
-  readonly path: string;
-}
+export type ResourceRef =
+  | { readonly type: 'file'; readonly path: string }
+  | { readonly type: 'directory'; readonly path: string }
+  /** Hostname puro: sem esquema, sem porta, sem caminho (ADR-0026(a)). */
+  | { readonly type: 'network'; readonly host: string };
 
 /** 'read' contra readRoots; 'write'/'delete' contra writeRoots ('delete' produz confirm, não allowed). */
 export type AccessMode = 'read' | 'write' | 'delete';
@@ -36,7 +37,8 @@ export interface PermissionService {
    * pelo fecho atômico de TOCTOU (SPEC-0017/ADR-0014) como veredicto de
    * contenção aplicado no instante do uso, não como (re)decisão de pré-check.
    * Roteia por access: 'read' contra readRoots; 'write'/'delete' contra
-   * writeRoots.
+   * writeRoots. FS-específico: não ganha rota de rede (ADR-0026(b)) — segue
+   * julgando só caminho, nunca host.
    */
   isContained(canonicalPath: string, access: AccessMode): boolean;
 }

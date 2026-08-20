@@ -65,6 +65,9 @@ Options:
       --allow-write <p> Diretório permitido para escrita (repetível; default: nenhum).
                        ATLAS_ALLOW_WRITE aceita lista separada por
                        path.delimiter do SO (":" no POSIX, ";" no Windows)
+      --allow-net <h>  Host permitido para a Tool http_get (repetível; default: nenhum).
+                       ATLAS_ALLOW_NET aceita lista separada por vírgula
+                       (não path.delimiter — hostname não é caminho)
       --category <c>   Categoria de memória (fact|episode|project) para
                        "remember" e filtro para "memory list"
       --subject <p>    Projeto ao qual a memória pertence (exige

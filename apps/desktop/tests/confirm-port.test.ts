@@ -53,4 +53,19 @@ describe('createDialogConfirmPort', () => {
     expect(received!.buttons).toContain('Confirmar');
     expect(received!.buttons).toContain('Cancelar');
   });
+
+  it('narrowing de ResourceRef (D16, SPEC-0055): recurso de rede usa host, não path', async () => {
+    let received: DialogOptions | undefined;
+    const port = createDialogConfirmPort({
+      showMessageBox: (options) => {
+        received = options;
+        return Promise.resolve({ response: 1 });
+      },
+    });
+    await port.request({ resource: { type: 'network', host: 'example.com' }, access: 'read' });
+
+    expect(received).toBeDefined();
+    expect(received!.message).toContain('example.com');
+    expect(received!.detail).toContain('example.com');
+  });
 });

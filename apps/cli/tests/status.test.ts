@@ -70,10 +70,14 @@ function fakeAtlas(permissions: AtlasConfig['permissions']): AtlasPlatform {
 }
 
 describe('runStatus', () => {
-  it('renderiza estado e config resolvida (readRoots + writeRoots)', () => {
+  it('renderiza estado e config resolvida (readRoots + writeRoots + netRoots)', () => {
     const cap = capture();
     runStatus(
-      fakeAtlas({ readRoots: ['/home/x/project'], writeRoots: ['/home/x/out'] }),
+      fakeAtlas({
+        readRoots: ['/home/x/project'],
+        writeRoots: ['/home/x/out'],
+        netRoots: ['example.com'],
+      }),
       cap.gateway,
     );
     const text = cap.text();
@@ -83,11 +87,33 @@ describe('runStatus', () => {
     expect(text).toContain('persona: Jarvis (jarvis)');
     expect(text).toContain('readRoots: /home/x/project');
     expect(text).toContain('writeRoots: /home/x/out');
+    expect(text).toContain('netRoots: example.com');
   });
 
   it('exibe writeRoots como (nenhuma) quando vazio', () => {
     const cap = capture();
-    runStatus(fakeAtlas({ readRoots: ['/home/x/project'], writeRoots: [] }), cap.gateway);
+    runStatus(
+      fakeAtlas({ readRoots: ['/home/x/project'], writeRoots: [], netRoots: [] }),
+      cap.gateway,
+    );
     expect(cap.text()).toContain('writeRoots: (nenhuma)');
+  });
+
+  it('exibe netRoots como (nenhum) quando vazio', () => {
+    const cap = capture();
+    runStatus(
+      fakeAtlas({ readRoots: ['/home/x/project'], writeRoots: [], netRoots: [] }),
+      cap.gateway,
+    );
+    expect(cap.text()).toContain('netRoots: (nenhum)');
+  });
+
+  it('exibe múltiplos netRoots separados por vírgula', () => {
+    const cap = capture();
+    runStatus(
+      fakeAtlas({ readRoots: ['/x'], writeRoots: [], netRoots: ['a.com', 'b.com'] }),
+      cap.gateway,
+    );
+    expect(cap.text()).toContain('netRoots: a.com, b.com');
   });
 });

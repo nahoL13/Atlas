@@ -2,7 +2,7 @@
 
 > **Project Atlas — Estado do Trabalho Atual**
 
-Atualizado em: 2026-08-19 (SPEC-0054)
+Atualizado em: 2026-08-20 (SPEC-0055)
 
 ---
 
@@ -66,5 +66,7 @@ Objetivo: plataforma mínima operável + primeira interface executável (CLI) + 
 | [SPEC-0052](../implementation/specs/SPEC-0052-desktop-hands-free-voice-conversation.md) | Desktop: modo hands-free (conversa por voz contínua) — toggle único abre o microfone entre turnos; fim de fala por Silero VAD (WASM no renderer, primeira inferência do projeto fora do main process); transcrição vai direto ao Core sem revisão pelo mesmo `submit` de `#chat-form`; resposta falada; microfone fechado durante processamento e fala; consome o [ADR-0023](../06-adr/ADR-0023-hands-free-voice-conversation.md) (novo, `Accepted`, supersede parcial do ADR-0022 — só a cláusula de auto-envio, só no modo; `ConfirmPort` intocado); sem barge-in; zero módulo/Tool/campo novo em `Persona`, zero diff em `packages/*`/`@atlas/contracts` | Done |
 | [SPEC-0053](../implementation/specs/SPEC-0053-desktop-visual-layout.md) | Desktop v3.0: núcleo holográfico volumétrico (Canvas 2D nativo, 400 pontos determinísticos, digest SHA-256 pinado, sete perfis de estado ligados a sinais reais de voz) substitui a esfera CSS-only da v2.0; navegação por drawer overlay sob demanda (seis painéis, Sessão absorve a timeline inteira), progressive disclosure e paleta roxo-realeza sem emoji substituem a sidebar/trilho/timeline permanentes reprovadas no smoke humano; substitui integralmente as direções v1.x/v2.0; smoke visual humano confirma os 15 itens `OK` (1ª confirmação real em ~20 fatias visuais consecutivas); zero IPC/contrato/dependência nova, zero diff em `packages/*`/`apps/cli`/`core-bridge.ts` | Done |
 | [SPEC-0054](../implementation/specs/SPEC-0054-desktop-environment-observability.md) | Desktop: painel `Sistema` — sétimo e último item do drawer v3.0, entregando *Observabilidade do Ambiente* (item novo do PRD, exceção consciente sem item prévio de Roadmap): CPU/memória/GPU/rede do host (`system-metrics.ts`, novo, porta injetável sobre `systeminformation`, fail-closed por métrica), consumo de tokens da sessão (`token-usage.ts`, novo, acumulador em memória) e relógio, atualizados a cada 2 s por um único timer só com o painel visível; `@atlas/contracts` ganha `TokenUsage`/`GenerateResult.usage?`/`AskResult.usage?`/`ConversationTurn.usage?` (aditivos, mesmo molde de `learned?`), preenchido pelos três providers do `@atlas/model-gateway` e somado por turno no `@atlas/cognitive`; consome o [ADR-0024](../06-adr/ADR-0024-desktop-host-resource-metrics.md)/[ADR-0025](../06-adr/ADR-0025-desktop-token-usage-accounting.md) (ambos novos, Accepted); gate de paridade renderer↔módulo passa a vigiar seis módulos-fonte | Done |
+
+| [SPEC-0055](../implementation/specs/SPEC-0055-http-get-network-access.md) | Primeiro acesso à internet sob o portão de permissão — Tool `http_get` somente-leitura em `@atlas/tools` sobre `HttpPort`, host julgado pelo Network Access Gate do Permission Service (`ResourceType: 'network'` + `netRoots`, [ADR-0026](../06-adr/ADR-0026-network-access-gate.md), novo, Accepted); `--allow-net`/`ATLAS_ALLOW_NET` na CLI; `apps/desktop` sem política de rede nesta fatia; não fecha o item 1.4 | Done |
 
 Detalhes de retomada: `docs/05-context/NEXT_CONTEXT.md`.

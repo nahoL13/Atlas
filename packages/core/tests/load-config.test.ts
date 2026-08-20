@@ -161,4 +161,41 @@ describe('loadConfig', () => {
     expect(config.permissions.readRoots).toEqual(['/r']);
     expect(config.permissions.writeRoots).toEqual(['/w']);
   });
+
+  describe('permissions.netRoots (ADR-0026, SPEC-0055)', () => {
+    it('usa [] como netRoots padrão', () => {
+      expect(loadConfig().permissions.netRoots).toEqual([]);
+    });
+
+    it('override.permissions.netRoots chega intacto e sem issues', () => {
+      const config = loadConfig({ permissions: { netRoots: ['a.com', 'b.com'] } });
+      expect(config.permissions.netRoots).toEqual(['a.com', 'b.com']);
+    });
+
+    it.each([
+      ['https://a.com'],
+      ['a.com/x'],
+      ['a.com:443'],
+      ['user@a.com'],
+      [''],
+      ['  '],
+      ['a b.com'],
+    ])('rejeita netRoots com entrada inválida: %j', (invalidHost) => {
+      expect(() => loadConfig({ permissions: { netRoots: [invalidHost] } })).toThrow(
+        InvalidConfigError,
+      );
+    });
+
+    it('rejeita netRoots que não é array', () => {
+      expect(() =>
+        loadConfig({
+          permissions: { netRoots: 'a.com' as unknown as readonly string[] },
+        }),
+      ).toThrow(InvalidConfigError);
+    });
+
+    it('aceita netRoots vazio explícito', () => {
+      expect(() => loadConfig({ permissions: { netRoots: [] } })).not.toThrow();
+    });
+  });
 });
