@@ -8,6 +8,7 @@ import type { ConfirmPort } from '@atlas/runtime';
 import {
   createDeleteFileTool,
   createGitStatusTool,
+  createProjectInfoTool,
   createReadFileTool,
   createToolRegistry,
   createWriteFileTool,
@@ -407,6 +408,7 @@ describe('createAtlas', () => {
 
   it('SPEC-0028: atlas.cognitive.ask, com git fake + gateway fake, seleciona git_status e produz steps com sucesso', async () => {
     const gitFake: GitReadPort = {
+      toplevel: async (cwd) => cwd,
       status: async (cwd) => ({ repository: cwd, text: 'clean', truncated: false }),
       diff: async (cwd) => ({ repository: cwd, text: '', truncated: false }),
       log: async (cwd) => ({ repository: cwd, text: '', truncated: false }),
@@ -432,6 +434,130 @@ describe('createAtlas', () => {
     expect(answer.steps).toBeDefined();
     expect(answer.steps!.some((step) => step.tool === 'git_status' && step.result.ok)).toBe(true);
     await atlas.shutdown();
+  });
+
+  it('SPEC-0056: project_info está registrada no Tool Registry, composta com as mesmas instâncias fsRead/git', async () => {
+    const readdirCalls: string[] = [];
+    const fsRead: FsReadPort = {
+      readFile: async () => '{"scripts":{}}',
+      readdir: async (path) => {
+        readdirCalls.push(path);
+        return ['package.json'];
+      },
+    };
+    const toplevelCalls: string[] = [];
+    const git: GitReadPort = {
+      toplevel: async (cwd) => {
+        toplevelCalls.push(cwd);
+        return cwd;
+      },
+      status: async (cwd) => ({ repository: cwd, text: '', truncated: false }),
+      diff: async (cwd) => ({ repository: cwd, text: '', truncated: false }),
+      log: async (cwd) => ({ repository: cwd, text: '', truncated: false }),
+    };
+    const fetchFake = (async () =>
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: '{"steps":[{"tool":"project_info","args":{}}]}' } }],
+        }),
+        { status: 200 },
+      )) as typeof fetch;
+    const atlas = await createAtlas(
+      {
+        config: {
+          model: { provider: 'remote', baseUrl: 'http://fake.local', apiKey: 'k', model: 'gpt' },
+        },
+      },
+      { memoryStorage: fakeStorage(), fetch: fetchFake, fsRead, git },
+    );
+
+    const answer = await atlas.cognitive.ask('que projeto é este?');
+
+    expect(answer.steps!.some((step) => step.tool === 'project_info' && step.result.ok)).toBe(true);
+    // Composta com as mesmas instâncias: as portas fsRead/git injetadas em
+    // createAtlas foram de fato as usadas pela Tool registrada.
+    expect(toplevelCalls.length).toBeGreaterThan(0);
+    expect(readdirCalls.length).toBeGreaterThan(0);
+    await atlas.shutdown();
+  });
+
+  it('SPEC-0056: atlas.cognitive.ask, com fs/git fakes + gateway fake, seleciona project_info e produz steps com sucesso', async () => {
+    const fsRead: FsReadPort = {
+      readFile: async () => '{"scripts":{"build":"x"}}',
+      readdir: async () => ['package.json'],
+    };
+    const git: GitReadPort = {
+      toplevel: async (cwd) => cwd,
+      status: async (cwd) => ({ repository: cwd, text: '', truncated: false }),
+      diff: async (cwd) => ({ repository: cwd, text: '', truncated: false }),
+      log: async (cwd) => ({ repository: cwd, text: '', truncated: false }),
+    };
+    const fetchFake = (async () =>
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: '{"steps":[{"tool":"project_info","args":{}}]}' } }],
+        }),
+        { status: 200 },
+      )) as typeof fetch;
+    const atlas = await createAtlas(
+      {
+        config: {
+          model: { provider: 'remote', baseUrl: 'http://fake.local', apiKey: 'k', model: 'gpt' },
+        },
+      },
+      { memoryStorage: fakeStorage(), fetch: fetchFake, fsRead, git },
+    );
+
+    const answer = await atlas.cognitive.ask('que projeto é este?');
+
+    expect(answer.steps).toBeDefined();
+    expect(answer.steps!.some((step) => step.tool === 'project_info' && step.result.ok)).toBe(true);
+    await atlas.shutdown();
+  });
+
+  it('SPEC-0056: com git real cujo toplevel está fora das readRoots, project_info degrada para o alvo e nunca lista o toplevel proibido', async () => {
+    const exec: ExecGit = async (args) => {
+      if (args.includes('rev-parse')) return '/proj\n';
+      return '';
+    };
+    const realpath = (path: string) => Promise.resolve(path);
+
+    const insideRoots = createPermissionService({
+      readRoots: ['/proj/packages/tools'],
+      writeRoots: [],
+    });
+    const insideGit = nodeGitReadPort({
+      verify: insideRoots.isContained.bind(insideRoots),
+      exec,
+      realpath,
+    });
+    const readdirCalls: string[] = [];
+    const fsRead: FsReadPort = {
+      readFile: async () => '{"scripts":{}}',
+      readdir: async (path) => {
+        readdirCalls.push(path);
+        return [];
+      },
+    };
+    const registry = createToolRegistry();
+    registry.register(
+      createProjectInfoTool({ fs: fsRead, git: insideGit, cwd: () => '/proj/packages/tools' }),
+    );
+    const runtime = createRuntime({
+      registry,
+      permissions: insideRoots,
+      confirm: fakeConfirm(true),
+    });
+
+    const result = await runtime.execute({ steps: [{ tool: 'project_info', args: {} }] });
+
+    expect(result.steps[0]!.result.ok).toBe(true);
+    expect(result.steps[0]!.result.output).toContain('raiz: /proj/packages/tools');
+    expect(result.steps[0]!.result.output).toContain(
+      'origem da raiz: diretório alvo (repositório fora do diretório permitido)',
+    );
+    expect(readdirCalls).toEqual(['/proj/packages/tools']);
+    expect(readdirCalls).not.toContain('/proj');
   });
 
   it('SPEC-0026: fia a projeção do SkillRegistry no Cognitive — a Skill semeada aparece no catálogo oferecido ao Planner', async () => {

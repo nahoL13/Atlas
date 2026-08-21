@@ -22,6 +22,7 @@ import {
   createGitDiffTool,
   createGitLogTool,
   createHttpGetTool,
+  createProjectInfoTool,
   nodeFsReadPort,
   nodeFsWritePort,
   nodeGitReadPort,
@@ -96,6 +97,7 @@ export async function createAtlas(
   registry.register(createGitDiffTool({ git }));
   registry.register(createGitLogTool({ git }));
   registry.register(createHttpGetTool({ http }));
+  registry.register(createProjectInfoTool({ fs: fsRead, git }));
   const runtime = createRuntime({ registry, permissions, confirm });
   const skills = createSkillRegistry({ skills: BUILTIN_SKILLS });
   const skillBuilder = createSkillBuilder({ gateway, registry: skills, tools: registry });

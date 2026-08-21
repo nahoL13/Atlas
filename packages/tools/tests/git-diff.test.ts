@@ -7,6 +7,7 @@ function fakeGit(
   output: GitOutput = { repository: '/proj', text: 'diff --git', truncated: false },
 ): GitReadPort {
   return {
+    toplevel: async (cwd) => cwd,
     status: async (cwd) => ({ repository: cwd, text: '', truncated: false }),
     diff: async (cwd, opts) => {
       spy(cwd, opts ?? {});
@@ -55,6 +56,7 @@ describe('createGitDiffTool', () => {
   it('erro do fake → ToolResult de erro', async () => {
     const tool = createGitDiffTool({
       git: {
+        toplevel: async (cwd) => cwd,
         status: async () => ({ repository: '', text: '', truncated: false }),
         diff: async () => {
           throw new Error('falhou');

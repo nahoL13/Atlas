@@ -4,6 +4,7 @@ import { createGitStatusTool } from '../src/index.js';
 
 function fakeGit(overrides: Partial<GitReadPort> = {}): GitReadPort {
   return {
+    toplevel: async (cwd) => cwd,
     status: async (cwd) => ({ repository: cwd, text: 'clean', truncated: false }),
     diff: async (cwd) => ({ repository: cwd, text: '', truncated: false }),
     log: async (cwd) => ({ repository: cwd, text: '', truncated: false }),

@@ -31,3 +31,13 @@ export type { HttpPort, HttpResponse, FetchLike, NodeHttpPortDeps } from './http
 export { createHttpGetTool, resolveHttpTarget } from './http-get.js';
 export type { HttpGetDeps, HttpTarget } from './http-get.js';
 export { HTTP_TIMEOUT_MS, HTTP_BODY_LIMIT_BYTES, HTTP_TRUNCATION_MARKER } from './http-port.js';
+export {
+  PROJECT_MANIFESTS,
+  PROJECT_SCRIPT_LIMIT,
+  selectManifests,
+  listEcosystems,
+  extractPackageScripts,
+} from './project-manifests.js';
+export type { ProjectManifest, ExtractScriptsResult } from './project-manifests.js';
+export { createProjectInfoTool } from './project-info.js';
+export type { ProjectInfoDeps } from './project-info.js';

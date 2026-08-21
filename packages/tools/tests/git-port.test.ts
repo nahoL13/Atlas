@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { AccessMode } from '@atlas/contracts';
 import type { ExecGit, Verify } from '../src/index.js';
 import { nodeGitReadPort } from '../src/index.js';
+import { GitRootError } from '../src/git-port.js';
 
 interface ExecCall {
   readonly args: readonly string[];
@@ -193,5 +194,92 @@ describe('nodeGitReadPort — transparência do alvo (achado F) e opções bound
     const port = nodeGitReadPort({ verify: alwaysTrue(), exec, realpath: identityRealpath() });
     const output = await port.status('/proj');
     expect(output.repository).toBe('/proj');
+  });
+});
+
+describe('nodeGitReadPort — toplevel(cwd) (SPEC-0056)', () => {
+  it('devolve o toplevel verificado; exec é chamado exatamente 1 vez com o argv esperado e cwd = alvo', async () => {
+    const { exec, calls } = fakeExec({ toplevel: '/proj' });
+    const port = nodeGitReadPort({ verify: alwaysTrue(), exec, realpath: identityRealpath() });
+    const toplevel = await port.toplevel('/proj/packages/tools');
+    expect(toplevel).toBe('/proj');
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.args).toEqual(['--no-optional-locks', 'rev-parse', '--show-toplevel']);
+    expect(calls[0]!.options.cwd).toBe('/proj/packages/tools');
+  });
+
+  it('verify() === false → rejeita com mensagem contendo "fora do diretório permitido: <toplevel>" e reason "denied"', async () => {
+    const { exec } = fakeExec({ toplevel: '/proj' });
+    const port = nodeGitReadPort({ verify: alwaysFalse(), exec, realpath: identityRealpath() });
+    await expect(port.toplevel('/proj')).rejects.toThrow('fora do diretório permitido: /proj');
+    try {
+      await port.toplevel('/proj');
+      throw new Error('deveria ter lançado');
+    } catch (error) {
+      expect(error).toBeInstanceOf(GitRootError);
+      expect((error as GitRootError).reason).toBe('denied');
+    }
+  });
+
+  it('sem verify injetado (porta crua) é fail-closed: rejeita mesmo com toplevel válido', async () => {
+    const { exec } = fakeExec({ toplevel: '/proj' });
+    const port = nodeGitReadPort({ exec, realpath: identityRealpath() });
+    await expect(port.toplevel('/proj')).rejects.toThrow(/fora do diretório permitido/);
+  });
+
+  it('alvo que não é repositório → rejeita com "não foi possível localizar um repositório git" e reason "no-repository"', async () => {
+    const { exec } = fakeExec({ rejectRevParse: true });
+    const port = nodeGitReadPort({ verify: alwaysTrue(), exec, realpath: identityRealpath() });
+    try {
+      await port.toplevel('/tmp');
+      throw new Error('deveria ter lançado');
+    } catch (error) {
+      expect(error).toBeInstanceOf(GitRootError);
+      expect(error).toBeInstanceOf(Error);
+      expect((error as GitRootError).reason).toBe('no-repository');
+      expect((error as Error).message).toContain('não foi possível localizar um repositório git');
+    }
+  });
+
+  it('realpath falhando → rejeita com reason "resolve-failed"', async () => {
+    const { exec } = fakeExec({ toplevel: '/proj' });
+    const realpath = () => Promise.reject(new Error('ENOENT'));
+    const port = nodeGitReadPort({ verify: alwaysTrue(), exec, realpath });
+    try {
+      await port.toplevel('/proj');
+      throw new Error('deveria ter lançado');
+    } catch (error) {
+      expect(error).toBeInstanceOf(GitRootError);
+      expect((error as GitRootError).reason).toBe('resolve-failed');
+    }
+  });
+
+  it('as mensagens dos três erros são idênticas, caractere a caractere, às mensagens atuais de resolveRepository (igualdade exata, não toContain)', async () => {
+    // no-repository
+    {
+      const { exec } = fakeExec({ rejectRevParse: true });
+      const port = nodeGitReadPort({ verify: alwaysTrue(), exec, realpath: identityRealpath() });
+      await expect(port.toplevel('/tmp')).rejects.toMatchObject({
+        message:
+          'não foi possível localizar um repositório git em /tmp: fatal: not a git repository',
+      });
+    }
+    // resolve-failed
+    {
+      const { exec } = fakeExec({ toplevel: '/proj' });
+      const realpath = () => Promise.reject(new Error('ENOENT'));
+      const port = nodeGitReadPort({ verify: alwaysTrue(), exec, realpath });
+      await expect(port.toplevel('/proj')).rejects.toMatchObject({
+        message: 'não foi possível resolver o repositório git em /proj: ENOENT',
+      });
+    }
+    // denied
+    {
+      const { exec } = fakeExec({ toplevel: '/proj' });
+      const port = nodeGitReadPort({ verify: alwaysFalse(), exec, realpath: identityRealpath() });
+      await expect(port.toplevel('/proj')).rejects.toMatchObject({
+        message: 'fora do diretório permitido: /proj',
+      });
+    }
   });
 });

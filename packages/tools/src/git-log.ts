@@ -1,6 +1,6 @@
 import type { ActionRequest, Tool } from '@atlas/contracts';
 import { nodeGitReadPort, type GitReadPort } from './git-port.js';
-import { resolveGitTarget } from './git-target.js';
+import { resolveTargetDirectory } from './target-dir.js';
 
 export interface GitLogDeps {
   git?: GitReadPort;
@@ -23,12 +23,12 @@ export function createGitLogTool(deps: GitLogDeps = {}): Tool {
     description:
       'Mostra o histórico recente de commits do repositório git. Recebe { path?, maxCount? } — default 20 commits. Somente-leitura.',
     requirements(args: Record<string, unknown>): ActionRequest | null {
-      const resolution = resolveGitTarget(args, cwd);
+      const resolution = resolveTargetDirectory(args, cwd);
       const path = resolution.ok ? resolution.target : '';
       return { resource: { type: 'directory', path }, access: 'read' };
     },
     async run(args: Record<string, unknown>) {
-      const resolution = resolveGitTarget(args, cwd);
+      const resolution = resolveTargetDirectory(args, cwd);
       if (!resolution.ok) {
         return { ok: false, error: `git_log: ${resolution.error}` };
       }

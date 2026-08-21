@@ -51,7 +51,7 @@ A ausência de atrito também é informação.
 
 ---
 
-# Registro — Arquivo (SPEC-0048 e anteriores)
+# Registro — Arquivo (SPEC-0051 e anteriores)
 
 ## [SPEC-0047](specs/SPEC-0047-renderer-parity-gate-and-panel-coverage.md) — Gate de paridade generalizado a `piper-tts.ts`/`stt-engine.ts` e cobertura comportamental dos painéis no harness (2026-08-03)
 
@@ -1151,3 +1151,21 @@ Nada de estrutural. O atrito, de novo, foi de precisão de registro: a doc viva 
 **Precisamos mudar...**
 
 (1) Um Critério de Aceitação que conta artefatos ("exatamente N consumidores") deve preferir enumeração nominal sempre que a lista puder crescer por SPECs futuras — encaminhamento: já aplicado nesta SPEC (D11, DoD-a); registrado aqui como padrão para o `spec-drafter` citar em CAs análogos. (2) `selectPersona` segue com condição **parcial** (`busySessions` inline, sem `inFlightOperations`) — um `ask` em voo não bloqueia a troca de Persona, embora bloqueie a edição da Persona ativa (D12); registrado, não corrigido — encaminhamento: candidato nomeado em `apps/desktop/CLAUDE.md`/`NEXT_CONTEXT.md` para uma fatia futura decidir se uniformiza. (3) `openChatSession` marca mas não recusa (D5): um `ask` disparado durante a abertura automática de sessão é recusado sem causa aparente ao usuário, e o renderer não tem hoje como preveni-lo — encaminhamento: nenhuma ação agora (mudaria o comportamento de um caminho automático que ninguém pediu), registrado como custo visível conhecido em `apps/desktop/CLAUDE.md`. (4) Cancelamento de uma operação em voo (A3 da SPEC-0049) fica **mais importante** depois desta SPEC — agora uma operação travada bloqueia também o main process, não só a UI — encaminhamento: candidato já nomeado, elevado em `apps/desktop/CLAUDE.md`/`NEXT_CONTEXT.md`.
+
+## [SPEC-0051](specs/SPEC-0051-desktop-cancel-in-flight-operation.md) — Gesto de escape: cancelar um `ask`/turno de chat em voo no desktop (2026-08-05)
+
+**Descobrimos que...**
+
+O enquadramento factual da própria SPEC estava incompleto na v1.0, achado A4 do gate: cancelamento no Core **não** é "sem previsão arquitetural" — o Module Catalog já atribui ao Runtime "mecanismos de cancelamento e recuperação" e lista `cancelled` entre os estados mínimos do Task Manager. A conclusão (ADR + decisão humana para cancelamento cooperativo real) não mudou, mas o candidato nasce agora com dono nomeado, em vez de órfão. Descobrimos também, de novo, que o **alcance real de uma porta injetada** não é dedutível do ponto onde ela é usada, só do ponto onde é injetada (achado A1): a v1.0 propunha contenção do `ConfirmPort` **por turno**, mas no chat a porta é injetada uma única vez em `openChatSession` e vive pela sessão inteira — um envelope por turno teria atribuído um `confirm` do trabalho abandonado a um turno novo, podendo aprovar ação destrutiva em nome de um turno já largado (D8 reescrita). E o critério original (A2) autorizava dois `respond` concorrentes no mesmo Core/`SessionId`, reentrância que nenhum documento sustenta — fechado pela quarentena de sessão (D15 nova, invariante 8 restaurado).
+
+**A arquitetura ajudou porque...**
+
+O registro único `Set<OperationRecord>` (substituindo `busySessions`/`inFlightOperations`) foi o que tornou possível separar segurança × conversação × sessão em três predicados nomeados sem enfraquecer o ADR-0013/SPEC-0038 — um contador não expressa "esta operação foi abandonada", um registro com identidade sim. O molde de rejeição imediata + `.catch`/`.finally` já existente nos dois painéis (SPECs 0048/0049) absorveu o cancelamento como caminho de erro já coberto, sem criar um segundo caminho de "sucesso que não é sucesso". A vinculação tardia do `ConfirmPort` à sessão via caixa mutável preenchida após `openSession` (refinamento R1) fechou a fresta óbvia sem gambiarra: antes de a sessão existir não pode haver turno abandonado dela.
+
+**A arquitetura atrapalhou porque...**
+
+Um atrito técnico real, não de registro: `HttpDeps = { fetch: globalThis.fetch }` é capturado como **default de parâmetro** na criação do Core, não relido a cada chamada — trocar `globalThis.fetch` depois de `openChatSession` não afeta a mesma sessão. Quebrou 3 tentativas de teste antes da solução (um mock estático único indexado por `callCount`, cobrindo toda a vida da sessão). É um caso concreto e reutilizável do padrão "teste de sessão viva com múltiplos turnos precisa de dublê estático, não de substituição em voo".
+
+**Precisamos mudar...**
+
+(1) Registrar o padrão de teste do `HttpDeps`/`globalThis.fetch` capturado por valor na criação do Core, para a próxima SPEC que testar múltiplos turnos na mesma sessão viva não redescobrir do zero — encaminhamento: registrado nesta entrada; sem ADR, é lição de teste. (2) **Cancelamento cooperativo real no Core** (`AbortSignal`/Task Manager) segue como candidato nomeado — atravessa `@atlas/contracts` e ≥ 3 módulos, exige ADR novo + decisão humana; dono previsto Runtime/Task Manager — encaminhamento: candidato registrado em `NEXT_CONTEXT.md`, aguardando brainstorming humano. (3) **Diálogos nativos modais com `BrowserWindow` pai** (D16) — fecharia o "diálogo fantasma" (um `dialog.showMessageBox` já aberto permanece na tela após o cancelamento, clique sem efeito) e, de carona, a origem da corrida A7 da SPEC-0038 — encaminhamento: candidato nomeado pelo gate, registrado em `NEXT_CONTEXT.md`/`apps/desktop/CLAUDE.md` para fatia própria. (4) **Liberar a quarentena de sessão** se o trabalho abandonado nunca assentar (candidato (iv) do DoD-(c)) — hoje aquela conversa morre até a app reabrir — encaminhamento: candidato registrado, sem SPEC própria ainda. (5) Desvio de processo declarado: o arquivo novo de testes de cancelamento foi escrito depois das Frentes 1–4 (RED não estritamente anterior à implementação); o validador julgou que as falhas iniciais eram de desenho do próprio teste, não da implementação, e que isso não compromete a DoD — encaminhamento: nenhum, registrado como nota de processo, não recorrência ainda (uma ocorrência só).

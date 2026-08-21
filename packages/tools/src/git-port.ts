@@ -12,12 +12,41 @@ export interface GitOutput {
 
 /**
  * Porta de leitura de git (interna a `@atlas/tools`, sem 2º consumidor real,
- * no molde de `FsReadPort`): três métodos narrow, um por subcomando.
+ * no molde de `FsReadPort`): três métodos narrow, um por subcomando, mais a
+ * descoberta de raiz (`toplevel`, SPEC-0056).
  */
 export interface GitReadPort {
+  /**
+   * Descobre o toplevel do repositório a partir de `cwd`, resolve seu
+   * `realpath` e aplica `verify(toplevel, 'read')` — devolve o toplevel já
+   * verificado. Lança `GitRootError` quando `cwd` não é repositório, quando
+   * o `realpath` falha ou quando `verify` recusa (SPEC-0056/D4/D12).
+   */
+  toplevel(cwd: string): Promise<string>;
   status(cwd: string): Promise<GitOutput>;
   diff(cwd: string, opts?: { readonly staged?: boolean }): Promise<GitOutput>;
   log(cwd: string, opts?: { readonly maxCount?: number }): Promise<GitOutput>;
+}
+
+/**
+ * Motivo classificado da rejeição de `resolveRepository`/`toplevel`
+ * (SPEC-0056/D12) — permite ao consumidor (`project_info`) escolher a
+ * mensagem de degradação por `reason`, sem casar substring da mensagem
+ * (que embute stderr do git, não determinístico). Interno a `git-port.ts`,
+ * **não** exportado por `index.ts`.
+ */
+export class GitRootError extends Error {
+  readonly reason: 'no-repository' | 'resolve-failed' | 'denied';
+
+  constructor(
+    message: string,
+    reason: 'no-repository' | 'resolve-failed' | 'denied',
+    options?: { readonly cause?: unknown },
+  ) {
+    super(message, options);
+    this.name = 'GitRootError';
+    this.reason = reason;
+  }
 }
 
 /** Execução de processo, injetável nos testes (sem git real). */
@@ -90,8 +119,9 @@ async function resolveRepository(
   try {
     toplevelRaw = (await runGit(exec, ['rev-parse', '--show-toplevel'], target)).trim();
   } catch (cause) {
-    throw new Error(
+    throw new GitRootError(
       `não foi possível localizar um repositório git em ${target}: ${(cause as Error).message}`,
+      'no-repository',
       { cause },
     );
   }
@@ -100,14 +130,15 @@ async function resolveRepository(
   try {
     toplevel = await realpath(toplevelRaw);
   } catch (cause) {
-    throw new Error(
+    throw new GitRootError(
       `não foi possível resolver o repositório git em ${toplevelRaw}: ${(cause as Error).message}`,
+      'resolve-failed',
       { cause },
     );
   }
 
   if (!verify(toplevel, 'read')) {
-    throw new Error(`fora do diretório permitido: ${toplevel}`);
+    throw new GitRootError(`fora do diretório permitido: ${toplevel}`, 'denied');
   }
 
   return toplevel;
@@ -145,6 +176,7 @@ export function nodeGitReadPort(deps: NodeGitPortDeps = {}): GitReadPort {
   }
 
   return {
+    toplevel: (cwd) => resolveRepository(cwd, exec, realpath, verify),
     status: (cwd) => withRepository(cwd, ['status']),
     diff: (cwd, opts) => withRepository(cwd, opts?.staged ? ['diff', '--cached'] : ['diff']),
     log: (cwd, opts) =>

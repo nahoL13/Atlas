@@ -2,7 +2,7 @@
 
 > **Project Atlas — Estado do Trabalho Atual**
 
-Atualizado em: 2026-08-20 (SPEC-0055)
+Atualizado em: 2026-08-20 (SPEC-0056)
 
 ---
 
@@ -68,5 +68,6 @@ Objetivo: plataforma mínima operável + primeira interface executável (CLI) + 
 | [SPEC-0054](../implementation/specs/SPEC-0054-desktop-environment-observability.md) | Desktop: painel `Sistema` — sétimo e último item do drawer v3.0, entregando *Observabilidade do Ambiente* (item novo do PRD, exceção consciente sem item prévio de Roadmap): CPU/memória/GPU/rede do host (`system-metrics.ts`, novo, porta injetável sobre `systeminformation`, fail-closed por métrica), consumo de tokens da sessão (`token-usage.ts`, novo, acumulador em memória) e relógio, atualizados a cada 2 s por um único timer só com o painel visível; `@atlas/contracts` ganha `TokenUsage`/`GenerateResult.usage?`/`AskResult.usage?`/`ConversationTurn.usage?` (aditivos, mesmo molde de `learned?`), preenchido pelos três providers do `@atlas/model-gateway` e somado por turno no `@atlas/cognitive`; consome o [ADR-0024](../06-adr/ADR-0024-desktop-host-resource-metrics.md)/[ADR-0025](../06-adr/ADR-0025-desktop-token-usage-accounting.md) (ambos novos, Accepted); gate de paridade renderer↔módulo passa a vigiar seis módulos-fonte | Done |
 
 | [SPEC-0055](../implementation/specs/SPEC-0055-http-get-network-access.md) | Primeiro acesso à internet sob o portão de permissão — Tool `http_get` somente-leitura em `@atlas/tools` sobre `HttpPort`, host julgado pelo Network Access Gate do Permission Service (`ResourceType: 'network'` + `netRoots`, [ADR-0026](../06-adr/ADR-0026-network-access-gate.md), novo, Accepted); `--allow-net`/`ATLAS_ALLOW_NET` na CLI; `apps/desktop` sem política de rede nesta fatia; não fecha o item 1.4 | Done |
+| [SPEC-0056](../implementation/specs/SPEC-0056-project-structure-tool.md) | Tool `project_info` em `@atlas/tools` — segunda fatia do item 1.4 (leitura de estrutura de projeto), continuação incremental da SPEC-0028: descobre a raiz de um projeto (reuso do `GitReadPort.toplevel(cwd)`, método aditivo delegando à mesma descoberta de toplevel contida da SPEC-0028), lista manifests reconhecidos (tabela fixa de 16 nomes de arquivo → ecossistema) e scripts do `package.json`; ascensão ao repositório git só com `path` omitido; zero diff em `@atlas/contracts`/`packages/permissions`/`packages/runtime`/`apps/cli`/`apps/desktop`; não fecha o item 1.4 (resta execução de comandos, `ADR primeiro`) | Done |
 
 Detalhes de retomada: `docs/05-context/NEXT_CONTEXT.md`.
