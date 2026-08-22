@@ -26,6 +26,13 @@ export interface NodeHttpPortDeps {
   fetch?: FetchLike;
   /** Orçamento total da requisição (conexão + leitura de corpo). Default HTTP_TIMEOUT_MS. */
   timeoutMs?: number;
+  /**
+   * Teto de leitura do corpo, em bytes. Default: HTTP_BODY_LIMIT_BYTES (64
+   * KiB) — inalterado. Parâmetro por instância (SPEC-0057/D12): quem precisa
+   * de um teto diferente (ex.: `searxngSearchPort`) o decide na própria
+   * construção, sem afrouxar o default de `http_get`.
+   */
+  bodyLimitBytes?: number;
 }
 
 export const HTTP_TIMEOUT_MS = 10_000;
@@ -136,6 +143,7 @@ function buildResponse(
 export function nodeHttpPort(deps: NodeHttpPortDeps = {}): HttpPort {
   const fetchImpl = deps.fetch ?? globalThis.fetch;
   const timeoutMs = deps.timeoutMs ?? HTTP_TIMEOUT_MS;
+  const bodyLimitBytes = deps.bodyLimitBytes ?? HTTP_BODY_LIMIT_BYTES;
   return {
     async get(url: string): Promise<HttpResponse> {
       const controller = new AbortController();
@@ -176,7 +184,7 @@ export function nodeHttpPort(deps: NodeHttpPortDeps = {}): HttpPort {
         let text: string;
         let truncated: boolean;
         try {
-          ({ text, truncated } = await readBodyLimited(response.body, HTTP_BODY_LIMIT_BYTES));
+          ({ text, truncated } = await readBodyLimited(response.body, bodyLimitBytes));
         } catch (cause) {
           throw toTransportError(url, cause);
         }

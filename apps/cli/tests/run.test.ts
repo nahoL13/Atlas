@@ -952,5 +952,15 @@ describe('run (integração apps → core)', () => {
       expect(text).toContain('ATLAS_ALLOW_NET');
       expect(text).toContain('vírgula');
     });
+
+    it('HELP_TEXT documenta --search-url e ATLAS_SEARCH_URL, com a nota sobre --allow-net (SPEC-0057)', async () => {
+      const h = harness();
+      await run(['--help'], {}, h.gateways, '0.1.0');
+      const text = h.out();
+      expect(text).toContain('--search-url');
+      expect(text).toContain('ATLAS_SEARCH_URL');
+      expect(text).toContain('web_search');
+      expect(text).toContain('--allow-net');
+    });
   });
 });

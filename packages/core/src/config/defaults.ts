@@ -13,5 +13,6 @@ export function defaultConfig(): AtlasConfig {
       provider: 'local',
       model: 'llama3.2',
     },
+    tools: { searchUrl: '' },
   };
 }

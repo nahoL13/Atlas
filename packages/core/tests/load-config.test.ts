@@ -198,4 +198,35 @@ describe('loadConfig', () => {
       expect(() => loadConfig({ permissions: { netRoots: [] } })).not.toThrow();
     });
   });
+
+  describe('tools.searchUrl (SPEC-0057)', () => {
+    it('defaultConfig().tools.searchUrl é vazio', () => {
+      expect(defaultConfig().tools.searchUrl).toBe('');
+    });
+
+    it('loadConfig({}) resolve tools.searchUrl vazio, sem issues', () => {
+      expect(() => loadConfig({})).not.toThrow();
+      expect(loadConfig({}).tools.searchUrl).toBe('');
+    });
+
+    it.each(['http://127.0.0.1:8080/search', 'https://busca.exemplo.com/search'])(
+      'aceita %s intacto',
+      (searchUrl) => {
+        expect(loadConfig({ tools: { searchUrl } }).tools.searchUrl).toBe(searchUrl);
+      },
+    );
+
+    it.each([
+      'busca.exemplo.com',
+      'ftp://h/x',
+      'file:///x',
+      'https://u:p@h/search',
+      'https://h/search?q=1',
+      'https://h/search#f',
+      '   ',
+      42 as unknown as string,
+    ])('rejeita tools.searchUrl inválida: %j', (searchUrl) => {
+      expect(() => loadConfig({ tools: { searchUrl } })).toThrow(InvalidConfigError);
+    });
+  });
 });

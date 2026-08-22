@@ -73,6 +73,24 @@ Lições que se repetiram em três ou mais SPECs. Este índice existe para sobre
 
 # Registro
 
+## [SPEC-0057](specs/SPEC-0057-web-search-tool.md) — Busca na internet por texto livre: Tool `web_search` sobre `SearchPort`, provedor SearXNG sem credencial (2026-08-22)
+
+**Descobrimos que...**
+
+O 1º veto do `architecture-reviewer` (registrado na própria SPEC como D21/D22/D23/D24, "correção do veto V1–V4 da 1ª revisão") pegou uma classe de risco nova para o projeto: com `createWebSearchTool({ search, endpointUrl })`, o host declarado em `requirements` e o host efetivamente requisitado vinham de **duas deps independentes** que só coincidiam por convenção de wiring do composition root — o mesmo `deps.search` injetável que os próprios Critérios de Aceitação exigem tornava possível declarar um host e requisitar outro, sem nada detectar (`requirements` viraria uma asserção sobre estado privado de outro objeto, inédito no repositório). A correção — mover `endpointUrl` para dentro do contrato da `SearchPort` — não bastou sozinha: a SPEC também precisou de um Critério de Aceitação com **caso negativo** (um `SearchPort` fake que declara `endpointUrl` e requisita outro host, provando que o teste de identidade de fato falha nesse caso), porque uma garantia estrutural sem teste que a exercite não é verificável mecanicamente. O mesmo padrão de "correção incompleta" quase se repetiu em D24: a 1ª versão fazia `@atlas/core` repetir `nodeHttpPort({ bodyLimitBytes: SEARCH_BODY_LIMIT_BYTES })` no composition root, criando uma 2ª fonte de verdade para o mesmo número — o próprio D5 desta SPEC ("um lugar só decide timeout/teto/redirect") já continha o argumento que derrubava a própria D24 anterior.
+
+**A arquitetura ajudou porque...**
+
+O molde "porta interna sem 2º consumidor real, IO isolado atrás de função pura" (SPECs 0011/0028/0055/0056) absorveu `SearchPort`/`parseSearchPayload` sem desenho novo — a validação/normalização/dedup/truncagem inteira do payload do SearXNG foi escrita e testada sem tocar rede. O adaptador default falar pelo `HttpPort` já endurecido da SPEC-0055 (D5) significou que "nenhuma credencial pode vazar" seguiu sendo uma propriedade estrutural herdada, não uma promessa nova a reprovar — só o teto de corpo precisou de um parâmetro aditivo (`bodyLimitBytes?`, default inalterado). `AtlasConfig.tools` obrigatório na config resolvida quebrou o `typecheck` dos fakes tipados diretamente (`apps/cli/tests/status.test.ts`) — a 5ª+ ocorrência do mesmo padrão já catalogado em "Padrões Recorrentes", corrigida no mesmo passo previsto pela própria SPEC (item 6 da Estratégia de Implementação).
+
+**A arquitetura atrapalhou porque...**
+
+Nada de estrutural — os quatro comandos da raiz (93 arquivos/1728 testes) e os Critérios de Aceitação passaram sem achado do `spec-validator`; o diff ficou confinado a `packages/tools`, `packages/contracts`, `packages/core`, `apps/cli`, exatamente como a SPEC previu (diff vazio confirmado em `@atlas/runtime`/`@atlas/permissions`/`@atlas/cognitive`/`@atlas/skills`/`@atlas/memory`/`@atlas/context`/`@atlas/persona`/`@atlas/model-gateway`/`apps/desktop`).
+
+**Precisamos mudar...**
+
+Nada de obrigatório para esta fatia. (1) A consulta como canal de saída de dados que o portão não julga (2ª instância do residual 10 da SPEC-0055) e a injeção indireta de prompt amplificada por até 10 resultados de terceiros por busca (residual 11, mitigada de forma genérica pela SPEC-0058 mas não fechada) seguem registradas, sem ação — encaminhamento: já candidatas de ADR próprio desde a SPEC-0055, sem SPEC própria hoje. (2) `apps/desktop` segue sem busca (D15) — mesma decisão de escopo que a SPEC-0055/D17 já tomou para `netRoots` — encaminhamento: candidato nomeado em `NEXT_CONTEXT.md`/`apps/desktop/CLAUDE.md` para uma fatia futura de painel de rede na GUI. (3) O item 1.4 do Roadmap segue **não fechado**: resta só a execução de comandos sob o Permission Service (`ADR primeiro`) — sem mudança aqui, mesmo candidato nomeado desde a SPEC-0028.
+
 ## [SPEC-0058](specs/SPEC-0058-untrusted-tool-output-framing.md) — Endurecimento da composição de saídas de Tools no prompt (`@atlas/cognitive`): bloco `<tool_output>`, instrução fixa e teto de tamanho (2026-08-21)
 
 **Descobrimos que...**
@@ -145,24 +163,6 @@ Nada de estrutural. O único atrito visível foi de precisão de comentário (ac
 
 Nada de obrigatório — registrado como observação, sem encaminhamento próprio: o comentário inline de `core-bridge.ts` sobre o descarte de operação abandonada ("descartado por inteiro") pode ganhar a mesma precisão que a doc viva já tem na próxima SPEC que tocar aquele trecho, nomeando os dois efeitos descartados em vez da formulação absoluta; não justifica SPEC própria.
 
-## [SPEC-0053](specs/SPEC-0053-desktop-visual-layout.md) — Núcleo holográfico volumétrico e navegação por drawer no desktop, v3.0 (2026-08-17)
-
-**Descobrimos que...**
-
-A v2.0 desta mesma SPEC tinha passado **por inteiro** nos quatro gates técnicos da raiz e em 27 Critérios de Aceitação (1.322 testes/80 arquivos) e ainda assim foi reprovada no smoke visual humano — sidebar/trilho e timeline permanentes competiam com a presença, o painel Memória sobrepunha/cortava conteúdo, e a esfera CSS-only não comunicava volume. Pela primeira vez em ~20 fatias visuais consecutivas do desktop (SPEC-0031 a 0052), o smoke humano **de fato rodou e reprovou** uma implementação inteira — até aqui o próprio Registro só citava a pendência como risco hipotético ("nunca confirmado", não "já reprovou"). A v3.0 corrigiu com esfera de partículas em Canvas 2D (projeção 3D determinística, depth-sort, SHA-256 pinado da nuvem de 400 pontos) e navegação por drawer overlay, repetiu o smoke e todos os 15 itens vieram `OK`. Descobrimos também que nem o texto da v3.0 escapou da disciplina do gate: o `architecture-reviewer` vetou a 1ª passada por cinco ambiguidades de aceite (contagem de navegação sem excluir `Fechar`/controles internos; início de `speaking` preso a evento real de playback; manifesto exato dos 77 IDs HEAD/v3/v2; digest estável da nuvem de pontos; disclosures completos de Persona/Personas/Objetivo) — a mesma classe "garantia em prosa absoluta tende a estar incompleta" que os Padrões Recorrentes já catalogam, agora pega **antes** da implementação começar, não depois.
-
-**A arquitetura ajudou porque...**
-
-Canvas 2D nativo (sem WebGL/lib nova) bastou para produzir volume real via projeção 3D determinística; pinar o SHA-256 da nuvem de 400 pontos + quatro sentinelas tornou a geometria inteiramente verificável em `jsdom`, sem GPU nem display real. O mapa fechado de sete perfis de estado reaproveitou sinais já emitidos pelas SPECs 0040/0052 (`playbackPending`/`playbackActive`, estados do hands-free) sem nenhuma fonte de verdade nova. O harness de dublês de Canvas/rAF/`matchMedia`/`devicePixelRatio`/ponteiro das SPECs 0045/0047 absorveu a bateria inteira de testes novos (`renderer.layout.test.ts`, 1.130 linhas) sem infraestrutura de teste nova.
-
-**A arquitetura atrapalhou porque...**
-
-Nada de estrutural — o atrito foi de processo, não de desenho: gates técnicos verdes (typecheck/lint/test/format:check) não provam hierarquia visual, volume ou corte, só o smoke humano prova isso, e desta vez ele de fato reprovou uma versão inteira depois dela já estar tecnicamente pronta para `Done`. O custo é visível no próprio `TOKEN_USAGE_LOG.md`: SPEC-0053 tem a maior contagem de sessões do log até aqui (20).
-
-**Precisamos mudar...**
-
-(1) A linha "Smoke visual/sonoro das fatias desktop nunca confirmado" nos Padrões Recorrentes deixa de ser hipotética — já reprovou uma implementação inteira (v2.0) apesar dos quatro gates técnicos verdes; a v3.0 finalmente fechou o smoke com todos os 15 itens `OK` — encaminhamento: já atualizado nesta mesma SPEC em `apps/desktop/CLAUDE.md`/`NEXT_CONTEXT.md` (a pendência estrutural muda de "nunca confirmado" para "confirmado na v3.0 da SPEC-0053"; fatias futuras reabrem a pendência só se tocarem o núcleo/layout de novo). (2) Nenhum ADR novo — Canvas 2D e drawer permanecem dentro do Output Gateway, ADR-0019 intacto (nota da própria SPEC, D3/D8).
-
 ---
 
-**Entradas anteriores (SPEC-0052 e mais antigas):** `LESSONS_LEARNED-ARCHIVE.md`.
+**Entradas anteriores (SPEC-0053 e mais antigas):** `LESSONS_LEARNED-ARCHIVE.md`.

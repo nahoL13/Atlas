@@ -76,6 +76,7 @@ interface CliValues {
   'allow-read'?: string[] | undefined;
   'allow-write'?: string[] | undefined;
   'allow-net'?: string[] | undefined;
+  'search-url'?: string | undefined;
   provider?: string | undefined;
   model?: string | undefined;
   'base-url'?: string | undefined;
@@ -257,6 +258,19 @@ function resolveConfigOverride(values: CliValues, env: NodeJS.ProcessEnv): Atlas
     override.model = model;
   }
 
+  // Precedência flag > env (ATLAS_SEARCH_URL); repassado cru — validação no
+  // core (ADR-0006, D22). Não repetível: é um endpoint, não uma lista.
+  let searchUrl: string | undefined;
+  if (env.ATLAS_SEARCH_URL !== undefined) {
+    searchUrl = env.ATLAS_SEARCH_URL;
+  }
+  if (values['search-url'] !== undefined) {
+    searchUrl = values['search-url'];
+  }
+  if (searchUrl !== undefined) {
+    override.tools = { searchUrl };
+  }
+
   return override;
 }
 
@@ -323,6 +337,7 @@ function parseArgvOrThrow(argv: string[]) {
         'allow-read': { type: 'string', multiple: true },
         'allow-write': { type: 'string', multiple: true },
         'allow-net': { type: 'string', multiple: true },
+        'search-url': { type: 'string' },
         provider: { type: 'string' },
         model: { type: 'string' },
         'base-url': { type: 'string' },

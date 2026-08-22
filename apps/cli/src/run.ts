@@ -65,9 +65,13 @@ Options:
       --allow-write <p> Diretório permitido para escrita (repetível; default: nenhum).
                        ATLAS_ALLOW_WRITE aceita lista separada por
                        path.delimiter do SO (":" no POSIX, ";" no Windows)
-      --allow-net <h>  Host permitido para a Tool http_get (repetível; default: nenhum).
-                       ATLAS_ALLOW_NET aceita lista separada por vírgula
-                       (não path.delimiter — hostname não é caminho)
+      --allow-net <h>  Host permitido para as Tools http_get/web_search (repetível;
+                       default: nenhum). ATLAS_ALLOW_NET aceita lista separada por
+                       vírgula (não path.delimiter — hostname não é caminho)
+      --search-url <u> Endpoint do provedor de busca (compatível com a API JSON do
+                       SearXNG), habilita a Tool web_search. ATLAS_SEARCH_URL faz o
+                       mesmo papel (não repetível). O host do endpoint também precisa
+                       estar em --allow-net/ATLAS_ALLOW_NET, senão o passo é negado.
       --category <c>   Categoria de memória (fact|episode|project) para
                        "remember" e filtro para "memory list"
       --subject <p>    Projeto ao qual a memória pertence (exige

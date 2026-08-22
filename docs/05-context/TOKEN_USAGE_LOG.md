@@ -2,7 +2,7 @@
 
 > **Project Atlas — Log de Custo de Token por SPEC**
 
-Atualizado em: 2026-08-21 (regenerado por `python3 scripts/agent-usage-report.py --executor all`)
+Atualizado em: 2026-08-22 (regenerado por `python3 scripts/agent-usage-report.py --executor all`)
 
 As métricas são separadas por executor. Tokens efetivos Claude usam os pesos históricos; Codex fica `N/D` até existir uma métrica comparável documentada. Snapshots de Codex são cumulativos e só o último total de cada transcript é lido.
 
@@ -68,8 +68,8 @@ As métricas são separadas por executor. Tokens efetivos Claude usam os pesos h
 | SPEC-0054 | Claude | (SPEC não encontrada em docs/implementation/specs/) | ? | 13 | 2026-08-19 | 187.714.357 | 27.616.545 | complete |
 | SPEC-0055 | Claude | Primeiro acesso à internet **sob o portão de permissão**: Tool `http_get` somente-leitura em `@atlas/tools` sobre a porta injetável `HttpPort`, com o host julgado pelo portão de rede do Permission Service (`ResourceType: 'network'` + política `netRoots`, ADR-0026) e configurável pela CLI (`--allow-net` / `ATLAS_ALLOW_NET`) | Draft | 12 | 2026-08-21 | 127.041.288 | 21.264.614 | complete |
 | SPEC-0056 | Claude | Tool de leitura de estrutura de projeto (`project_info`) em `@atlas/tools`, com a raiz descoberta pelo `rev-parse` já contido da SPEC-0028 e manifests reconhecidos por tabela fixa | Done | 8 | 2026-08-21 | 60.164.781 | 10.237.100 | complete |
-| SPEC-0057 | Claude | Busca na internet por texto livre: Tool `web_search` em `@atlas/tools` sobre a porta injetável `SearchPort`, com adaptador default apoiado no `HttpPort` já endurecido da SPEC-0055, provedor **sem credencial** provisionado pelo usuário (endpoint compatível com a API JSON do SearXNG, configurado por `--search-url` / `ATLAS_SEARCH_URL`) e host julgado pelo mesmo portão de rede `netRoots` (ADR-0026) | Draft | 6 | 2026-08-22 | 25.164.224 | 6.154.828 | complete |
-| SPEC-0058 | Claude | Endurecimento da composição de saídas de Tools no prompt (`@atlas/cognitive`): delimitação estruturada por bloco `<tool_output>`, instrução fixa de conteúdo não confiável e teto de tamanho por passo — mitigação genérica de injeção indireta de prompt, aplicável a **toda** Tool | Draft | 7 | 2026-08-22 | 31.697.812 | 6.326.583 | complete |
+| SPEC-0057 | Claude | Busca na internet por texto livre: Tool `web_search` em `@atlas/tools` sobre a porta injetável `SearchPort`, com adaptador default apoiado no `HttpPort` já endurecido da SPEC-0055, provedor **sem credencial** provisionado pelo usuário (endpoint compatível com a API JSON do SearXNG, configurado por `--search-url` / `ATLAS_SEARCH_URL`) e host julgado pelo mesmo portão de rede `netRoots` (ADR-0026) | Draft | 10 | 2026-08-22 | 66.396.763 | 11.887.596 | complete |
+| SPEC-0058 | Claude | Endurecimento da composição de saídas de Tools no prompt (`@atlas/cognitive`): delimitação estruturada por bloco `<tool_output>`, instrução fixa de conteúdo não confiável e teto de tamanho por passo — mitigação genérica de injeção indireta de prompt, aplicável a **toda** Tool | Draft | 8 | 2026-08-22 | 46.684.753 | 8.853.771 | complete |
 
 ## Detalhamento por fase
 
@@ -133,8 +133,8 @@ Valores em tokens efetivos. Codex não é somado nem comparado a Claude enquanto
 | SPEC-0054 | Claude | 3.784.527 | 2.394.055 | 1.135.657 | 13.556.745 | 2.987.996 | 3.757.565 | 0 |
 | SPEC-0055 | Claude | 2.730.954 | 4.037.593 | 2.349.982 | 7.224.968 | 1.334.549 | 3.586.568 | 0 |
 | SPEC-0056 | Claude | 2.233.378 | 414.488 | 1.426.208 | 2.825.319 | 547.533 | 2.790.174 | 0 |
-| SPEC-0057 | Claude | 2.059.255 | 2.283.242 | 1.648.322 | 0 | 0 | 0 | 164.009 |
-| SPEC-0058 | Claude | 0 | 838.425 | 2.330.681 | 2.569.249 | 559.106 | 29.122 | 0 |
+| SPEC-0057 | Claude | 2.780.313 | 2.283.242 | 1.648.322 | 4.278.416 | 677.738 | 55.556 | 164.009 |
+| SPEC-0058 | Claude | 350.742 | 838.425 | 2.330.681 | 2.569.249 | 559.106 | 2.205.568 | 0 |
 
 ## Eficiência de processo (overhead ÷ implementação)
 
@@ -185,7 +185,8 @@ Calculada separadamente por executor, apenas quando tokens efetivos comparáveis
 | SPEC-0054 | Claude | 13.556.745 | 14.059.800 | 1.0× |
 | SPEC-0055 | Claude | 7.224.968 | 14.039.646 | 1.9× |
 | SPEC-0056 | Claude | 2.825.319 | 7.411.781 | 2.6× |
-| SPEC-0058 | Claude | 2.569.249 | 3.757.334 | 1.5× |
+| SPEC-0057 | Claude | 4.278.416 | 7.609.180 | 1.8× |
+| SPEC-0058 | Claude | 2.569.249 | 6.284.522 | 2.4× |
 
 ## Como estimar antes de começar uma SPEC nova
 

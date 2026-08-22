@@ -41,3 +41,20 @@ export {
 export type { ProjectManifest, ExtractScriptsResult } from './project-manifests.js';
 export { createProjectInfoTool } from './project-info.js';
 export type { ProjectInfoDeps } from './project-info.js';
+export { searxngSearchPort, parseSearchPayload } from './search-port.js';
+export type {
+  SearchResultItem,
+  SearchResponse,
+  SearchPort,
+  SearxngSearchPortDeps,
+} from './search-port.js';
+export {
+  SEARCH_DEFAULT_MAX_RESULTS,
+  SEARCH_MAX_RESULTS,
+  SEARCH_SNIPPET_LIMIT,
+  SEARCH_SNIPPET_MARKER,
+  SEARCH_QUERY_LIMIT,
+  SEARCH_BODY_LIMIT_BYTES,
+} from './search-port.js';
+export { createWebSearchTool, resolveSearchHost } from './web-search.js';
+export type { WebSearchDeps } from './web-search.js';

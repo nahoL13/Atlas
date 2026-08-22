@@ -25,6 +25,31 @@ function isValidNetRootEntry(value: unknown): boolean {
 }
 
 /**
+ * `tools.searchUrl` (SPEC-0057/Escopo 5): `''` é válido (não configurado).
+ * Uma string não vazia precisa parsear com `new URL`, ter esquema
+ * `http:`/`https:`, não ter credenciais embutidas (`username`/`password`) e
+ * não ter query string (`?`) nem fragmento (`#`) — o adaptador monta a
+ * própria query (D21/D24).
+ */
+function isValidSearchUrl(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  if (value === '') return true;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return false;
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+  if (parsed.username !== '' || parsed.password !== '') return false;
+  if (parsed.search !== '' || parsed.hash !== '') return false;
+
+  return true;
+}
+
+/**
  * `options.personaIds` (aditivo, SPEC-0039/ADR-0020, Decisão D5): conjunto
  * de ids válidos para o campo `persona`, vindo do catálogo já carregado do
  * Persona Service (embutidas + custom). Ausente ⇒ valida contra
@@ -43,6 +68,7 @@ export function loadConfig(
     netRoots: override.permissions?.netRoots ?? defaults.permissions.netRoots,
   };
   const personaIds = options.personaIds ?? PERSONA_IDS;
+  const tools = { searchUrl: override.tools?.searchUrl ?? defaults.tools.searchUrl };
   const merged: AtlasConfig = {
     logLevel: override.logLevel ?? defaults.logLevel,
     dataDir: mergeDataDir(override),
@@ -50,6 +76,7 @@ export function loadConfig(
     memory,
     permissions,
     model,
+    tools,
   };
 
   const issues: string[] = [];
@@ -97,6 +124,13 @@ export function loadConfig(
   ) {
     issues.push(
       'permissions.netRoots deve ser uma lista de hostnames válidos (sem esquema/porta/caminho; pode ser vazia)',
+    );
+  }
+
+  if (!isValidSearchUrl(tools.searchUrl)) {
+    issues.push(
+      "tools.searchUrl deve ser '' (não configurado) ou uma URL http(s) absoluta, sem " +
+        'credenciais embutidas, sem query string e sem fragmento',
     );
   }
 

@@ -322,6 +322,49 @@ describe('CliInputGateway.normalize', () => {
     });
   });
 
+  describe('--search-url / ATLAS_SEARCH_URL (SPEC-0057)', () => {
+    it('flag --search-url mapeia para override.tools.searchUrl', () => {
+      const gateway = createCliInputGateway();
+      const parsed = gateway.normalize(
+        ['status', '--search-url', 'https://h/search'],
+        {} as NodeJS.ProcessEnv,
+      );
+      expect(parsed.configOverride.tools).toEqual({ searchUrl: 'https://h/search' });
+    });
+
+    it('ATLAS_SEARCH_URL mapeia para override.tools.searchUrl', () => {
+      const gateway = createCliInputGateway();
+      const parsed = gateway.normalize(['status'], {
+        ATLAS_SEARCH_URL: 'https://env/search',
+      } as NodeJS.ProcessEnv);
+      expect(parsed.configOverride.tools).toEqual({ searchUrl: 'https://env/search' });
+    });
+
+    it('flag presente + env presente: a flag vence', () => {
+      const gateway = createCliInputGateway();
+      const parsed = gateway.normalize(['status', '--search-url', 'https://flag/search'], {
+        ATLAS_SEARCH_URL: 'https://env/search',
+      } as NodeJS.ProcessEnv);
+      expect(parsed.configOverride.tools).toEqual({ searchUrl: 'https://flag/search' });
+    });
+
+    it('nenhuma das duas fontes: override.tools não é setado', () => {
+      const gateway = createCliInputGateway();
+      const parsed = gateway.normalize(['status'], {} as NodeJS.ProcessEnv);
+      expect(parsed.configOverride.tools).toBeUndefined();
+    });
+
+    it('override com --search-url passa intacto pelo loadConfig do core', () => {
+      const gateway = createCliInputGateway();
+      const parsed = gateway.normalize(
+        ['status', '--search-url', 'https://h/search'],
+        {} as NodeJS.ProcessEnv,
+      );
+      const config = loadConfig(parsed.configOverride);
+      expect(config.tools.searchUrl).toBe('https://h/search');
+    });
+  });
+
   it('override com múltiplas raízes de read e write passa intacto pelo loadConfig do core', () => {
     const gateway = createCliInputGateway();
     const parsed = gateway.normalize(

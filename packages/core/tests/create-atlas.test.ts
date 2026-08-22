@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { InvalidConfigError } from '@atlas/contracts';
 import type { Fact, Persona, Tool } from '@atlas/contracts';
@@ -14,7 +15,15 @@ import {
   createWriteFileTool,
   nodeGitReadPort,
 } from '@atlas/tools';
-import type { ExecGit, FsReadPort, FsWritePort, GitReadPort, HttpPort } from '@atlas/tools';
+import type {
+  ExecGit,
+  FsReadPort,
+  FsWritePort,
+  GitReadPort,
+  HttpPort,
+  SearchPort,
+  SearchResponse,
+} from '@atlas/tools';
 import { createAtlas } from '../src/index.js';
 
 function fakeHttp(overrides: Partial<HttpPort> = {}): { http: HttpPort; calls: string[] } {
@@ -60,6 +69,28 @@ function fullFsWrite(overrides: Partial<FsWritePort> = {}): FsWritePort {
 
 function fakeConfirm(approved: boolean): ConfirmPort {
   return { request: async () => approved };
+}
+
+function fakeSearch(
+  endpointUrl: string,
+  response?: SearchResponse,
+): { search: SearchPort; calls: Array<{ query: string; maxResults: number }> } {
+  const calls: Array<{ query: string; maxResults: number }> = [];
+  const search: SearchPort = {
+    endpointUrl,
+    async search(query: string, maxResults: number) {
+      calls.push({ query, maxResults });
+      return (
+        response ?? {
+          query,
+          results: [{ title: 'T', url: 'https://r.example/', snippet: 's' }],
+          truncated: false,
+          discarded: 0,
+        }
+      );
+    },
+  };
+  return { search, calls };
 }
 
 describe('createAtlas', () => {
@@ -774,5 +805,193 @@ describe('createAtlas + personaStorage (ADR-0020, SPEC-0039)', () => {
     expect(personaStorage.saveCalls).toBe(0);
     expect(atlas.persona.id).toBe('jarvis');
     await atlas.shutdown();
+  });
+});
+
+describe('createAtlas + web_search (SPEC-0057)', () => {
+  function fetchFakePlanningWebSearch(deps: {
+    requestBodies: { messages: { role: string; content: string }[] }[];
+    query: string;
+    composedReply?: string;
+  }): typeof fetch {
+    let callIndex = 0;
+    return (async (_url: string, init?: RequestInit) => {
+      deps.requestBodies.push(JSON.parse((init?.body as string) ?? '{}'));
+      callIndex += 1;
+      if (callIndex === 1) {
+        return new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    steps: [{ tool: 'web_search', args: { query: deps.query } }],
+                  }),
+                },
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: deps.composedReply ?? 'ok' } }] }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+  }
+
+  it('tools.searchUrl: "" ⇒ web_search não registrada (ferramenta desconhecida), demais Tools inalteradas', async () => {
+    const requestBodies: { messages: { role: string; content: string }[] }[] = [];
+    const fetchFake = fetchFakePlanningWebSearch({ requestBodies, query: 'quic' });
+
+    const atlas = await createAtlas(
+      {
+        config: {
+          model: { provider: 'remote', baseUrl: 'http://fake.local', apiKey: 'k', model: 'gpt' },
+        },
+      },
+      { memoryStorage: fakeStorage(), fetch: fetchFake },
+    );
+
+    const answer = await atlas.cognitive.ask('pesquisa quic');
+
+    const step = answer.steps?.find((s) => s.tool === 'web_search');
+    expect(step).toBeDefined();
+    expect(step!.result.ok).toBe(false);
+    expect(step!.result.error).toContain('ferramenta desconhecida');
+    await atlas.shutdown();
+  });
+
+  it('tools.searchUrl configurada ⇒ web_search registrada; com deps.search injetado, é essa porta que a Tool usa e o host de requirements segue o endpointUrl DA PORTA, não do config', async () => {
+    const { search, calls } = fakeSearch('https://outro.exemplo/search');
+    const requestBodies: { messages: { role: string; content: string }[] }[] = [];
+    const fetchFake = fetchFakePlanningWebSearch({ requestBodies, query: 'quic' });
+
+    const atlas = await createAtlas(
+      {
+        config: {
+          model: { provider: 'remote', baseUrl: 'http://fake.local', apiKey: 'k', model: 'gpt' },
+          tools: { searchUrl: 'https://busca.exemplo.com/search' },
+          permissions: { netRoots: [] },
+        },
+      },
+      { memoryStorage: fakeStorage(), fetch: fetchFake, search },
+    );
+
+    const answer = await atlas.cognitive.ask('pesquisa quic');
+
+    const step = answer.steps?.find((s) => s.tool === 'web_search');
+    expect(step).toBeDefined();
+    expect(step!.denialKind).toBe('blocked');
+    // O host citado na negação é o da porta injetada (outro.exemplo), não o
+    // host do config.tools.searchUrl (busca.exemplo.com) — o host segue a
+    // porta, nunca a config (D21).
+    expect(step!.result.error).toContain('outro.exemplo');
+    expect(step!.result.error).not.toContain('busca.exemplo.com');
+    expect(calls).toHaveLength(0);
+    await atlas.shutdown();
+  });
+
+  it('netRoots: [] ⇒ passo negado (blocked), a porta de busca não é chamada, execução não lança', async () => {
+    const { search, calls } = fakeSearch('https://busca.exemplo.com/search');
+    const requestBodies: { messages: { role: string; content: string }[] }[] = [];
+    const fetchFake = fetchFakePlanningWebSearch({ requestBodies, query: 'quic' });
+
+    const atlas = await createAtlas(
+      {
+        config: {
+          model: { provider: 'remote', baseUrl: 'http://fake.local', apiKey: 'k', model: 'gpt' },
+          tools: { searchUrl: 'https://busca.exemplo.com/search' },
+          permissions: { netRoots: [] },
+        },
+      },
+      { memoryStorage: fakeStorage(), fetch: fetchFake, search },
+    );
+
+    const answer = await atlas.cognitive.ask('pesquisa quic');
+
+    const step = answer.steps?.find((s) => s.tool === 'web_search');
+    expect(step).toBeDefined();
+    expect(step!.result.ok).toBe(false);
+    expect(step!.denialKind).toBe('blocked');
+    expect(calls).toHaveLength(0);
+    await atlas.shutdown();
+  });
+
+  it('host fora de netRoots ⇒ passo negado com o motivo contendo o host', async () => {
+    const { search } = fakeSearch('https://busca.exemplo.com/search');
+    const requestBodies: { messages: { role: string; content: string }[] }[] = [];
+    const fetchFake = fetchFakePlanningWebSearch({ requestBodies, query: 'quic' });
+
+    const atlas = await createAtlas(
+      {
+        config: {
+          model: { provider: 'remote', baseUrl: 'http://fake.local', apiKey: 'k', model: 'gpt' },
+          tools: { searchUrl: 'https://busca.exemplo.com/search' },
+          permissions: { netRoots: ['permitido.com'] },
+        },
+      },
+      { memoryStorage: fakeStorage(), fetch: fetchFake, search },
+    );
+
+    const answer = await atlas.cognitive.ask('pesquisa quic');
+
+    const step = answer.steps?.find((s) => s.tool === 'web_search');
+    expect(step).toBeDefined();
+    expect(step!.result.ok).toBe(false);
+    expect(step!.result.error).toContain('busca.exemplo.com');
+    await atlas.shutdown();
+  });
+
+  it('netRoots: ["busca.exemplo.com"] + porta fake ⇒ ask produz steps com sucesso e os resultados chegam à composição', async () => {
+    const { search } = fakeSearch('https://busca.exemplo.com/search', {
+      query: 'quic',
+      results: [
+        {
+          title: 'QUIC protocol',
+          url: 'https://en.wikipedia.org/wiki/QUIC',
+          snippet: 'marcador-unico-busca',
+        },
+      ],
+      truncated: false,
+      discarded: 0,
+    });
+    const requestBodies: { messages: { role: string; content: string }[] }[] = [];
+    const fetchFake = fetchFakePlanningWebSearch({
+      requestBodies,
+      query: 'quic',
+      composedReply: 'resumo da busca',
+    });
+
+    const atlas = await createAtlas(
+      {
+        config: {
+          model: { provider: 'remote', baseUrl: 'http://fake.local', apiKey: 'k', model: 'gpt' },
+          tools: { searchUrl: 'https://busca.exemplo.com/search' },
+          permissions: { netRoots: ['busca.exemplo.com'] },
+        },
+      },
+      { memoryStorage: fakeStorage(), fetch: fetchFake, search },
+    );
+
+    const answer = await atlas.cognitive.ask('pesquisa quic');
+
+    expect(answer.steps).toBeDefined();
+    expect(answer.steps!.some((step) => step.tool === 'web_search' && step.result.ok)).toBe(true);
+    const composedRequest = requestBodies[1];
+    expect(composedRequest).toBeDefined();
+    const allComposedContent = composedRequest!.messages.map((m) => m.content).join('\n');
+    expect(allComposedContent).toContain('marcador-unico-busca');
+    expect(answer.text).toBe('resumo da busca');
+    await atlas.shutdown();
+  });
+
+  it('createAtlas não menciona bodyLimitBytes nem importa nodeHttpPort para o caminho de busca (D24)', () => {
+    // Asserção estrutural/grep: o teto de corpo da busca é decidido só
+    // dentro de searxngSearchPort — nunca repetido no composition root.
+    const source = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
+    expect(source).not.toContain('bodyLimitBytes');
+    expect(source).not.toContain('SEARCH_BODY_LIMIT_BYTES');
   });
 });

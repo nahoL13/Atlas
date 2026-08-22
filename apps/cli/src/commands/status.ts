@@ -18,6 +18,7 @@ export function runStatus(atlas: AtlasPlatform, output: OutputGateway): void {
       `netRoots: ${
         config.permissions.netRoots.length > 0 ? config.permissions.netRoots.join(', ') : '(nenhum)'
       }`,
+      `search: ${config.tools.searchUrl !== '' ? config.tools.searchUrl : '(não configurado)'}`,
       '',
     ].join('\n'),
   );

@@ -23,14 +23,17 @@ import {
   createGitLogTool,
   createHttpGetTool,
   createProjectInfoTool,
+  createWebSearchTool,
   nodeFsReadPort,
   nodeFsWritePort,
   nodeGitReadPort,
   nodeHttpPort,
+  searxngSearchPort,
   type FsReadPort,
   type FsWritePort,
   type GitReadPort,
   type HttpPort,
+  type SearchPort,
 } from '@atlas/tools';
 import { loadConfig } from './config/load-config.js';
 import { createLifecycle } from './lifecycle/lifecycle.js';
@@ -54,6 +57,13 @@ export interface CreateAtlasDeps {
   fsWrite?: FsWritePort;
   git?: GitReadPort;
   http?: HttpPort;
+  /**
+   * Porta de busca (SPEC-0057), molde exato de `http?`/`git?`. Sem ela e
+   * com `config.tools.searchUrl` configurada, o Core compõe
+   * `searxngSearchPort({ baseUrl: config.tools.searchUrl })` — o teto de
+   * corpo de 256 KiB é decidido só dentro do adaptador (D24).
+   */
+  search?: SearchPort;
   confirm?: ConfirmPort;
 }
 
@@ -98,6 +108,13 @@ export async function createAtlas(
   registry.register(createGitLogTool({ git }));
   registry.register(createHttpGetTool({ http }));
   registry.register(createProjectInfoTool({ fs: fsRead, git }));
+  // Registro condicional (SPEC-0057/D11): ausência de `tools.searchUrl` é
+  // ausência de PROVEDOR, não de política — a Tool nem existe no processo,
+  // em vez de sempre registrada e sempre negada pelo evaluate.
+  if (config.tools.searchUrl !== '') {
+    const search = deps.search ?? searxngSearchPort({ baseUrl: config.tools.searchUrl });
+    registry.register(createWebSearchTool({ search }));
+  }
   const runtime = createRuntime({ registry, permissions, confirm });
   const skills = createSkillRegistry({ skills: BUILTIN_SKILLS });
   const skillBuilder = createSkillBuilder({ gateway, registry: skills, tools: registry });

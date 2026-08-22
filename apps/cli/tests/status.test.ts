@@ -14,7 +14,7 @@ function capture() {
   return { gateway, text: () => out.join('') };
 }
 
-function fakeAtlas(permissions: AtlasConfig['permissions']): AtlasPlatform {
+function fakeAtlas(permissions: AtlasConfig['permissions'], searchUrl: string = ''): AtlasPlatform {
   return {
     state: 'ready',
     config: {
@@ -24,6 +24,7 @@ function fakeAtlas(permissions: AtlasConfig['permissions']): AtlasPlatform {
       memory: { path: '/home/x/.atlas/memory.json' },
       permissions,
       model: { provider: 'local', model: 'llama3.2' },
+      tools: { searchUrl },
     },
     persona: {
       id: 'jarvis',
@@ -115,5 +116,20 @@ describe('runStatus', () => {
       cap.gateway,
     );
     expect(cap.text()).toContain('netRoots: a.com, b.com');
+  });
+
+  it('exibe search: (não configurado) quando tools.searchUrl é vazio', () => {
+    const cap = capture();
+    runStatus(fakeAtlas({ readRoots: ['/x'], writeRoots: [], netRoots: [] }, ''), cap.gateway);
+    expect(cap.text()).toContain('search: (não configurado)');
+  });
+
+  it('exibe search: <url> quando tools.searchUrl está configurado', () => {
+    const cap = capture();
+    runStatus(
+      fakeAtlas({ readRoots: ['/x'], writeRoots: [], netRoots: [] }, 'https://h/search'),
+      cap.gateway,
+    );
+    expect(cap.text()).toContain('search: https://h/search');
   });
 });

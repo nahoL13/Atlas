@@ -208,3 +208,16 @@ A SPEC-0058 **mitiga, sem fechar**, a metade "injeção indireta de prompt" do r
 - **A metade "exfiltração via URL" do residual permanece intocada.** O portão segue julgando só o host, nunca o path/query da requisição — nada nesta atualização estreita esse canal.
 - **A metade "injeção indireta" segue apenas mitigada, não fechada.** Um modelo pode ignorar a instrução; o memo de continuidade persistido na `Conversation` (`summarizeSteps`) reentra em todo turno seguinte só com teto e neutralização, sem bloco nem instrução (residual 10 da SPEC-0058) — fechar essa metade por inteiro exigiria um canal estrutural de mensagem (`role: 'tool'`), decisão que reabriria este ADR ou exigiria um novo.
 - Não fecha o item 1.4 do Roadmap.
+
+---
+
+# Atualização ([SPEC-0057](../implementation/specs/SPEC-0057-web-search-tool.md))
+
+A SPEC-0057 entregou a **terceira fatia** do item 1.4 (Acesso à internet) consumindo este ADR **sem reabrir nenhuma cláusula (a)–(e)**: diff vazio em `@atlas/permissions`, `netRoots`, `evaluate`, `ResourceType`/`ResourceRef`, `isContained`.
+
+- **Segunda Tool de rede: `web_search`** (`packages/tools/src/search-port.ts`/`web-search.ts`), busca em texto livre sobre um provedor compatível com a API JSON do SearXNG, sem credencial, configurado por `--search-url`/`ATLAS_SEARCH_URL`. O host do provedor é julgado por `netRoots` exatamente como `http_get` — `access: 'read'`, nenhum `ResourceType`/`AccessMode` novo.
+- **(b) confirmada de novo, por um desenho estrutural diferente do de `http_get`**: em vez de uma derivação única a partir de `args` (`resolveHttpTarget`), o host declarado em `requirements` e o host efetivamente requisitado saem do **mesmo campo de uma porta** — `SearchPort.endpointUrl`, publicado pela própria porta e usado pelo adaptador para montar a URL requisitada. É outra forma de fechar por construção a distância entre recurso julgado e recurso requisitado, sem precisar de TOCTOU/`verify` — mesma garantia de (b), mecanismo novo.
+- **Reaproveita o `HttpPort` da SPEC-0055** (não abre uma segunda stack de rede): `searxngSearchPort` compõe sobre `nodeHttpPort`, herdando timeout de 10 s, ausência de cabeçalhos/credenciais e `redirect: 'manual'` — `nodeHttpPort` ganha só um parâmetro aditivo de teto de corpo (`bodyLimitBytes?`, default 64 KiB inalterado; a busca usa 256 KiB).
+- **Amplia os dois residuais registrados na atualização da SPEC-0055, não fecha nenhum**: a consulta em texto livre é um segundo canal de exfiltração que o portão não julga (avalia só o host do provedor, nunca a consulta em si); e até `SEARCH_MAX_RESULTS` títulos/trechos de terceiros entram no prompt por busca — injeção indireta amplificada, mitigada de forma genérica (não fechada) pela SPEC-0058.
+- **`apps/desktop` segue sem `netRoots`/`tools.searchUrl` nesta fatia** (D15 da SPEC) — mesma decisão de escopo que a SPEC-0055/D17 já tomou.
+- Não fecha o item 1.4 do Roadmap — seguem candidatas execução de comandos sob o Permission Service e os residuais restantes do próprio ADR (redirect por hop, wildcard de subdomínio, IP resolvido, painel de rede/busca na GUI).

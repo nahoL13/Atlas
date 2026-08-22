@@ -16,6 +16,14 @@ export interface AtlasConfig {
     readonly netRoots: readonly string[];
   };
   readonly model: ModelGatewayConfig;
+  /**
+   * Configuração dos adaptadores de `@atlas/tools` que precisam de endpoint
+   * — namespace de módulo, no mesmo molde de `model`/`permissions`/`memory`
+   * (SPEC-0057/D22).
+   * `searchUrl`: endpoint do provedor de busca (compatível com a API JSON do
+   * SearXNG). '' = não configurado — a Tool `web_search` não é registrada.
+   */
+  readonly tools: { readonly searchUrl: string };
 }
 
 export interface AtlasConfigOverride {
@@ -29,4 +37,5 @@ export interface AtlasConfigOverride {
     netRoots?: readonly string[];
   };
   model?: Partial<ModelGatewayConfig>;
+  tools?: { searchUrl?: string };
 }
