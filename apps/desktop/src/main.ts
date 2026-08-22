@@ -21,15 +21,17 @@ import {
   resolveAskSnapshot,
   resolveMemorySnapshot,
   resolveStatusSnapshot,
+  selectNetworkAccess,
   selectPermissionRoots,
   selectPersona,
   sendChatTurn,
   updatePersona,
 } from './core-bridge.js';
 import type { SessionId, PersonaInput } from '@atlas/contracts';
-import type { PermissionRoots } from './core-bridge.js';
+import type { NetworkAccess, PermissionRoots } from './core-bridge.js';
 import { createDialogConfirmPort } from './confirm-port.js';
 import { createGrantConfirmDialog } from './permission-grant-dialog.js';
+import { createNetworkGrantConfirmDialog } from './network-grant-dialog.js';
 import { createPersonaDeleteDialog } from './persona-delete-dialog.js';
 import { createPiperTts } from './piper-tts.js';
 import type { PiperFsPort, PiperPaths, SpawnPiper } from './piper-tts.js';
@@ -59,6 +61,13 @@ const confirmGrant = createGrantConfirmDialog({
 // (SPEC-0039, Decisão D14): diálogo dedicado, distinto dos dois acima —
 // mesma razão de `dialog.showMessageBox` só existir no main process.
 const confirmDelete = createPersonaDeleteDialog({
+  showMessageBox: (options) => dialog.showMessageBox(options),
+});
+
+// NetworkGrantConfirmPort de concessão de política de rede (SPEC-0059, D3):
+// quarta porta fail-closed, diálogo dedicado, distinto dos três acima —
+// mesma razão de `dialog.showMessageBox` só existir no main process.
+const confirmNetworkGrant = createNetworkGrantConfirmDialog({
   showMessageBox: (options) => dialog.showMessageBox(options),
 });
 
@@ -440,6 +449,17 @@ ipcMain.handle('atlas:permissions:select', async (_event, roots: PermissionRoots
   // Mesmo tratamento do handler de 'atlas:persona:select': nenhuma sessão
   // encerrada pela aplicação de permissões deve ser reencerrada no
   // teardown de fechamento da app.
+  for (const session of selection.closedSessions) {
+    openChatSessionIds.delete(session);
+  }
+  return selection;
+});
+
+// SPEC-0059: mesmo tratamento dos handlers de 'atlas:persona:select'/
+// 'atlas:permissions:select' — sincroniza `openChatSessionIds` com as
+// sessões que a aplicação de rede/busca encerrou.
+ipcMain.handle('atlas:network:select', async (_event, access: NetworkAccess) => {
+  const selection = await selectNetworkAccess(access, { confirmGrant: confirmNetworkGrant });
   for (const session of selection.closedSessions) {
     openChatSessionIds.delete(session);
   }

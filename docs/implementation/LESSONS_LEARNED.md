@@ -73,6 +73,24 @@ Lições que se repetiram em três ou mais SPECs. Este índice existe para sobre
 
 # Registro
 
+## [SPEC-0059](specs/SPEC-0059-desktop-network-search-gui.md) — Desktop: painel de rede e busca (`netRoots`/`tools.searchUrl`) pela interface gráfica (2026-08-22)
+
+**Descobrimos que...**
+
+Dois gestos de aplicação de política independentes no mesmo `core-bridge` (`selectPermissionRoots` da SPEC-0038, `selectNetworkAccess` novo) criam uma classe de risco que nenhum dos dois sozinho tinha: dois diálogos nativos de consentimento empilhados, cada um descrevendo uma concessão diferente, é exatamente a condição em que um "OK" pode ser dado para a concessão errada (Artigo 8) — e `hasInFlightOperation()` (registro único da SPEC-0051) não enxerga nenhum dos dois, porque só conta `'ask'`/`'chat-turn'`/`'open-session'`. A correção (D16, mutex de módulo compartilhado, liberado em `finally`) é pequena, mas o gate cobrou prova das **três** combinações (rede×rede, FS×FS, rede×FS cruzada) — a mesma disciplina que os Padrões Recorrentes já catalogam ("N consumidores"/"toda função que X" tende a estar incompleta), agora sobre reentrância concorrente em vez de contagem de chamadores. Descobrimos também, do lado do rascunho de UI, que "recarregar do status em qualquer rejeição" (o molde da SPEC-0038) deixa de ser a escolha certa quando a lista típica tem várias entradas digitadas à mão: D17 preserva o rascunho de rede em qualquer rejeição e move o "em vigor" para uma linha própria — uma assimetria deliberada com o bloco de FS, registrada e não retroaplicada (mudar o bloco de FS é candidato futuro fora desta fatia). O gate confirmou como achado crítico (A1) que `loadStatus()` precisa nunca resetar o rascunho de rede — só `#network-inforce` — separação que a implementação já tinha, mas que exigiu verificação explícita linha a linha contra o código, não só contra os testes.
+
+**A arquitetura ajudou porque...**
+
+O molde de consentimento de política da SPEC-0038 (tudo-ou-nada, rechecagem A7, encerramento de sessões vivas, seleção não durável) absorveu o eixo de rede inteiro sem desenho novo — só a guarda de mutex nova (D16), que não alterou nenhum desfecho já coberto por teste em `selectPermissionRoots`. A origem única de composição de `AtlasConfigOverride` (`composeOverride`, D5/D9) evitou a 3ª instância do padrão "segunda fonte da mesma regra de precedência" que este Registro já cataloga (SPEC-0055/D4, SPEC-0057/D21): o dry-run de validação e a aplicação real usam literalmente a mesma função, então uma divergência silenciosa entre o que se valida e o que se aplica é estruturalmente impossível, não só testada. `ResourceRef`/`netRoots` (ADR-0026, SPEC-0055) e `tools.searchUrl` (SPEC-0057) chegaram prontos o bastante para esta fatia não tocar `packages/*` em nenhuma linha — a promessa de escopo das duas SPECs anteriores ("painel de rede/busca na GUI é fatia própria") se provou exata.
+
+**A arquitetura atrapalhou porque...**
+
+Nada de estrutural — os quatro comandos da raiz (1772 testes/96 arquivos) e os Critérios de Aceitação passaram sem achado bloqueante do `spec-validator`, incluindo a fiação crítica A1 e as três baterias de mutex D16; diff confinado a `apps/desktop/**` + a nota de atualização no ADR-0026 + a própria SPEC, exatamente como previsto. O único custo visível foi de escala: a SPEC soma 18 decisões de design (D1–D18), a maior contagem deste Registro até aqui para uma fatia de UI — reflexo direto de reabrir conscientemente duas decisões de escopo (SPEC-0055/D17, SPEC-0057/D15) sobre uma superfície com quatro portas fail-closed concorrentes.
+
+**Precisamos mudar...**
+
+Nada de obrigatório para esta fatia. (1) Smoke manual em janela real segue **não executado** neste ambiente (sem WindowServer) — mesma pendência estrutural já registrada em `apps/desktop/CLAUDE.md` para outras fatias visuais/de voz do desktop — encaminhamento: nenhuma ação possível agora; confirmação humana futura, registrado em `NEXT_CONTEXT.md`. (2) O residual "diálogo fantasma" (nenhum dos quatro diálogos nativos tem `BrowserWindow` pai) fica **ampliado**, não agravado por mau desenho: com o mutex de D16, um diálogo perdido atrás da janela agora trava as duas aplicações de política, não mais só uma — candidato já nomeado (diálogos modais com `BrowserWindow` pai), sem SPEC própria. (3) O texto do diálogo de consentimento de rede (D18) enumera nominalmente `http_get`/`web_search`; quando uma 3ª Tool de rede for criada, esse texto fica desatualizado sem gate mecânico que force a atualização (diferente do gate de paridade renderer↔módulo) — encaminhamento: candidato registrado na própria SPEC (Observações), revisar o texto manualmente na SPEC que criar a 3ª Tool de rede. (4) Esta SPEC é a primeira das três nomeadas pelo [ADR-0027](../06-adr/ADR-0027-external-process-lifecycle-management.md) (novo, Accepted nesta mesma sessão) — auto-start do Ollama e do container SearXNG seguem candidatos, o segundo só com efeito prático no desktop agora que esta fatia entregou o painel de rede — encaminhamento: candidatos nomeados em `NEXT_CONTEXT.md`, sem SPEC própria ainda.
+
 ## [SPEC-0057](specs/SPEC-0057-web-search-tool.md) — Busca na internet por texto livre: Tool `web_search` sobre `SearchPort`, provedor SearXNG sem credencial (2026-08-22)
 
 **Descobrimos que...**
@@ -145,24 +163,6 @@ Nada de estrutural. O único atrito de arquitetura foi de honestidade documental
 
 (1) A URL como canal de saída de dados que o portão não julga (só o host, nunca o path/query) fica registrada como residual 10, deliberadamente não fechada — fechá-la (restrição de query string, `AccessMode` de saída, ou confirmação por requisição) reabriria o ADR-0026 — encaminhamento: candidato de ADR próprio, registrado na SPEC-0055 e neste Registro; nenhuma ação até um caso real de uso mostrar necessidade. (2) Injeção indireta de prompt pelo corpo remoto (residual 11) — primeira vez que texto de terceiro não confiável entra no prompt de planejamento/composição; mitigação por desenho de prompt (marcar/delimitar conteúdo remoto como não confiável) é candidata de fatia futura, sem marcação nesta — encaminhamento: candidato registrado em `NEXT_CONTEXT.md`, sem ADR necessário a priori (é ajuste de prompt, não de portão). (3) A assimetria `@atlas/model-gateway` × `@atlas/tools` (residual 12) — o Model Gateway segue fazendo egress sem `evaluate`/`netRoots` — fica registrada como fato estrutural permanente, não um bug: levá-lo para dentro do portão é decisão própria (endpoint configurado pelo usuário, não recurso escolhido pelo modelo) — encaminhamento: nenhum, candidato nomeado sem SPEC própria. (4) `apps/desktop` sem painel de rede nesta fatia (D17, residual 8) — repetir todo o desenho de consentimento da SPEC-0038 para o eixo de rede é fatia própria — encaminhamento: candidato registrado em `NEXT_CONTEXT.md`/`apps/desktop/CLAUDE.md`.
 
-## [SPEC-0054](specs/SPEC-0054-desktop-environment-observability.md) — Painel `Sistema` no desktop: recursos do host, consumo de tokens e relógio (2026-08-19)
-
-**Descobrimos que...**
-
-O contrato "resultado do trabalho abandonado é descartado por inteiro" (SPEC-0051) precisava de uma exceção deliberada e nomeada (D9): o consumo de tokens de uma operação cancelada **é** contabilizado — o gasto já ocorreu de fato — enquanto os efeitos de domínio (`remember`/`updateConversation`) continuam descartados. A garantia viva em `apps/desktop/CLAUDE.md` já era precisa o bastante para acomodar isso sem reescrita (ela nomeia os dois efeitos descartados, nunca fala em "resultado inteiro"); só o comentário inline do próprio código ("descartado por inteiro") ficou por trás da nuance nova — não bloqueia nada, mas é o tipo de imprecisão que os Padrões Recorrentes já catalogam do lado da prosa absoluta. Descobrimos também, pela primeira vez desde a SPEC-0053, que acrescentar um painel novo ao drawer v3.0 sem tocar o núcleo/layout **não reabre a pendência de smoke visual**: os 8 itens do CA 34 vieram `OK` numa única passada, sem nenhuma rodada reprovada — diferente do padrão de várias fatias anteriores do desktop.
-
-**A arquitetura ajudou porque...**
-
-O padrão `steps?`/`learned?` (SPECs 0014/0020) generalizou de novo, sem desenho novo: `usage?` em `AskResult`/`ConversationTurn`, somado por um helper puro top-level em `@atlas/cognitive` e devolvido por spread condicional — a 3ª vez que o mesmo molde absorve um campo aditivo de saída do Cognitive. O ADR-0025(c) já tinha antecipado exatamente essa via ("quando o Cognitive Core as expuser"), então a Decisão de design D7 não teve alternativa real a pesar. O molde de porta injetável com import único em `main.ts` (Piper/`whisper.cpp`/VAD) generalizou de novo para `systeminformation` (`system-metrics.ts`) sem desenho novo. As três decisões estruturais de fundo (dependência nova, contabilidade de tokens, contrato técnico exato) já tinham sido resolvidas fora da SPEC pelos ADR-0024/ADR-0025 antes dela começar — a origem registrada da própria SPEC (três escaladas resolvidas em 2026-08-18) preveniu o padrão mais caro já catalogado no projeto: decisão estrutural descoberta em plena implementação.
-
-**A arquitetura atrapalhou porque...**
-
-Nada de estrutural. O único atrito visível foi de precisão de comentário (acima), não de desenho — a fatia inteira (dois módulos novos, dois canais IPC, um painel, três packages tocados aditivamente) fechou sem achado bloqueante do `spec-validator` além do próprio CA 34 (smoke humano), que é estrutural ao ambiente de automação, não a esta SPEC.
-
-**Precisamos mudar...**
-
-Nada de obrigatório — registrado como observação, sem encaminhamento próprio: o comentário inline de `core-bridge.ts` sobre o descarte de operação abandonada ("descartado por inteiro") pode ganhar a mesma precisão que a doc viva já tem na próxima SPEC que tocar aquele trecho, nomeando os dois efeitos descartados em vez da formulação absoluta; não justifica SPEC própria.
-
 ---
 
-**Entradas anteriores (SPEC-0053 e mais antigas):** `LESSONS_LEARNED-ARCHIVE.md`.
+**Entradas anteriores (SPEC-0054 e mais antigas):** `LESSONS_LEARNED-ARCHIVE.md`.

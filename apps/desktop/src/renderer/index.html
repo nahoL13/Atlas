@@ -144,6 +144,42 @@
             </div>
             <button id="permissions-apply" type="button">Aplicar</button>
             <span id="permissions-error"></span>
+            <button
+              id="net-roots-toggle"
+              type="button"
+              aria-controls="net-roots-detail"
+              aria-expanded="false"
+            >
+              Rede (0)
+            </button>
+            <div id="net-roots-detail" hidden>
+              <ul id="net-roots-list"></ul>
+              <input id="net-root-input" type="text" placeholder="host.exemplo.com" />
+              <button id="net-root-add" type="button">Adicionar</button>
+            </div>
+            <button
+              id="search-toggle"
+              type="button"
+              aria-controls="search-detail"
+              aria-expanded="false"
+            >
+              Busca
+            </button>
+            <div id="search-detail" hidden>
+              <input
+                id="search-url-input"
+                type="text"
+                placeholder="https://provedor.exemplo.com/search"
+              />
+              <button id="search-url-clear" type="button">Limpar</button>
+              <p id="search-host-warning" hidden>
+                O provedor de busca só funciona se o host do endpoint estiver autorizado na lista de
+                rede acima — o Atlas não autoriza nada automaticamente.
+              </p>
+            </div>
+            <p id="network-inforce"></p>
+            <button id="network-apply" type="button">Aplicar rede e busca</button>
+            <span id="network-error"></span>
           </section>
           <section id="panel-objective" data-panel hidden aria-label="Objetivo">
             <form id="ask-form">

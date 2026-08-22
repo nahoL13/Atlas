@@ -18,6 +18,10 @@ describe('resolveStatusSnapshot', () => {
     expect(snapshot.persona).toEqual({ id: 'jarvis', name: 'Jarvis' });
     expect(snapshot.readRoots.length).toBeGreaterThan(0);
     expect(snapshot.writeRoots).toEqual([]);
+    // SPEC-0059/D8: netRoots/searchUrl ecoam os defaults do loadConfig
+    // (fail-closed: nenhum host autorizado, nenhum endpoint configurado).
+    expect(snapshot.netRoots).toEqual([]);
+    expect(snapshot.searchUrl).toBe('');
 
     expect(JSON.parse(JSON.stringify(snapshot))).toEqual(snapshot);
   });

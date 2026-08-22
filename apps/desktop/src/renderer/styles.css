@@ -220,11 +220,25 @@ pre {
 #persona-error,
 #persona-form-error,
 #permissions-error,
-#memory-error {
+#memory-error,
+#network-error {
   color: var(--royal-error);
   display: block;
   font-size: 0.82rem;
   white-space: pre-wrap;
+}
+
+/* SPEC-0059: painel de rede/busca, dentro de #panel-permissions (D1) — mesma
+   paleta/molde das listas de FS acima, sem cor/ícone novo. */
+#network-inforce {
+  color: var(--ink-muted);
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+}
+
+#search-host-warning {
+  color: var(--ink-muted);
+  font-size: 0.78rem;
 }
 
 #presence-core {

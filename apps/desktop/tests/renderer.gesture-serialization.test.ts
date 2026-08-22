@@ -80,6 +80,13 @@ const STATIC_SERIALIZED_IDS = [
   'read-root-add',
   'write-root-add',
   'permissions-apply',
+  // SPEC-0059: controles do painel de rede/busca entram na MESMA
+  // serialização (chatTurnInFlight || askInFlight).
+  'net-root-input',
+  'net-root-add',
+  'search-url-input',
+  'search-url-clear',
+  'network-apply',
 ] as const;
 
 function collectSerializedControls(f: RendererFixture): DisableableElement[] {
@@ -89,7 +96,12 @@ function collectSerializedControls(f: RendererFixture): DisableableElement[] {
   const personaListButtons = [
     ...f.document.querySelectorAll('#persona-list button'),
   ] as unknown as DisableableElement[];
-  return [...staticEls, ...personaListButtons];
+  // SPEC-0059: botões "Remover" de #net-roots-list, mesmo tratamento que
+  // #read-roots-list/#write-roots-list já recebem.
+  const netRootsListButtons = [
+    ...f.document.querySelectorAll('#net-roots-list button'),
+  ] as unknown as DisableableElement[];
+  return [...staticEls, ...personaListButtons, ...netRootsListButtons];
 }
 
 function collectAskSerializedControls(f: RendererFixture): DisableableElement[] {
@@ -143,6 +155,45 @@ describe('serialização de gestos — turno de chat em voo', () => {
     await f.flush();
 
     expectAllDisabled(collectSerializedControls(f), false);
+  });
+});
+
+describe('serialização de gestos — painel de rede/busca (SPEC-0059)', () => {
+  it('um host adicionado DURANTE um turno de chat em voo nasce com o botão "Remover" desabilitado (repintura depois de a serialização já ter começado)', async () => {
+    let resolveSend: ((value: RendererTurnSnapshot) => void) | undefined;
+    const sendPromise = new Promise<RendererTurnSnapshot>((resolve) => {
+      resolveSend = resolve;
+    });
+    const f = await open({ chatSend: () => sendPromise });
+
+    await submitChat(f, 'olá');
+    expectAllDisabled(collectSerializedControls(f), true);
+
+    (f.document.getElementById('net-root-input') as unknown as { value: string }).value =
+      'exemplo.com';
+    // `net-root-add` está `disabled` neste instante (turno em voo) — usa
+    // `dispatchEvent` (não `.click()`, que o jsdom recusa em elemento
+    // desabilitado) para provar que, mesmo que o clique alcance o
+    // manipulador, o botão "Remover" recém-pintado NASCE desabilitado
+    // (repaint depois de a serialização já ter começado).
+    f.document
+      .getElementById('net-root-add')
+      ?.dispatchEvent(new f.window.Event('click', { bubbles: true, cancelable: true }));
+    await f.flush();
+
+    const netRootsButtons = [
+      ...f.document.querySelectorAll('#net-roots-list button'),
+    ] as unknown as DisableableElement[];
+    expect(netRootsButtons.length).toBeGreaterThan(0);
+    expectAllDisabled(netRootsButtons, true);
+
+    resolveSend?.({ reply: 'oi', steps: [], learned: [] });
+    await f.flush();
+
+    expectAllDisabled(
+      [...f.document.querySelectorAll('#net-roots-list button')] as unknown as DisableableElement[],
+      false,
+    );
   });
 });
 

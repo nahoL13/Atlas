@@ -515,6 +515,8 @@ function renderStatus(snapshot) {
     `persona: ${snapshot.persona.name} (${snapshot.persona.id})`,
     `readRoots: ${snapshot.readRoots.join(', ')}`,
     `writeRoots: ${snapshot.writeRoots.length > 0 ? snapshot.writeRoots.join(', ') : '(nenhuma)'}`,
+    `netRoots: ${snapshot.netRoots.length > 0 ? snapshot.netRoots.join(', ') : '(nenhum)'}`,
+    `searchUrl: ${snapshot.searchUrl !== '' ? snapshot.searchUrl : '(não configurada)'}`,
   ].join('\n');
   document.getElementById('presence-persona').textContent = snapshot.persona.name;
 }
@@ -523,10 +525,22 @@ function renderStatus(snapshot) {
 // cada `loadStatus()`, usada pelo roteamento de voz abaixo (Piper vs. SO).
 let activePersonaVoiceURI;
 
+// SPEC-0059 (achado A1 do gate — regra determinística): `loadStatus()` é o
+// ponto único de repintura chamado em pelo menos 6 lugares (arranque, troca
+// de Persona, refreshPersonaSurfaces após CRUD de Persona, apply de FS no
+// sucesso e na rejeição). Por isso repinta SÓ `#network-inforce` (a config
+// EM VIGOR, via `renderNetworkInForce`) e NUNCA o rascunho de rede
+// (`pendingNetRoots`/`pendingSearchUrl`) — o rascunho só é semeado (i) no
+// arranque e (ii) depois de um `network.select` bem-sucedido
+// (`seedNetworkDraftFromStatus`, definida junto do painel de rede/busca
+// abaixo). Se `loadStatus()` também semeasse o rascunho, a preservação de
+// rascunho em rejeição (D17) seria derrotada em todo ponto de chamada exceto
+// o testado por `#network-apply`.
 function loadStatus() {
   return window.atlas.getStatus().then((snapshot) => {
     renderStatus(snapshot);
     renderPermissionLists(snapshot.readRoots, snapshot.writeRoots);
+    renderNetworkInForce(snapshot.netRoots, snapshot.searchUrl);
     activePersonaVoiceURI = snapshot.persona.voiceURI;
     bootSettled = true;
     clearGlobalAlert();
@@ -622,6 +636,14 @@ const drawer = setupDrawer();
 let chatTurnInFlight = false;
 let askInFlight = false;
 
+// SPEC-0059 (D16, camada de renderer do mutex de política): `true` enquanto
+// `window.atlas.permissions.select`/`window.atlas.network.select` estiver
+// pendente — os dois botões de aplicar política ficam ADICIONALMENTE
+// desabilitados (além de `chatTurnInFlight`/`askInFlight`), calculado nesta
+// mesma origem única, para que nunca haja dois diálogos de consentimento de
+// política empilhados na tela.
+let policyApplicationInFlight = false;
+
 function refreshPermissionsPanelState() {
   const disabled = chatTurnInFlight || askInFlight;
   for (const id of [
@@ -629,15 +651,24 @@ function refreshPermissionsPanelState() {
     'read-root-add',
     'write-root-input',
     'write-root-add',
-    'permissions-apply',
+    'net-root-input',
+    'net-root-add',
+    'search-url-input',
+    'search-url-clear',
   ]) {
     document.getElementById(id).disabled = disabled;
   }
   document
-    .querySelectorAll('#read-roots-list button, #write-roots-list button')
+    .querySelectorAll('#read-roots-list button, #write-roots-list button, #net-roots-list button')
     .forEach((button) => {
       button.disabled = disabled;
     });
+  // Os dois botões de aplicar política (D16): a MESMA origem única —
+  // desabilitados por turno em voo E, adicionalmente, por uma aplicação de
+  // política já pendente.
+  const applyDisabled = disabled || policyApplicationInFlight;
+  document.getElementById('permissions-apply').disabled = applyDisabled;
+  document.getElementById('network-apply').disabled = applyDisabled;
   // O painel de Persona (SPEC-0039) entra na MESMA serialização de turno —
   // desabilitado enquanto houver um turno de chat/ask em voo.
   refreshPersonaPanelState();
@@ -738,6 +769,10 @@ personaSelect.addEventListener('change', () => {
 loadStatus()
   .then((snapshot) => {
     personaSelect.dataset.activePersonaId = snapshot.persona.id;
+    // SPEC-0059 (D17/A1): o rascunho de rede/busca só é semeado do status no
+    // ARRANQUE e depois de um `network.select` bem-sucedido — nunca por
+    // `loadStatus()` sozinho (ver comentário acima de `loadStatus`).
+    seedNetworkDraftFromStatus(snapshot.netRoots, snapshot.searchUrl);
     return loadPersonaOptions(snapshot.persona.id);
   })
   .catch((error) => {
@@ -2596,6 +2631,10 @@ document.getElementById('write-root-add').addEventListener('click', () => {
 document.getElementById('permissions-apply').addEventListener('click', () => {
   const errorEl = document.getElementById('permissions-error');
   errorEl.textContent = '';
+  // SPEC-0059 (D16): marca a aplicação de política em curso — desabilita
+  // ADICIONALMENTE #permissions-apply/#network-apply enquanto esta pendente.
+  policyApplicationInFlight = true;
+  refreshPermissionsPanelState();
   window.atlas.permissions
     .select({ readRoots: [...pendingReadRoots], writeRoots: [...pendingWriteRoots] })
     .then(() => {
@@ -2614,6 +2653,121 @@ document.getElementById('permissions-apply').addEventListener('click', () => {
       // listas recarregam a partir do status real (nunca divergentes).
       errorEl.textContent = `⚠️ ${error.message ?? error}`;
       return loadStatus();
+    })
+    .finally(() => {
+      policyApplicationInFlight = false;
+      refreshPermissionsPanelState();
+    });
+});
+
+// ============================================================================
+// Painel de rede/busca (item 1.4-residual / SPEC-0059), dentro de
+// #panel-permissions (D1): autorizar/remover hosts (netRoots) e configurar/
+// desativar o endpoint de busca (tools.searchUrl) em runtime, com
+// consentimento explícito por host novo.
+//
+// `pendingNetRoots`/`pendingSearchUrl` são o rascunho local do renderer —
+// só viram a política de verdade ao clicar em "Aplicar rede e busca".
+// Diferente do bloco de FS acima (SPEC-0038): o rascunho de rede NÃO é
+// recarregado do status em toda repintura — só no arranque e depois de um
+// `network.select` bem-sucedido (`seedNetworkDraftFromStatus`, D17). Uma
+// rejeição (validação, operação em voo, consentimento recusado) preserva o
+// rascunho digitado exatamente como está; só `#network-inforce` (a config
+// EM VIGOR) recarrega, via `renderNetworkInForce`, chamada por `loadStatus()`.
+// ============================================================================
+
+let pendingNetRoots = [];
+let pendingSearchUrl = '';
+
+setupRootsDisclosure('net-roots-toggle', 'net-roots-detail');
+setupRootsDisclosure('search-toggle', 'search-detail');
+
+function renderNetworkInForce(netRoots, searchUrl) {
+  const hosts = netRoots.length > 0 ? netRoots.join(', ') : '(nenhum)';
+  const search = searchUrl !== '' ? searchUrl : '(não configurada)';
+  document.getElementById('network-inforce').textContent =
+    `hosts em vigor: ${hosts} · busca em vigor: ${search}`;
+}
+
+function paintNetRootsList() {
+  paintRootsList(document.getElementById('net-roots-list'), pendingNetRoots, (index) => {
+    pendingNetRoots.splice(index, 1);
+    paintNetRootsList();
+  });
+}
+
+function refreshSearchHostWarning() {
+  document.getElementById('search-host-warning').hidden = pendingSearchUrl.trim() === '';
+}
+
+/**
+ * Semeia o rascunho de rede/busca a partir do status (D17/A1) — chamada
+ * SÓ no arranque e depois de um `network.select` bem-sucedido. `loadStatus()`
+ * NUNCA chama esta função (só `renderNetworkInForce`, acima).
+ */
+function seedNetworkDraftFromStatus(netRoots, searchUrl) {
+  pendingNetRoots = [...netRoots];
+  pendingSearchUrl = searchUrl;
+  document.getElementById('net-roots-toggle').textContent = `Rede (${pendingNetRoots.length})`;
+  document.getElementById('search-url-input').value = pendingSearchUrl;
+  paintNetRootsList();
+  refreshSearchHostWarning();
+}
+
+document.getElementById('net-root-add').addEventListener('click', () => {
+  const input = document.getElementById('net-root-input');
+  const value = input.value.trim();
+  if (value === '') {
+    return;
+  }
+  pendingNetRoots.push(value);
+  input.value = '';
+  paintNetRootsList();
+});
+
+document.getElementById('search-url-input').addEventListener('input', () => {
+  pendingSearchUrl = document.getElementById('search-url-input').value;
+  refreshSearchHostWarning();
+});
+
+document.getElementById('search-url-clear').addEventListener('click', () => {
+  pendingSearchUrl = '';
+  document.getElementById('search-url-input').value = '';
+  refreshSearchHostWarning();
+});
+
+document.getElementById('network-apply').addEventListener('click', () => {
+  const errorEl = document.getElementById('network-error');
+  errorEl.textContent = '';
+  // SPEC-0059 (D16): mesma marcação de política em curso do bloco de FS —
+  // desabilita ADICIONALMENTE os dois botões de aplicar enquanto pendente.
+  policyApplicationInFlight = true;
+  refreshPermissionsPanelState();
+  window.atlas.network
+    .select({ netRoots: [...pendingNetRoots], searchUrl: pendingSearchUrl })
+    .then(() =>
+      reopenChatSession(
+        'session-reopened-network',
+        'Rede e busca alteradas — nova conversa iniciada',
+      ),
+    )
+    .then(() => loadStatus())
+    .then((snapshot) => {
+      // Sucesso (D17): SÓ aqui (e no arranque) o rascunho é sincronizado com
+      // o status recém-recarregado.
+      seedNetworkDraftFromStatus(snapshot.netRoots, snapshot.searchUrl);
+    })
+    .catch((error) => {
+      // Rejeição (validação, operação em voo, consentimento recusado):
+      // NADA foi aplicado — transcript e conversa intactos, e o rascunho
+      // digitado pelo usuário é PRESERVADO (D17); só #network-inforce
+      // recarrega do status real, via loadStatus().
+      errorEl.textContent = `⚠️ ${error.message ?? error} — nada foi aplicado.`;
+      return loadStatus();
+    })
+    .finally(() => {
+      policyApplicationInFlight = false;
+      refreshPermissionsPanelState();
     });
 });
 

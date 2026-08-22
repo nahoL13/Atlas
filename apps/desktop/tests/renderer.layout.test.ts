@@ -14,10 +14,10 @@ import { loadRenderer } from './helpers/renderer-harness.js';
 // SPEC-0053 v3.0 — núcleo holográfico volumétrico e navegação por drawer.
 // Substitui integralmente a suíte v2.0 (sidebar/trilho fixo, timeline
 // inferior permanente, esfera `.core-orb`/`.core-halo`), rejeitada no smoke
-// humano. Cobre o manifesto de 86 IDs (77 da v3.0 + 9 do painel `Sistema` da
-// SPEC-0054), o drawer, o progressive disclosure, a Sessão/timeline, a
-// resposta corrente, a nuvem de pontos determinística e o mapa de
-// perfis/playback do núcleo Canvas.
+// humano. Cobre o manifesto de 99 IDs (77 da v3.0 + 9 do painel `Sistema` da
+// SPEC-0054 + 13 do painel de rede/busca da SPEC-0059), o drawer, o
+// progressive disclosure, a Sessão/timeline, a resposta corrente, a nuvem de
+// pontos determinística e o mapa de perfis/playback do núcleo Canvas.
 
 const rendererDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'renderer');
 const html = readFileSync(join(rendererDir, 'index.html'), 'utf8');
@@ -164,12 +164,36 @@ const V3_30_IDS = [
   'timeline-detail',
 ];
 
+// SPEC-0059: painel de rede/busca, as duas seções novas dentro de
+// #panel-permissions (D1) — 13 IDs, todos sob progressive disclosure.
+const SPEC_0059_IDS = [
+  'net-roots-toggle',
+  'net-roots-detail',
+  'net-roots-list',
+  'net-root-input',
+  'net-root-add',
+  'search-toggle',
+  'search-detail',
+  'search-url-input',
+  'search-url-clear',
+  'search-host-warning',
+  'network-inforce',
+  'network-apply',
+  'network-error',
+];
+
 describe('SPEC-0053 v3.0 — estrutura, manifesto e ausência dos artefatos v2', () => {
-  it('contém exatamente a união dos 86 IDs do manifesto (77 + 9 da SPEC-0054), sem IDs estruturais extras', () => {
+  it('contém exatamente a união dos 99 IDs do manifesto (77 + 9 da SPEC-0054 + 13 da SPEC-0059), sem IDs estruturais extras', () => {
     expect(ORIGINAL_47_IDS).toHaveLength(47);
     expect(V3_30_IDS).toHaveLength(30);
     expect(SPEC_0054_IDS).toHaveLength(9);
-    const expected = new Set([...ORIGINAL_47_IDS, ...V3_30_IDS, ...SPEC_0054_IDS]);
+    expect(SPEC_0059_IDS).toHaveLength(13);
+    const expected = new Set([
+      ...ORIGINAL_47_IDS,
+      ...V3_30_IDS,
+      ...SPEC_0054_IDS,
+      ...SPEC_0059_IDS,
+    ]);
     const found = [...html.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1] as string);
     expect(new Set(found).size).toBe(found.length); // sem duplicatas
     expect(new Set(found)).toEqual(expected);
@@ -658,6 +682,8 @@ describe('SPEC-0053 v3.0 — estados vivos e precedência (Escopo 7/CA20-21)', (
       persona: { id: string; name: string };
       readRoots: string[];
       writeRoots: string[];
+      netRoots: string[];
+      searchUrl: string;
     }>();
     let f = await open({ atlas: { getStatus: () => boot.promise } });
     expect(coreState(f)).toBe('booting');

@@ -1205,3 +1205,21 @@ Nada de estrutural — o atrito foi de processo, não de desenho: gates técnico
 **Precisamos mudar...**
 
 (1) A linha "Smoke visual/sonoro das fatias desktop nunca confirmado" nos Padrões Recorrentes deixa de ser hipotética — já reprovou uma implementação inteira (v2.0) apesar dos quatro gates técnicos verdes; a v3.0 finalmente fechou o smoke com todos os 15 itens `OK` — encaminhamento: já atualizado nesta mesma SPEC em `apps/desktop/CLAUDE.md`/`NEXT_CONTEXT.md` (a pendência estrutural muda de "nunca confirmado" para "confirmado na v3.0 da SPEC-0053"; fatias futuras reabrem a pendência só se tocarem o núcleo/layout de novo). (2) Nenhum ADR novo — Canvas 2D e drawer permanecem dentro do Output Gateway, ADR-0019 intacto (nota da própria SPEC, D3/D8).
+
+## [SPEC-0054](specs/SPEC-0054-desktop-environment-observability.md) — Painel `Sistema` no desktop: recursos do host, consumo de tokens e relógio (2026-08-19)
+
+**Descobrimos que...**
+
+O contrato "resultado do trabalho abandonado é descartado por inteiro" (SPEC-0051) precisava de uma exceção deliberada e nomeada (D9): o consumo de tokens de uma operação cancelada **é** contabilizado — o gasto já ocorreu de fato — enquanto os efeitos de domínio (`remember`/`updateConversation`) continuam descartados. A garantia viva em `apps/desktop/CLAUDE.md` já era precisa o bastante para acomodar isso sem reescrita (ela nomeia os dois efeitos descartados, nunca fala em "resultado inteiro"); só o comentário inline do próprio código ("descartado por inteiro") ficou por trás da nuance nova — não bloqueia nada, mas é o tipo de imprecisão que os Padrões Recorrentes já catalogam do lado da prosa absoluta. Descobrimos também, pela primeira vez desde a SPEC-0053, que acrescentar um painel novo ao drawer v3.0 sem tocar o núcleo/layout **não reabre a pendência de smoke visual**: os 8 itens do CA 34 vieram `OK` numa única passada, sem nenhuma rodada reprovada — diferente do padrão de várias fatias anteriores do desktop.
+
+**A arquitetura ajudou porque...**
+
+O padrão `steps?`/`learned?` (SPECs 0014/0020) generalizou de novo, sem desenho novo: `usage?` em `AskResult`/`ConversationTurn`, somado por um helper puro top-level em `@atlas/cognitive` e devolvido por spread condicional — a 3ª vez que o mesmo molde absorve um campo aditivo de saída do Cognitive. O ADR-0025(c) já tinha antecipado exatamente essa via ("quando o Cognitive Core as expuser"), então a Decisão de design D7 não teve alternativa real a pesar. O molde de porta injetável com import único em `main.ts` (Piper/`whisper.cpp`/VAD) generalizou de novo para `systeminformation` (`system-metrics.ts`) sem desenho novo. As três decisões estruturais de fundo (dependência nova, contabilidade de tokens, contrato técnico exato) já tinham sido resolvidas fora da SPEC pelos ADR-0024/ADR-0025 antes dela começar — a origem registrada da própria SPEC (três escaladas resolvidas em 2026-08-18) preveniu o padrão mais caro já catalogado no projeto: decisão estrutural descoberta em plena implementação.
+
+**A arquitetura atrapalhou porque...**
+
+Nada de estrutural. O único atrito visível foi de precisão de comentário (acima), não de desenho — a fatia inteira (dois módulos novos, dois canais IPC, um painel, três packages tocados aditivamente) fechou sem achado bloqueante do `spec-validator` além do próprio CA 34 (smoke humano), que é estrutural ao ambiente de automação, não a esta SPEC.
+
+**Precisamos mudar...**
+
+Nada de obrigatório — registrado como observação, sem encaminhamento próprio: o comentário inline de `core-bridge.ts` sobre o descarte de operação abandonada ("descartado por inteiro") pode ganhar a mesma precisão que a doc viva já tem na próxima SPEC que tocar aquele trecho, nomeando os dois efeitos descartados em vez da formulação absoluta; não justifica SPEC própria.

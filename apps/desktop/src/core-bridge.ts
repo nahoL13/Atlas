@@ -22,8 +22,10 @@ import { formatSteps } from './steps-view.js';
 import type { StepLine } from './steps-view.js';
 import type { GrantConfirmPort } from './permission-grant-dialog.js';
 import type { PersonaDeleteConfirmPort } from './persona-delete-dialog.js';
+import type { NetworkGrantConfirmPort } from './network-grant-dialog.js';
 import { createTokenUsageAccumulator } from './token-usage.js';
 import type { TokenUsageSnapshot } from './token-usage.js';
+import { InvalidConfigError } from '@atlas/contracts';
 
 export interface PersonaOption {
   readonly id: string;
@@ -99,6 +101,21 @@ export interface PermissionRootsSelection extends PermissionRoots {
 }
 
 /**
+ * Acesso de rede/busca (SPEC-0059): tipos planos, serializáveis por IPC,
+ * locais a este app — mesma regra de `PermissionRoots`, nunca promovidos a
+ * `@atlas/contracts` sem um 2º consumidor real. `searchUrl: ''` significa
+ * "busca desativada" (a Tool `web_search` não é registrada, SPEC-0057/D11).
+ */
+export interface NetworkAccess {
+  readonly netRoots: readonly string[];
+  readonly searchUrl: string;
+}
+
+export interface NetworkAccessSelection extends NetworkAccess {
+  readonly closedSessions: readonly SessionId[];
+}
+
+/**
  * Seleção de Persona em runtime (SPEC-0037, Decisão D3): estado de módulo do
  * `core-bridge` (mesmo molde do `Map` de sessões de chat da SPEC-0033),
  * aplicado como `config.persona` em cada `createAtlas` subsequente. Não é
@@ -160,6 +177,34 @@ export function readTokenUsage(): TokenUsageSnapshot {
  * `flags > env > defaults` (ADR-0006).
  */
 let selectedPermissions: PermissionRoots | undefined;
+
+/**
+ * Seleção de rede/busca em runtime (SPEC-0059, Decisão D2): estado de
+ * módulo distinto de `selectedPermissions` (gesto de aplicação próprio,
+ * `selectNetworkAccess`) — aplicada como `config.permissions.netRoots` +
+ * `config.tools.searchUrl` em cada `createAtlas` subsequente, via
+ * `composeOverride`. Não é persistida — some ao fechar a app.
+ */
+let selectedNetwork: NetworkAccess | undefined;
+
+/**
+ * Mutex de aplicação de política (SPEC-0059, Decisão D16): uma flag de
+ * módulo compartilhada entre `selectNetworkAccess` e `selectPermissionRoots`
+ * — D2 criou dois gestos de política independentes, e `hasInFlightOperation`
+ * não os enxerga (o registro único da SPEC-0051 só conta `'ask'`/
+ * `'chat-turn'`/`'open-session'`). Sem exclusão, um diálogo nativo de
+ * concessão aberto por um gesto não impede o usuário de disparar o outro —
+ * dois diálogos empilhados, cada um descrevendo uma concessão diferente, é
+ * exatamente a condição em que um "OK" pode ser dado para a concessão
+ * errada (Artigo 8). Marcada no início de cada função, antes de qualquer
+ * `await`, e liberada num `finally` que cobre TODOS os caminhos de saída —
+ * nunca fica presa.
+ */
+let policyApplicationInProgress = false;
+
+/** Mensagem de recusa do mutex de política (D16) — comum às duas funções. */
+const POLICY_MUTEX_MESSAGE =
+  'Não é possível aplicar: já há uma aplicação de política (permissões ou rede/busca) em andamento.';
 
 /**
  * Predicado de SEGURANÇA (SPEC-0038/0050, preservado pela SPEC-0051, D3):
@@ -417,33 +462,78 @@ export function selectedPersonaId(): string | undefined {
 }
 
 /**
- * Aplica as seleções correntes (Persona + permissões) ao `AtlasConfigOverride`
- * de toda função que sobe o Core — precedência: o valor explícito do
- * chamador **vence** a seleção corrente, campo a campo, e `permissions` é
- * tratado como **bloco completo** (a seleção nunca é mesclada dentro de um
- * `configOverride.permissions` parcial do chamador — SPEC-0038, Decisão D3;
- * mesmo precedente da D7 da SPEC-0037 para Persona).
+ * Origem ÚNICA da regra de composição de `AtlasConfigOverride` (SPEC-0059,
+ * Decisão D5/D9) — consumida por `withSelections` (seleções CORRENTES) e
+ * pelo dry-run de `selectNetworkAccess` (seleções correntes + candidato de
+ * rede). Precedência: o valor explícito do `configOverride` recebido
+ * **vence** cada seleção, campo a campo; `permissions`/`tools` são tratados
+ * como **bloco completo** (a seleção nunca é mesclada dentro de um
+ * `configOverride.permissions`/`tools` parcial do chamador — SPEC-0038,
+ * Decisão D3; mesmo precedente da D7 da SPEC-0037 para Persona). `permissions`
+ * é composto a partir de DUAS seleções independentes (FS ⊕ rede, D2/D9): se
+ * nenhuma das duas está presente e o chamador não informou `permissions`,
+ * o campo fica ausente (defaults do `loadConfig`); se qualquer uma está
+ * presente, só as chaves correspondentes (`readRoots`/`writeRoots` da FS,
+ * `netRoots` da rede) entram no objeto — a(s) chave(s) ausente(s) cai(em)
+ * no default do `loadConfig`, nunca em `[]` explícito.
  */
-function withSelections(configOverride: AtlasConfigOverride): AtlasConfigOverride {
+function composeOverride(
+  configOverride: AtlasConfigOverride,
+  selections: { persona?: string; permissions?: PermissionRoots; network?: NetworkAccess },
+): AtlasConfigOverride {
   let result = configOverride;
-  if (result.persona === undefined && selectedPersona !== undefined) {
-    result = { ...result, persona: selectedPersona };
+  if (result.persona === undefined && selections.persona !== undefined) {
+    result = { ...result, persona: selections.persona };
   }
-  if (result.permissions === undefined && selectedPermissions !== undefined) {
-    result = { ...result, permissions: selectedPermissions };
+  if (
+    result.permissions === undefined &&
+    (selections.permissions !== undefined || selections.network !== undefined)
+  ) {
+    result = {
+      ...result,
+      permissions: {
+        ...(selections.permissions !== undefined
+          ? {
+              readRoots: selections.permissions.readRoots,
+              writeRoots: selections.permissions.writeRoots,
+            }
+          : {}),
+        ...(selections.network !== undefined ? { netRoots: selections.network.netRoots } : {}),
+      },
+    };
+  }
+  if (result.tools === undefined && selections.network !== undefined) {
+    result = { ...result, tools: { searchUrl: selections.network.searchUrl } };
   }
   return result;
 }
 
 /**
+ * Aplica as seleções CORRENTES (Persona + permissões + rede/busca) ao
+ * `AtlasConfigOverride` de toda função que sobe o Core — delega inteiramente
+ * a `composeOverride` (origem única, D5/D9): nenhuma outra função deste
+ * arquivo monta esse objeto à mão.
+ */
+function withSelections(configOverride: AtlasConfigOverride): AtlasConfigOverride {
+  return composeOverride(configOverride, {
+    ...(selectedPersona !== undefined ? { persona: selectedPersona } : {}),
+    ...(selectedPermissions !== undefined ? { permissions: selectedPermissions } : {}),
+    ...(selectedNetwork !== undefined ? { network: selectedNetwork } : {}),
+  });
+}
+
+/**
  * Reset explícito do estado de módulo do bridge — uso exclusivo dos testes
- * (isolamento entre casos): Persona selecionada, permissões selecionadas e
- * o registro único de operações em voo (SPEC-0051). Segue **não** fechando
+ * (isolamento entre casos): Persona selecionada, permissões selecionadas,
+ * rede/busca selecionada, o mutex de aplicação de política (D16) e o
+ * registro único de operações em voo (SPEC-0051). Segue **não** fechando
  * sessões vivas (SPEC-0042/D15, aberto).
  */
 export function __resetBridgeStateForTests(): void {
   selectedPersona = undefined;
   selectedPermissions = undefined;
+  selectedNetwork = undefined;
+  policyApplicationInProgress = false;
   operations.clear();
   tokenUsage.reset();
 }
@@ -495,67 +585,221 @@ const fallbackGrantConfirm: GrantConfirmPort = {
  * 6. registra a seleção no estado de módulo e encerra todas as sessões de
  *    chat vivas (nenhum Core sobrevive à aplicação sob política superada —
  *    D7/D10), devolvendo-as em `closedSessions`.
+ *
+ * Ganha, desde a SPEC-0059 (Decisão D16), **apenas** a guarda do mutex de
+ * aplicação de política (passo 0, abaixo) — compartilhada com
+ * `selectNetworkAccess`. Todo o resto sai byte a byte como estava.
  */
 export async function selectPermissionRoots(
   request: PermissionRoots,
   deps: { confirmGrant?: GrantConfirmPort } = {},
 ): Promise<PermissionRootsSelection> {
-  const readRoots = normalizeRoots(request.readRoots);
-  const writeRoots = normalizeRoots(request.writeRoots);
-
-  if (readRoots.length === 0) {
-    throw new Error('É necessário ao menos uma raiz de leitura.');
+  // 0. Mutex de política (D16): recusa de imediato se `selectNetworkAccess`
+  // (ou uma segunda chamada a esta função) já estiver em andamento — nunca
+  // dois diálogos de consentimento de política empilhados.
+  if (policyApplicationInProgress) {
+    throw new Error(POLICY_MUTEX_MESSAGE);
   }
-  for (const candidate of [...readRoots, ...writeRoots]) {
-    if (!isAbsolute(candidate)) {
-      throw new Error(`Caminho de permissão precisa ser absoluto: ${candidate}`);
+  policyApplicationInProgress = true;
+  try {
+    const readRoots = normalizeRoots(request.readRoots);
+    const writeRoots = normalizeRoots(request.writeRoots);
+
+    if (readRoots.length === 0) {
+      throw new Error('É necessário ao menos uma raiz de leitura.');
     }
-  }
-
-  if (hasInFlightOperation()) {
-    throw new Error(
-      'Não é possível alterar permissões: há uma operação em andamento (turno de chat ou ask).',
-    );
-  }
-
-  const confirmGrant = deps.confirmGrant ?? fallbackGrantConfirm;
-  const currentWriteRoots = new Set(selectedPermissions?.writeRoots ?? []);
-  for (const candidate of writeRoots) {
-    if (currentWriteRoots.has(candidate)) {
-      continue;
+    for (const candidate of [...readRoots, ...writeRoots]) {
+      if (!isAbsolute(candidate)) {
+        throw new Error(`Caminho de permissão precisa ser absoluto: ${candidate}`);
+      }
     }
-    const granted = await confirmGrant.request({
-      path: candidate,
-      scope: 'subtree',
-      duration: 'session',
-    });
-    if (!granted) {
-      throw new Error(`Concessão de permissão de escrita recusada para: ${candidate}`);
+
+    if (hasInFlightOperation()) {
+      throw new Error(
+        'Não é possível alterar permissões: há uma operação em andamento (turno de chat ou ask).',
+      );
     }
-  }
 
-  // Correção A7 (gate): o passo acima pode aguardar o usuário
-  // indefinidamente — refaz a checagem de operação em voo imediatamente
-  // antes de aplicar, para que um `ask`/turno iniciado durante o diálogo de
-  // consentimento também bloqueie a aplicação (tudo-ou-nada, D8).
-  if (hasInFlightOperation()) {
-    throw new Error(
-      'Não é possível alterar permissões: há uma operação em andamento (turno de chat ou ask).',
-    );
-  }
+    const confirmGrant = deps.confirmGrant ?? fallbackGrantConfirm;
+    const currentWriteRoots = new Set(selectedPermissions?.writeRoots ?? []);
+    for (const candidate of writeRoots) {
+      if (currentWriteRoots.has(candidate)) {
+        continue;
+      }
+      const granted = await confirmGrant.request({
+        path: candidate,
+        scope: 'subtree',
+        duration: 'session',
+      });
+      if (!granted) {
+        throw new Error(`Concessão de permissão de escrita recusada para: ${candidate}`);
+      }
+    }
 
-  selectedPermissions = { readRoots, writeRoots };
-  const closedSessions: SessionId[] = [];
-  for (const session of [...chatSessions.keys()]) {
-    closedSessions.push(session);
-    await closeChatSession(session);
+    // Correção A7 (gate): o passo acima pode aguardar o usuário
+    // indefinidamente — refaz a checagem de operação em voo imediatamente
+    // antes de aplicar, para que um `ask`/turno iniciado durante o diálogo de
+    // consentimento também bloqueie a aplicação (tudo-ou-nada, D8).
+    if (hasInFlightOperation()) {
+      throw new Error(
+        'Não é possível alterar permissões: há uma operação em andamento (turno de chat ou ask).',
+      );
+    }
+
+    selectedPermissions = { readRoots, writeRoots };
+    const closedSessions: SessionId[] = [];
+    for (const session of [...chatSessions.keys()]) {
+      closedSessions.push(session);
+      await closeChatSession(session);
+    }
+    return { readRoots, writeRoots, closedSessions };
+  } finally {
+    policyApplicationInProgress = false;
   }
-  return { readRoots, writeRoots, closedSessions };
 }
 
 /** Leitura do estado de módulo: `undefined` enquanto o usuário não configurou nada. */
 export function selectedPermissionRoots(): PermissionRoots | undefined {
   return selectedPermissions;
+}
+
+/**
+ * Normaliza a lista de hosts de rede (SPEC-0059, Decisão D6): `trim` de cada
+ * entrada, descarte de vazias, deduplicação CASE-INSENSITIVE preservando a
+ * PRIMEIRA grafia recebida — `evaluate` (ADR-0026(b)) compara host em
+ * minúsculas, então `Exemplo.com`/`exemplo.com` são a mesma política e não
+ * devem virar duas entradas nem dois diálogos de consentimento.
+ */
+function normalizeNetworkHosts(hosts: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const raw of hosts) {
+    const trimmed = raw.trim();
+    if (trimmed === '') {
+      continue;
+    }
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(trimmed);
+  }
+  return result;
+}
+
+/** Default fail-closed: sem `confirmGrant` injetado, nenhum host novo é concedido. */
+const fallbackNetworkGrantConfirm: NetworkGrantConfirmPort = {
+  request: () => Promise.resolve(false),
+};
+
+/**
+ * Configura o acesso de rede (`netRoots`) e o endpoint de busca
+ * (`tools.searchUrl`) em runtime (SPEC-0059) — nesta ordem, fail-closed
+ * (qualquer recusa deixa tudo exatamente como estava; nunca aplicação
+ * parcial):
+ *
+ * 0. **mutex de aplicação de política** (D16), compartilhado com
+ *    `selectPermissionRoots` — recusa de imediato se já houver uma
+ *    aplicação de política em curso;
+ * 1. **normalização** (D6): hosts por `normalizeNetworkHosts`; `searchUrl`
+ *    só `trim` (`''` = busca desativada);
+ * 2. **validação por dry-run** (D5): `loadConfig` sobre o candidato composto
+ *    por `composeOverride` — a MESMA função que `withSelections` usa, com a
+ *    seleção de rede substituída pelo candidato. `InvalidConfigError` ⇒
+ *    rejeita com a mensagem do core, sem nenhum efeito colateral;
+ * 3. **operação em voo** ⇒ recusa (`hasInFlightOperation()`);
+ * 4. **consentimento por host NOVO** (D3): host novo é o que não está na
+ *    seleção de rede corrente, comparado em minúsculas (D6) — sem seleção
+ *    corrente, todos contam como novos. Qualquer recusa (ou ausência de
+ *    `confirmGrant`, default fail-closed) aborta a operação inteira.
+ *    Remover hosts e alterar `searchUrl` NUNCA abrem diálogo (D4);
+ * 5. **rechecagem de operação em voo** imediatamente antes de aplicar
+ *    (correção A7 da SPEC-0038: o diálogo pode esperar o usuário
+ *    indefinidamente);
+ * 6. registra a seleção no estado de módulo e encerra todas as sessões de
+ *    chat vivas (o Tool Registry de um Core vivo foi montado com a
+ *    `searchUrl` antiga — D7), devolvendo-as em `closedSessions`.
+ */
+export async function selectNetworkAccess(
+  request: NetworkAccess,
+  deps: {
+    confirmGrant?: NetworkGrantConfirmPort;
+    personaService?: PersonaService;
+    configOverride?: AtlasConfigOverride;
+  } = {},
+): Promise<NetworkAccessSelection> {
+  if (policyApplicationInProgress) {
+    throw new Error(POLICY_MUTEX_MESSAGE);
+  }
+  policyApplicationInProgress = true;
+  try {
+    const configOverride = deps.configOverride ?? {};
+    const personaService = deps.personaService ?? defaultPersonaService(configOverride);
+
+    const netRoots = normalizeNetworkHosts(request.netRoots);
+    const searchUrl = request.searchUrl.trim();
+
+    try {
+      loadConfig(
+        composeOverride(configOverride, {
+          ...(selectedPersona !== undefined ? { persona: selectedPersona } : {}),
+          ...(selectedPermissions !== undefined ? { permissions: selectedPermissions } : {}),
+          network: { netRoots, searchUrl },
+        }),
+        { personaIds: personaService.list() },
+      );
+    } catch (error) {
+      if (error instanceof InvalidConfigError) {
+        throw new Error(error.message, { cause: error });
+      }
+      throw error;
+    }
+
+    if (hasInFlightOperation()) {
+      throw new Error(
+        'Não é possível alterar rede/busca: há uma operação em andamento (turno de chat ou ask).',
+      );
+    }
+
+    const confirmGrant = deps.confirmGrant ?? fallbackNetworkGrantConfirm;
+    const currentHosts = new Set(
+      (selectedNetwork?.netRoots ?? []).map((host) => host.toLowerCase()),
+    );
+    for (const host of netRoots) {
+      if (currentHosts.has(host.toLowerCase())) {
+        continue;
+      }
+      const granted = await confirmGrant.request({ host, scope: 'host', duration: 'session' });
+      if (!granted) {
+        throw new Error(`Concessão de acesso de rede recusada para: ${host}`);
+      }
+    }
+
+    // Correção A7 (gate, SPEC-0038): o passo acima pode aguardar o usuário
+    // indefinidamente — refaz a checagem de operação em voo imediatamente
+    // antes de aplicar (tudo-ou-nada).
+    if (hasInFlightOperation()) {
+      throw new Error(
+        'Não é possível alterar rede/busca: há uma operação em andamento (turno de chat ou ask).',
+      );
+    }
+
+    selectedNetwork = { netRoots, searchUrl };
+    const closedSessions: SessionId[] = [];
+    for (const session of [...chatSessions.keys()]) {
+      closedSessions.push(session);
+      await closeChatSession(session);
+    }
+    return { netRoots, searchUrl, closedSessions };
+  } finally {
+    policyApplicationInProgress = false;
+  }
+}
+
+/** Leitura do estado de módulo: `undefined` enquanto o usuário não configurou nada. */
+export function selectedNetworkAccess(): NetworkAccess | undefined {
+  return selectedNetwork;
 }
 
 export interface StatusSnapshot {
@@ -565,6 +809,9 @@ export interface StatusSnapshot {
   readonly persona: { readonly id: string; readonly name: string; readonly voiceURI?: string };
   readonly readRoots: readonly string[];
   readonly writeRoots: readonly string[];
+  /** SPEC-0059/D8: eco de `config.permissions.netRoots`/`config.tools.searchUrl` — o CONFIGURADO em vigor. */
+  readonly netRoots: readonly string[];
+  readonly searchUrl: string;
 }
 
 /**
@@ -598,6 +845,8 @@ export async function resolveStatusSnapshot(
       },
       readRoots: [...config.permissions.readRoots],
       writeRoots: [...config.permissions.writeRoots],
+      netRoots: [...config.permissions.netRoots],
+      searchUrl: config.tools.searchUrl,
     };
   } finally {
     await atlas.shutdown();

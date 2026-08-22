@@ -28,6 +28,9 @@ export interface RendererStatusSnapshot {
   readonly persona: RendererStatusPersona;
   readonly readRoots: readonly string[];
   readonly writeRoots: readonly string[];
+  /** SPEC-0059 — eco de `config.permissions.netRoots`/`config.tools.searchUrl` (o CONFIGURADO em vigor). */
+  readonly netRoots: readonly string[];
+  readonly searchUrl: string;
 }
 
 export interface RendererPersonaOption {
@@ -152,6 +155,13 @@ export interface AtlasDouble {
       writeRoots: readonly string[];
     }): Promise<{ readRoots: readonly string[]; writeRoots: readonly string[] }>;
   };
+  /** SPEC-0059 — rede/busca, espelho de `window.atlas.network` em `src/preload.cjs`. */
+  network: {
+    select(access: {
+      netRoots: readonly string[];
+      searchUrl: string;
+    }): Promise<{ netRoots: readonly string[]; searchUrl: string }>;
+  };
   tts: {
     voices(): Promise<readonly RendererPiperVoice[]>;
     speak(text: string, voiceURI: string): Promise<RendererPiperAudio | undefined>;
@@ -253,6 +263,11 @@ export interface RendererCalls {
     readRoots: readonly string[];
     writeRoots: readonly string[];
   }>;
+  /** SPEC-0059 — chamadas de `window.atlas.network.select`. */
+  readonly networkSelect: Array<{
+    netRoots: readonly string[];
+    searchUrl: string;
+  }>;
   readonly ttsSpeak: Array<{ text: string; voiceURI: string }>;
   readonly speechSynthesisSpeak: Array<{ text: string; voiceURI?: string }>;
   speechSynthesisCancel: number;
@@ -298,6 +313,7 @@ function createCalls(): RendererCalls {
     metricsReadCalls: 0,
     tokensReadCalls: 0,
     permissionsSelect: [],
+    networkSelect: [],
     ttsSpeak: [],
     speechSynthesisSpeak: [],
     speechSynthesisCancel: 0,
@@ -371,6 +387,8 @@ function defaultStatus(options: RendererFixtureOptions): RendererStatusSnapshot 
     dataDir: '/tmp/atlas-renderer-harness',
     readRoots: [],
     writeRoots: [],
+    netRoots: [],
+    searchUrl: '',
     ...options.status,
     persona,
   };
@@ -488,6 +506,12 @@ function buildAtlasDouble(options: RendererFixtureOptions, calls: RendererCalls)
         return Promise.resolve(roots);
       },
     },
+    network: {
+      select: (access) => {
+        calls.networkSelect.push(access);
+        return Promise.resolve(access);
+      },
+    },
     tts: {
       voices: () => Promise.resolve(piperVoices),
       speak: (text, voiceURI) => {
@@ -586,6 +610,7 @@ function buildAtlasDouble(options: RendererFixtureOptions, calls: RendererCalls)
     memory: { ...base.memory, ...overrides.memory },
     persona: { ...base.persona, ...overrides.persona },
     permissions: { ...base.permissions, ...overrides.permissions },
+    network: { ...base.network, ...overrides.network },
     tts: { ...base.tts, ...overrides.tts },
     stt: { ...base.stt, ...overrides.stt },
     vad: { ...base.vad, ...overrides.vad },

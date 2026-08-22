@@ -105,6 +105,8 @@ describe('painel de permissões — aplicar (sucesso)', () => {
             persona: { id: 'jarvis', name: 'Jarvis' },
             readRoots: ['/existing'],
             writeRoots: [],
+            netRoots: [],
+            searchUrl: '',
           });
         },
         chat: {

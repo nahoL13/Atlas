@@ -48,7 +48,7 @@ As métricas são separadas por executor. Tokens efetivos Claude usam os pesos h
 | SPEC-0035 | Claude | Desktop: saída de voz (TTS) — falar a resposta do chat pela Web Speech API do Chromium | Done | 1 | 2026-07-25 | 14.888.461 | 3.645.651 | complete |
 | SPEC-0036 | Claude | Desktop: TTS 100% offline garantido — restringir a saída de voz a vozes locais do SO (`localService === true`) | Done | 2 | 2026-07-25 | 10.310.405 | 2.795.790 | complete |
 | SPEC-0037 | Claude | Desktop: seleção e troca de Persona em runtime pela interface gráfica — escolher entre as Personas disponíveis (`jarvis`/`neutral`) sem reiniciar a app nem passar flag/env | Done | 2 | 2026-07-28 | 36.474.501 | 7.783.071 | complete |
-| SPEC-0038 | Claude | Desktop: configuração de permissões de sistema de arquivos (`readRoots`/`writeRoots`) pela interface gráfica — ver as raízes configuradas e alterá-las em runtime, sem flag/env, com concessão de escrita sob consentimento explícito de política | Done | 2 | 2026-07-29 | 43.084.519 | 9.242.741 | complete |
+| SPEC-0038 | Claude | Desktop: configuração de permissões de sistema de arquivos (`readRoots`/`writeRoots`) pela interface gráfica — ver as raízes configuradas e alterá-las em runtime, sem flag/env, com concessão de escrita sob consentimento explícito de política | Done | 3 | 2026-08-22 | 47.924.624 | 10.521.295 | complete |
 | SPEC-0039 | Claude | Desktop: CRUD de Personas custom pela interface gráfica — formulário completo (paridade com os 8 campos de `Persona`), persistência em arquivo JSON atrás de porta injetável no Persona Service, e vínculo real entre a voz escolhida e o TTS | Done | 3 | 2026-07-31 | 103.026.115 | 18.313.551 | complete |
 | SPEC-0040 | Claude | Desktop: integrar o Piper (TTS neural 100% local) como primeira camada de saída de voz — subprocesso de longa duração no main process, catálogo de vozes PT-BR empacotadas, playback por `<audio>` no renderer, e a Web Speech API das SPECs 0035/0036 preservada como fallback fail-closed | Done | 2 | 2026-07-30 | 83.185.162 | 16.378.662 | complete |
 | SPEC-0041 | Claude | Desktop: quando o Piper estiver **disponível** (arquivo do binário presente em disco + ao menos um modelo instalado, conforme `PiperTts.isAvailable()`), a **superfície de escolha e de uso** de voz passa a ser exclusivamente Piper — as vozes nativas do SO deixam de aparecer no `<select>` do formulário de Persona e uma preferência de voz do SO já persistida deixa de ser honrada —, sem remover a Web Speech API, que segue como **rede de segurança interna invisível** (ADR-0021(c)) | Done | 2 | 2026-08-01 | 39.788.354 | 8.590.692 | complete |
@@ -68,8 +68,9 @@ As métricas são separadas por executor. Tokens efetivos Claude usam os pesos h
 | SPEC-0054 | Claude | (SPEC não encontrada em docs/implementation/specs/) | ? | 13 | 2026-08-19 | 187.714.357 | 27.616.545 | complete |
 | SPEC-0055 | Claude | Primeiro acesso à internet **sob o portão de permissão**: Tool `http_get` somente-leitura em `@atlas/tools` sobre a porta injetável `HttpPort`, com o host julgado pelo portão de rede do Permission Service (`ResourceType: 'network'` + política `netRoots`, ADR-0026) e configurável pela CLI (`--allow-net` / `ATLAS_ALLOW_NET`) | Draft | 12 | 2026-08-21 | 127.041.288 | 21.264.614 | complete |
 | SPEC-0056 | Claude | Tool de leitura de estrutura de projeto (`project_info`) em `@atlas/tools`, com a raiz descoberta pelo `rev-parse` já contido da SPEC-0028 e manifests reconhecidos por tabela fixa | Done | 8 | 2026-08-21 | 60.164.781 | 10.237.100 | complete |
-| SPEC-0057 | Claude | Busca na internet por texto livre: Tool `web_search` em `@atlas/tools` sobre a porta injetável `SearchPort`, com adaptador default apoiado no `HttpPort` já endurecido da SPEC-0055, provedor **sem credencial** provisionado pelo usuário (endpoint compatível com a API JSON do SearXNG, configurado por `--search-url` / `ATLAS_SEARCH_URL`) e host julgado pelo mesmo portão de rede `netRoots` (ADR-0026) | Draft | 10 | 2026-08-22 | 66.396.763 | 11.887.596 | complete |
+| SPEC-0057 | Claude | Busca na internet por texto livre: Tool `web_search` em `@atlas/tools` sobre a porta injetável `SearchPort`, com adaptador default apoiado no `HttpPort` já endurecido da SPEC-0055, provedor **sem credencial** provisionado pelo usuário (endpoint compatível com a API JSON do SearXNG, configurado por `--search-url` / `ATLAS_SEARCH_URL`) e host julgado pelo mesmo portão de rede `netRoots` (ADR-0026) | Draft | 12 | 2026-08-22 | 114.232.648 | 19.705.932 | complete |
 | SPEC-0058 | Claude | Endurecimento da composição de saídas de Tools no prompt (`@atlas/cognitive`): delimitação estruturada por bloco `<tool_output>`, instrução fixa de conteúdo não confiável e teto de tamanho por passo — mitigação genérica de injeção indireta de prompt, aplicável a **toda** Tool | Draft | 8 | 2026-08-22 | 46.684.753 | 8.853.771 | complete |
+| SPEC-0059 | Claude | Desktop: painel de rede e busca — autorizar hosts (`netRoots`) e configurar/desativar o provedor de busca (`tools.searchUrl`) em runtime pela interface gráfica, com consentimento explícito por host, no molde de consentimento de política já estabelecido pela SPEC-0038 | Draft | 6 | 2026-08-22 | 123.639.304 | 16.544.289 | complete |
 
 ## Detalhamento por fase
 
@@ -113,7 +114,7 @@ Valores em tokens efetivos. Codex não é somado nem comparado a Claude enquanto
 | SPEC-0035 | Claude | 985.655 | 541.218 | 313.758 | 569.278 | 269.068 | 966.674 | 0 |
 | SPEC-0036 | Claude | 1.091.068 | 0 | 381.649 | 292.041 | 203.397 | 827.635 | 0 |
 | SPEC-0037 | Claude | 1.188.580 | 771.603 | 1.107.507 | 1.862.949 | 686.605 | 1.021.702 | 1.144.125 |
-| SPEC-0038 | Claude | 1.630.767 | 2.028.166 | 1.111.420 | 2.587.677 | 621.628 | 1.263.083 | 0 |
+| SPEC-0038 | Claude | 1.630.767 | 3.306.720 | 1.111.420 | 2.587.677 | 621.628 | 1.263.083 | 0 |
 | SPEC-0039 | Claude | 3.868.750 | 3.211.298 | 2.152.287 | 6.393.418 | 1.069.167 | 1.618.631 | 0 |
 | SPEC-0040 | Claude | 5.280.183 | 3.855.904 | 936.652 | 4.445.652 | 779.727 | 1.080.544 | 0 |
 | SPEC-0041 | Claude | 1.724.007 | 1.541.900 | 1.728.261 | 1.585.278 | 545.015 | 1.466.231 | 0 |
@@ -133,8 +134,9 @@ Valores em tokens efetivos. Codex não é somado nem comparado a Claude enquanto
 | SPEC-0054 | Claude | 3.784.527 | 2.394.055 | 1.135.657 | 13.556.745 | 2.987.996 | 3.757.565 | 0 |
 | SPEC-0055 | Claude | 2.730.954 | 4.037.593 | 2.349.982 | 7.224.968 | 1.334.549 | 3.586.568 | 0 |
 | SPEC-0056 | Claude | 2.233.378 | 414.488 | 1.426.208 | 2.825.319 | 547.533 | 2.790.174 | 0 |
-| SPEC-0057 | Claude | 2.780.313 | 2.283.242 | 1.648.322 | 4.278.416 | 677.738 | 55.556 | 164.009 |
+| SPEC-0057 | Claude | 7.008.851 | 2.934.196 | 1.648.322 | 4.278.416 | 677.738 | 2.994.400 | 164.009 |
 | SPEC-0058 | Claude | 350.742 | 838.425 | 2.330.681 | 2.569.249 | 559.106 | 2.205.568 | 0 |
+| SPEC-0059 | Claude | 0 | 1.811.757 | 2.107.309 | 11.698.065 | 898.971 | 28.187 | 0 |
 
 ## Eficiência de processo (overhead ÷ implementação)
 
@@ -167,7 +169,7 @@ Calculada separadamente por executor, apenas quando tokens efetivos comparáveis
 | SPEC-0035 | Claude | 569.278 | 3.076.373 | 5.4× |
 | SPEC-0036 | Claude | 292.041 | 2.503.749 | 8.6× |
 | SPEC-0037 | Claude | 1.862.949 | 5.920.122 | 3.2× |
-| SPEC-0038 | Claude | 2.587.677 | 6.655.064 | 2.6× |
+| SPEC-0038 | Claude | 2.587.677 | 7.933.618 | 3.1× |
 | SPEC-0039 | Claude | 6.393.418 | 11.920.133 | 1.9× |
 | SPEC-0040 | Claude | 4.445.652 | 11.933.010 | 2.7× |
 | SPEC-0041 | Claude | 1.585.278 | 7.005.414 | 4.4× |
@@ -185,9 +187,10 @@ Calculada separadamente por executor, apenas quando tokens efetivos comparáveis
 | SPEC-0054 | Claude | 13.556.745 | 14.059.800 | 1.0× |
 | SPEC-0055 | Claude | 7.224.968 | 14.039.646 | 1.9× |
 | SPEC-0056 | Claude | 2.825.319 | 7.411.781 | 2.6× |
-| SPEC-0057 | Claude | 4.278.416 | 7.609.180 | 1.8× |
+| SPEC-0057 | Claude | 4.278.416 | 15.427.516 | 3.6× |
 | SPEC-0058 | Claude | 2.569.249 | 6.284.522 | 2.4× |
+| SPEC-0059 | Claude | 11.698.065 | 4.846.224 | 0.4× |
 
 ## Como estimar antes de começar uma SPEC nova
 
-- Claude: SPECs concluídas: 50. Custo médio: **9.650.018 tokens efetivos**. Faixa: 2.795.790 – 35.802.728.
+- Claude: SPECs concluídas: 50. Custo médio: **9.675.589 tokens efetivos**. Faixa: 2.795.790 – 35.802.728.

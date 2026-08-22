@@ -2,7 +2,7 @@
 
 > **Project Atlas — Estado do Trabalho Atual**
 
-Atualizado em: 2026-08-22 (SPEC-0057)
+Atualizado em: 2026-08-22 (SPEC-0059)
 
 ---
 
@@ -71,5 +71,6 @@ Objetivo: plataforma mínima operável + primeira interface executável (CLI) + 
 | [SPEC-0056](../implementation/specs/SPEC-0056-project-structure-tool.md) | Tool `project_info` em `@atlas/tools` — segunda fatia do item 1.4 (leitura de estrutura de projeto), continuação incremental da SPEC-0028: descobre a raiz de um projeto (reuso do `GitReadPort.toplevel(cwd)`, método aditivo delegando à mesma descoberta de toplevel contida da SPEC-0028), lista manifests reconhecidos (tabela fixa de 16 nomes de arquivo → ecossistema) e scripts do `package.json`; ascensão ao repositório git só com `path` omitido; zero diff em `@atlas/contracts`/`packages/permissions`/`packages/runtime`/`apps/cli`/`apps/desktop`; não fecha o item 1.4 (resta execução de comandos, `ADR primeiro`) | Done |
 | [SPEC-0058](../implementation/specs/SPEC-0058-untrusted-tool-output-framing.md) | Endurecimento da composição de saídas de Tools no prompt do `@atlas/cognitive` — bloco delimitado `<tool_output id="N">`, instrução fixa de conteúdo não confiável e teto de tamanho por passo (`packages/cognitive/src/tool-output.ts`, novo), mitigação genérica de injeção indireta de prompt aplicável às 13 Tools existentes e a qualquer Tool futura; sem ADR novo; mitiga, não fecha, o residual do ADR-0026/SPEC-0055; `summarizeSteps` (memo entre turnos) fica deliberadamente fora do enquadramento (residual 10); não fecha item do Roadmap, desbloqueia a retomada da SPEC-0057 | Done |
 | [SPEC-0057](../implementation/specs/SPEC-0057-web-search-tool.md) | Busca na internet por texto livre — Tool `web_search` em `@atlas/tools` sobre a porta injetável `SearchPort` (`endpointUrl` publicado pela própria porta, D21), adaptador default `searxngSearchPort` sobre o `HttpPort` já endurecido da SPEC-0055; provedor sem credencial compatível com a API JSON do SearXNG, `--search-url`/`ATLAS_SEARCH_URL` (`AtlasConfig.tools.searchUrl`, novo em `@atlas/contracts`); host julgado pelo mesmo `netRoots` do ADR-0026, sem cláusula reaberta; terceira fatia do item 1.4 (Acesso à internet), não fecha o item — resta execução de comandos sob o Permission Service | Done |
+| [SPEC-0059](../implementation/specs/SPEC-0059-desktop-network-search-gui.md) | Desktop: painel de rede e busca — autoriza hosts (`netRoots`) e configura/desativa o provedor de busca (`tools.searchUrl`) em runtime pela interface gráfica (`selectNetworkAccess`/`selectedNetworkAccess`, quarta porta fail-closed `network-grant-dialog.ts`, canal IPC `'atlas:network:select'`), consentimento explícito por host novo, no molde da SPEC-0038; mutex de política compartilhado com `selectPermissionRoots` (D16); consome só o [ADR-0026](../06-adr/ADR-0026-network-access-gate.md), sem reabrir nenhuma cláusula; fecha o residual nomeado das SPECs 0055/0057 (não fecha o item 1.4); diff vazio em `packages/*`/`apps/cli` | Done |
 
 Detalhes de retomada: `docs/05-context/NEXT_CONTEXT.md`.
