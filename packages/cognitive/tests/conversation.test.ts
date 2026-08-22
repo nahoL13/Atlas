@@ -7,6 +7,7 @@ import type {
   Runtime,
 } from '@atlas/contracts';
 import { createCognitiveCore, TASK_FRAMING } from '../src/index.js';
+import { UNTRUSTED_TOOL_OUTPUT_FRAMING } from '../src/tool-output.js';
 
 function stubGateway(impl: (request: GenerateRequest) => Promise<GenerateResult>): {
   gateway: ModelGateway;
@@ -502,5 +503,101 @@ describe('createCognitiveCore.respond Aprendizado — extração pós-turno (SPE
 
     expect(turn.reply).toBe('resposta normal');
     expect(turn.learned).toBeUndefined();
+  });
+});
+
+describe('createCognitiveCore.respond — SPEC-0058: framing de conteúdo não confiável', () => {
+  it('turno com plano e ≥ 1 passo: composição recebe a framing imediatamente antes do último user, invisível na Conversation', async () => {
+    let call = 0;
+    const { gateway, calls } = stubGateway(async () => {
+      call += 1;
+      return call === 1
+        ? { text: '{"steps":[{"tool":"clock","args":{}}]}' }
+        : { text: 'Hoje é 2026-08-21.' };
+    });
+    const runtime = runtimeWith([{ name: 'clock', description: 'hora' }], {
+      steps: [{ tool: 'clock', args: {}, result: { ok: true, output: '2026-08-21' } }],
+    });
+    const core = createCognitiveCore({ gateway, runtime });
+
+    const { conversation } = await core.respond(core.startConversation(), 'que dia é hoje?');
+
+    const composeCall = calls[1]!;
+    const messages = composeCall.messages;
+    expect(messages.at(-2)).toEqual({ role: 'system', content: UNTRUSTED_TOOL_OUTPUT_FRAMING });
+    expect(messages.at(-1)!.role).toBe('user');
+    // a Conversation retornada não carrega a framing (invisível ao histórico, D6)
+    expect(conversation.messages.some((m) => m.content === UNTRUSTED_TOOL_OUTPUT_FRAMING)).toBe(
+      false,
+    );
+  });
+
+  it('sem Tools executadas, nenhuma chamada carrega a framing (só a 1ª chamada + extração)', async () => {
+    const { gateway, calls } = stubGateway(async () => ({ text: 'resposta comum, sem plano' }));
+    const core = createCognitiveCore({ gateway, runtime: emptyRuntime });
+
+    await core.respond(core.startConversation(), 'oi');
+
+    expect(
+      calls.every((c) => c.messages.every((m) => m.content !== UNTRUSTED_TOOL_OUTPUT_FRAMING)),
+    ).toBe(true);
+  });
+
+  it('prefixo e fecho da composição permanecem inalterados', async () => {
+    let call = 0;
+    const { gateway, calls } = stubGateway(async () => {
+      call += 1;
+      return call === 1 ? { text: '{"steps":[{"tool":"clock","args":{}}]}' } : { text: 'composto' };
+    });
+    const runtime = runtimeWith([{ name: 'clock', description: 'hora' }], {
+      steps: [{ tool: 'clock', args: {}, result: { ok: true, output: 'x' } }],
+    });
+    const core = createCognitiveCore({ gateway, runtime });
+
+    await core.respond(core.startConversation(), 'oi');
+
+    const userContent = calls[1]!.messages.at(-1)!.content;
+    expect(userContent.startsWith('Resultados das ferramentas executadas:')).toBe(true);
+    expect(userContent.endsWith('Responda usando esses resultados.')).toBe(true);
+  });
+
+  it('a mensagem system compacta (summarizeSteps) continua sendo a última mensagem, com o mesmo prefixo', async () => {
+    let call = 0;
+    const { gateway } = stubGateway(async () => {
+      call += 1;
+      return call === 1 ? { text: '{"steps":[{"tool":"clock","args":{}}]}' } : { text: 'composto' };
+    });
+    const runtime = runtimeWith([{ name: 'clock', description: 'hora' }], {
+      steps: [{ tool: 'clock', args: {}, result: { ok: true, output: 'x' } }],
+    });
+    const core = createCognitiveCore({ gateway, runtime });
+
+    const { conversation } = await core.respond(core.startConversation(), 'oi');
+
+    const last = conversation.messages.at(-1)!;
+    expect(last.role).toBe('system');
+    expect(last.content.startsWith('[Tools executadas: ')).toBe(true);
+  });
+
+  it('respond continua puro mesmo com framing: mesma entrada, mesma saída', async () => {
+    let call = 0;
+    const { gateway } = stubGateway(async () => {
+      call += 1;
+      // Cada respond faz 3 chamadas (plano, composição, extração — SPEC-0020).
+      const cycle = ((call - 1) % 3) + 1;
+      return cycle === 1
+        ? { text: '{"steps":[{"tool":"clock","args":{}}]}' }
+        : { text: 'composto' };
+    });
+    const runtime = runtimeWith([{ name: 'clock', description: 'hora' }], {
+      steps: [{ tool: 'clock', args: {}, result: { ok: true, output: 'x' } }],
+    });
+    const core = createCognitiveCore({ gateway, runtime });
+    const conversation = core.startConversation();
+
+    const turn1 = await core.respond(conversation, 'oi');
+    const turn2 = await core.respond(conversation, 'oi');
+
+    expect(turn1).toEqual(turn2);
   });
 });

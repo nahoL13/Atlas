@@ -51,7 +51,7 @@ A ausência de atrito também é informação.
 
 ---
 
-**Escopo deste arquivo:** o Registro abaixo mantém as **últimas 5 SPECs**. As entradas da SPEC-0049 e anteriores estão em `LESSONS_LEARNED-ARCHIVE.md`, preservadas sem edição (regra 2 intacta — nada é reescrito, só realocado).
+**Escopo deste arquivo:** o Registro abaixo mantém as **últimas 5 SPECs**. As entradas da SPEC-0052 e anteriores estão em `LESSONS_LEARNED-ARCHIVE.md`, preservadas sem edição (regra 2 intacta — nada é reescrito, só realocado).
 
 O corte existe porque este arquivo chegou a 157 KB (~39k tokens) e era relido no arranque de quase todo subagent, dominando o custo em tokens do pipeline. Ao fechar uma SPEC: adicione a entrada nova no topo do Registro e mova a mais antiga das 6 para o arquivo.
 
@@ -72,6 +72,24 @@ Lições que se repetiram em três ou mais SPECs. Este índice existe para sobre
 
 
 # Registro
+
+## [SPEC-0058](specs/SPEC-0058-untrusted-tool-output-framing.md) — Endurecimento da composição de saídas de Tools no prompt (`@atlas/cognitive`): bloco `<tool_output>`, instrução fixa e teto de tamanho (2026-08-21)
+
+**Descobrimos que...**
+
+O gap não nasceu com esta SPEC: estava em produção desde a SPEC-0055 (`http_get`, `Done` 2026-08-20), e só foi nomeado quando o `architecture-reviewer`, ao aprovar a SPEC-0057 (`web_search`, `Ready`, pausada), marcou a ausência de fronteira de conteúdo não confiável como "a decisão mais cara" daquela fatia — o usuário então pediu explicitamente que esta SPEC fechasse antes de retomar a 0057. Descobrimos também, ao registrar o residual 10 por inteiro (o memo `summarizeSteps` persistido na `Conversation`), que ele é o caminho de maior consequência escondida: `withFreshSystemHead` (SPEC-0021) só substitui a **primeira** mensagem `system` da conversa, então o memo do turno N reentra em **todo** turno seguinte, inclusive na 1ª `generate` (planejamento) do turno N+1 — a mesma classe de risco que D10 usa para justificar cobrir o replanejamento ("proteger a porta e esquecer a janela"), só que aqui a SPEC decidiu deliberadamente não fechar (custo de inflar o histórico permanentemente, ou de o `respond` farejar a `Conversation` atrás de um prefixo de string). E o `spec-validator` confirmou, sem reprovar, duas divergências de precisão entre o texto ilustrativo da SPEC e a implementação (o exemplo "Passo sem saída" mostra bloco vazio sem linha em branco, mas o único caminho de código real produz uma linha em branco; o CA de D11 foi testado com uma fence atravessando a fronteira do corte, não com o texto literal do exemplo, porque o exemplo não discrimina as duas ordens possíveis) — nenhuma delas é arquitetural, mas ambas são exemplos ilustrativos de uma SPEC divergindo do próprio teste que a implementa, não um Critério de Aceitação incompleto.
+
+**A arquitetura ajudou porque...**
+
+O molde consolidado do package (`planner.ts`/`observer.ts`/`learner.ts`: puro, isolado, sem gateway, testável por import direto) absorveu `tool-output.ts` sem desenho novo, mantendo `index.ts` intocado — a superfície pública de `@atlas/cognitive` não cresceu. O precedente "mudança de composição de prompt sem ADR novo" (SPEC-0014, SPEC-0021, SPEC-0026) generalizou de novo (D3): o que mudou é conteúdo de string e número de mensagens `system`, ambos já livres por desenho desde que `Message`/`role` de `@atlas/contracts` saem intactos — nenhum provider do `@atlas/model-gateway` precisou de uma linha.
+
+**A arquitetura atrapalhou porque...**
+
+Nada de estrutural — os quatro comandos da raiz (1636 testes/91 arquivos) e os Critérios de Aceitação passaram sem achado bloqueante do `spec-validator`; o diff ficou contido a `packages/cognitive/{src/tool-output.ts, src/cognitive-core.ts, tests/tool-output.test.ts, tests/cognitive-core.test.ts, tests/conversation.test.ts}`, exatamente como a SPEC previu.
+
+**Precisamos mudar...**
+
+Nada de obrigatório para esta fatia. (1) O residual 10 (memo `summarizeSteps` sem bloco/instrução, persistente entre turnos) segue registrado como caminho não coberto — fechá-lo por inteiro exigiria um canal estrutural de mensagem (`role: 'tool'` em `@atlas/contracts`), decisão arquitetural nova — encaminhamento: candidato de ADR próprio, sem SPEC própria hoje, registrado na SPEC-0058 (residual 10) e em `NEXT_CONTEXT.md`. (2) A metade "exfiltração via URL" do residual do ADR-0026 (SPEC-0055) segue intocada — encaminhamento: já registrado desde a SPEC-0055, sem mudança nesta fatia. (3) A SPEC-0057 (`web_search`, `Ready`) fica desbloqueada para retomada — não é mudança arquitetural, é nota de processo para a próxima sessão decidir.
 
 ## [SPEC-0056](specs/SPEC-0056-project-structure-tool.md) — Tool de leitura de estrutura de projeto (`project_info`) em `@atlas/tools`, reusando a descoberta de toplevel da SPEC-0028 (2026-08-20)
 
@@ -145,24 +163,6 @@ Nada de estrutural — o atrito foi de processo, não de desenho: gates técnico
 
 (1) A linha "Smoke visual/sonoro das fatias desktop nunca confirmado" nos Padrões Recorrentes deixa de ser hipotética — já reprovou uma implementação inteira (v2.0) apesar dos quatro gates técnicos verdes; a v3.0 finalmente fechou o smoke com todos os 15 itens `OK` — encaminhamento: já atualizado nesta mesma SPEC em `apps/desktop/CLAUDE.md`/`NEXT_CONTEXT.md` (a pendência estrutural muda de "nunca confirmado" para "confirmado na v3.0 da SPEC-0053"; fatias futuras reabrem a pendência só se tocarem o núcleo/layout de novo). (2) Nenhum ADR novo — Canvas 2D e drawer permanecem dentro do Output Gateway, ADR-0019 intacto (nota da própria SPEC, D3/D8).
 
-## [SPEC-0052](specs/SPEC-0052-desktop-hands-free-voice-conversation.md) — Modo hands-free: conversa por voz contínua no desktop (2026-08-06)
-
-**Descobrimos que...**
-
-Reverter uma cláusula de um ADR aceito não é um ajuste de detalhe, mesmo quando a decisão de produto já está tomada pelo usuário: o ADR-0022, em *Alternativas Consideradas*, tinha rejeitado auto-envio "como parte desta decisão, e não apenas como detalhe de UI" — a distinção que autorizou revertê-la (**auto-envio ≠ execução não autorizada**, o Artigo 8 fala em ação *destrutiva*, e o `ConfirmPort` nunca foi tocado) só ficou defensável porque o gate exigiu que ela fosse citada por nome (o ADR-0023 original não linkava o Artigo 8 explicitamente — corrigido só na *Nota de implementação*, achado A7 do 1º gate). Descobrimos também, do jeito mais caro, que uma máquina de estados desenhada para "nunca ficar presa" pode ficar presa mesmo assim se a premissa sobre o caminho de erro do vizinho for falsa: a v1.0 afirmava que a recusa do `#chat-form` viraria `turnFailed`, mas o manipulador tem **três `return` silenciosos antes de qualquer promessa** — sem o estado `sending` com gancho de início confirmado no mesmo tick (D23), o modo travaria em `thinking` para sempre, com o microfone fechado e o indicador mentindo (A1 do 1º gate, o mais grave dos quatro bloqueantes). E, pela segunda vez nesta SPEC (depois do CA 32/pre-roll), uma correção de bloqueante do gate expôs um bug real: o teste RED da 1ª rodada do validador confirmou que sem a correção o frame de `speechStart` era contado duas vezes no payload transcrito.
-
-**A arquitetura ajudou porque...**
-
-O ADR-0023 delegou o contrato técnico exato à SPEC ("mesmo enquadramento que os ADRs 0021 e 0022 adotaram") e a SPEC, por sua vez, usou cláusula de parada seletiva (D17): só o que é decisão (modelo, versão, propriedades de carregamento, tabela de estados) fica pinado; o layout do dist do ORT, não — a v1.0 tinha pinado nomes de arquivo do dist como decisão, e o gate mostrou que o pareamento escolhido era inclusive suspeito (`.jsep.wasm` é da variante errada), então a correção (D5/D6) generalizou a cláusula de parada para "propriedades, nunca detalhe alheio" em vez de tentar acertar o nome certo. O molde de porta injetável com ponto de criação único (`spawn` do Piper/whisper) generalizou para `VoiceActivityDetector` (D21) sem desenho novo — só a disciplina extra de verificar estaticamente que `ort.`/`InferenceSession.create` só aparecem dentro da fábrica, e um teste que roda sem `window.ort` provando que a porta é real, não decorativa. As cinco camadas do caminho de envio (SPECs 0048-0051: guardas, `.catch` com aviso pinado, `.finally` de origem única, guarda estrutural do bridge, aviso de cancelamento) absorveram o auto-envio de graça: bastou disparar o mesmo `submit` de `#chat-form` (D11) em vez de abrir um segundo caminho.
-
-**A arquitetura atrapalhou porque...**
-
-O gate vetou uma vez com 7 achados (4 bloqueantes) — além do A1 (`sending`/D23) e do A3 (nomes de dist pinados como decisão, D5/D6), o A2 mostrou que dois CAs da v1.0 estavam em contradição direta entre si (observar o fim da fala do SO exigiria tocar a réplica registrada **ou** `speech-output.ts`, os dois lados protegidos pelo próprio checklist da SPEC) — resolvido anexando o observador dentro de `synth` (D20), o ponto de criação do utterance que nunca foi réplica de nada. O validador reprovou **duas vezes**: a 1ª por cinco CAs declarados atendidos sem prova em teste (R1-R5); a 2ª porque o CA 39 pedia "um teste por estado" sobre os 9 estados, mas só 6 são um gesto real de "desligar" — `off`/`unavailable`/`sending` não têm gap observável para o freio agir (R6). A 2ª reprovação escalou ao usuário, que decidiu emendar o texto do CA em vez de escrever três testes de fachada — a mesma disciplina que os Padrões Recorrentes já registram para "garantia em prosa absoluta", agora do lado do *Critério de Aceitação*, não da doc viva: um CA que conta ("um teste por N") pode exigir prova de algo que não existe.
-
-**Precisamos mudar...**
-
-(1) Justificativa de exclusão de cobertura precisa viver na SPEC (Resíduos/Decisões de design), nunca só em comentário de teste — a lição central da R6, generalizando o padrão já visto na SPEC-0049 (justificativa de decisão incompleta): registrado aqui como precedente citável para o próximo CA que "conte" artefatos ou estados. (2) **Canal de push (`webContents.send`)** avisando o renderer quando o trabalho abandonado assenta — hoje só `invoke`/`handle`; sem ele a quarentena de sessão (SPEC-0051) desliga o modo hands-free a cada tentativa de turno, apontado pelo reviewer nos dois passes do gate desta SPEC — encaminhamento: candidato elevado em `NEXT_CONTEXT.md`/`apps/desktop/CLAUDE.md`, mais atraente agora que duas fatias o pedem. (3) **Barge-in** — interromper a fala do assistente falando por cima — candidato nomeado pelo próprio ADR-0023, não descartado, custo próprio (microfone aberto durante o TTS + cancelamento de eco) — encaminhamento: registrado em `NEXT_CONTEXT.md`/`apps/desktop/CLAUDE.md`. (4) **Fallback de energia** atrás da porta `VoiceActivityDetector` (D8) — só cogitável se o Silero se mostrar de fato insuficiente em uso real, condição hoje hipotética — encaminhamento: candidato registrado, sem SPEC própria. (5) A pendência de smoke visual/sonoro (20 fatias seguidas sem confirmação humana) ganha o item mais difícil de dublar até aqui — um laço de conversa em tempo real (microfone real, binário do VAD, latência, eco) — encaminhamento: nenhuma ação possível no ambiente atual; registrado em `NEXT_CONTEXT.md`/`apps/desktop/CLAUDE.md`, sem mudança de processo.
-
 ---
 
-**Entradas anteriores (SPEC-0051 e mais antigas):** `LESSONS_LEARNED-ARCHIVE.md`.
+**Entradas anteriores (SPEC-0052 e mais antigas):** `LESSONS_LEARNED-ARCHIVE.md`.

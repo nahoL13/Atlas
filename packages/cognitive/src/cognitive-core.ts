@@ -16,6 +16,12 @@ import type {
 import { createPlanner } from './planner.js';
 import { observe } from './observer.js';
 import { createLearner } from './learner.js';
+import {
+  formatResults,
+  summarizeFailures,
+  summarizeSteps,
+  UNTRUSTED_TOOL_OUTPUT_FRAMING,
+} from './tool-output.js';
 
 /**
  * Teto fixo do laço de replanejamento (ADR-0015): no máximo 1 replanejamento
@@ -78,42 +84,6 @@ export interface CognitiveCoreDeps {
    * (catálogo de Skills vazio, nenhuma injeção).
    */
   skillCatalog?: SkillCatalogPort;
-}
-
-/** Formata os resultados de execução para a chamada de composição (ask/respond). */
-function formatResults(steps: readonly ExecutedStep[]): string {
-  return steps
-    .map((step) => {
-      const outcome = step.result.ok
-        ? (step.result.output ?? '')
-        : `ERRO: ${step.result.error ?? ''}`;
-      return `- ${step.tool}(${JSON.stringify(step.args)}) → ${outcome}`;
-    })
-    .join('\n');
-}
-
-/**
- * Resumo compacto dos passos executados, persistido como mensagem `system`
- * no histórico da conversa (nunca exibido ao usuário) para que o modelo
- * "lembre", nos turnos seguintes, do que executou.
- */
-function summarizeSteps(steps: readonly ExecutedStep[]): string {
-  const parts = steps.map((step) => {
-    const outcome = step.result.ok ? 'ok' : `negada: ${step.result.error ?? ''}`;
-    return `${step.tool}(${JSON.stringify(step.args)}) → ${outcome}`;
-  });
-  return `[Tools executadas: ${parts.join('; ')}]`;
-}
-
-/**
- * Resumo compacto das falhas de um passe, injetado na chamada `generate` de
- * replanejamento (ADR-0015, mesmo padrão de `summarizeSteps` da SPEC-0014).
- */
-function summarizeFailures(steps: readonly ExecutedStep[]): string {
-  const failures = steps.filter((step) => !step.result.ok);
-  return failures
-    .map((step) => `${step.tool}(${JSON.stringify(step.args)}) → ERRO: ${step.result.error ?? ''}`)
-    .join('\n');
 }
 
 /**
@@ -275,17 +245,24 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
     while (observation.verdict === 'replan' && budget > 0) {
       budget -= 1;
       const failuresSummary = summarizeFailures(execution.steps);
-      messages = [
+      const replanUserMessage: Message = {
+        role: 'user',
+        content:
+          `A execução do plano anterior teve falhas:\n${failuresSummary}\n\n` +
+          'Ajuste o plano e tente novamente, seguindo o mesmo formato.',
+      };
+      // SPEC-0058: a mensagem `system` de framing entra SÓ na chamada deste
+      // passe de replanejamento, nunca no acumulador `messages` que
+      // atravessa iterações do laço (evita duplicar/persistir a instrução
+      // caso `REPLAN_BUDGET` cresça no futuro).
+      const replanMessages: Message[] = [
         ...messages,
         { role: 'assistant', content: planText },
-        {
-          role: 'user',
-          content:
-            `A execução do plano anterior teve falhas:\n${failuresSummary}\n\n` +
-            'Ajuste o plano e tente novamente, seguindo o mesmo formato.',
-        },
+        { role: 'system', content: UNTRUSTED_TOOL_OUTPUT_FRAMING },
+        replanUserMessage,
       ];
-      const replanResult = await gateway.generate({ messages });
+      messages = [...messages, { role: 'assistant', content: planText }, replanUserMessage];
+      const replanResult = await gateway.generate({ messages: replanMessages });
       usages.push(replanResult.usage);
       planText = replanResult.text;
       const replanPlan = planner.parse(replanResult.text);
@@ -342,6 +319,11 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
         ],
         (results, skillInstructions) => [
           { role: 'system', content: compose(memoryValue, skillInstructions) },
+          // SPEC-0058: a instrução fixa de conteúdo não confiável só entra
+          // quando esta chamada de fato carrega texto de Tool (D6).
+          ...(results !== ''
+            ? [{ role: 'system' as const, content: UNTRUSTED_TOOL_OUTPUT_FRAMING }]
+            : []),
           {
             role: 'user',
             content:
@@ -412,6 +394,11 @@ export function createCognitiveCore(deps: CognitiveCoreDeps): CognitiveCore {
               : withUser;
           return [
             ...composeBase,
+            // SPEC-0058: framing só quando esta chamada carrega texto de
+            // Tool (D6); nunca entra na `Conversation` retornada (D6/D14).
+            ...(results !== ''
+              ? [{ role: 'system' as const, content: UNTRUSTED_TOOL_OUTPUT_FRAMING }]
+              : []),
             {
               role: 'user',
               content: `Resultados das ferramentas executadas:\n${results}\n\nResponda usando esses resultados.`,

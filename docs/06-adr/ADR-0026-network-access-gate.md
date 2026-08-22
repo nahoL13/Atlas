@@ -197,3 +197,14 @@ A SPEC-0055 concretizou o contrato técnico que esta decisão deixou explicitame
 - **Dois residuais novos, fora do que este ADR já registrava em (e)/Custos e riscos, ficam documentados e não fechados**: a URL é um canal de saída de dados que o portão não julga (avalia só o host, nunca o path/query string da requisição — combinado com `--allow-read` já concedido, é o primeiro caminho de exfiltração da plataforma) e a injeção indireta de prompt pelo corpo remoto (primeira vez que texto de terceiro não confiável entra no prompt de planejamento/composição). Fechar qualquer um dos dois é mudança estrutural nova — reabriria este ADR.
 - **`apps/desktop` fica sem `netRoots` nesta fatia** (D17 da SPEC) — decisão de escopo da SPEC, não deste ADR: expor rede na GUI exigiria repetir o desenho de consentimento da SPEC-0038 para um eixo novo.
 - Não fecha o item 1.4 do Roadmap — seguem candidatas execução de comandos sob o Permission Service, leitura de estrutura de projeto, e os próprios residuais acima (redirect por hop, wildcard de subdomínio, IP resolvido).
+
+---
+
+# Atualização ([SPEC-0058](../implementation/specs/SPEC-0058-untrusted-tool-output-framing.md))
+
+A SPEC-0058 **mitiga, sem fechar**, a metade "injeção indireta de prompt" do residual registrado na atualização acima (SPEC-0055). Nenhuma cláusula (a)–(e) desta decisão é reaberta; diff vazio em `@atlas/permissions`, `netRoots`, `evaluate`, `ResourceType`/`ResourceRef`, `isContained`.
+
+- Em `@atlas/cognitive`, todo texto de Tool que entra numa chamada `generate` de **composição** ou de **replanejamento** passa a chegar num bloco delimitado (`<tool_output id="N">`, delimitador neutralizado contra forja), precedido de uma mensagem `system` fixa que instrui o modelo a tratar o conteúdo como dado, nunca como ordem, e sob teto determinístico de tamanho (`packages/cognitive/src/tool-output.ts`, novo).
+- **A metade "exfiltração via URL" do residual permanece intocada.** O portão segue julgando só o host, nunca o path/query da requisição — nada nesta atualização estreita esse canal.
+- **A metade "injeção indireta" segue apenas mitigada, não fechada.** Um modelo pode ignorar a instrução; o memo de continuidade persistido na `Conversation` (`summarizeSteps`) reentra em todo turno seguinte só com teto e neutralização, sem bloco nem instrução (residual 10 da SPEC-0058) — fechar essa metade por inteiro exigiria um canal estrutural de mensagem (`role: 'tool'`), decisão que reabriria este ADR ou exigiria um novo.
+- Não fecha o item 1.4 do Roadmap.

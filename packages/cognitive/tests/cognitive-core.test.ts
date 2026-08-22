@@ -8,6 +8,7 @@ import type {
   Runtime,
 } from '@atlas/contracts';
 import { createCognitiveCore, TASK_FRAMING } from '../src/index.js';
+import { UNTRUSTED_TOOL_OUTPUT_FRAMING } from '../src/tool-output.js';
 
 /** Provider fake de memória (SPEC-0021): conta invocações num contador
  * mutável e devolve o último valor da lista uma vez esgotada (roteirizando
@@ -1133,5 +1134,236 @@ describe('createCognitiveCore — consumo de tokens (SPEC-0054/ADR-0025)', () =>
       { role: 'system', content: TASK_FRAMING },
       { role: 'user', content: 'oi' },
     ]);
+  });
+});
+
+describe('createCognitiveCore.ask — SPEC-0058: framing de conteúdo não confiável', () => {
+  it('turno sem plano (1 chamada + extração): mensagens byte a byte iguais às de hoje, sem framing', async () => {
+    const { gateway, calls } = stubGateway(async () => ({ text: 'resposta do modelo' }));
+    const core = createCognitiveCore({ gateway, runtime: emptyRuntime });
+
+    await core.ask('resuma este texto');
+
+    expect(calls[0]!.messages).toEqual([
+      { role: 'system', content: TASK_FRAMING },
+      { role: 'user', content: 'resuma este texto' },
+    ]);
+    expect(
+      calls.every((c) => c.messages.every((m) => m.content !== UNTRUSTED_TOOL_OUTPUT_FRAMING)),
+    ).toBe(true);
+  });
+
+  it('turno com plano e ≥ 1 passo: a composição recebe a system de framing imediatamente antes do último user', async () => {
+    let call = 0;
+    const { gateway, calls } = stubGateway(async () => {
+      call += 1;
+      return call === 1
+        ? { text: '{"steps":[{"tool":"clock","args":{}}]}' }
+        : { text: 'Hoje é 2026-08-21.' };
+    });
+    const runtime = runtimeWith([{ name: 'clock', description: 'hora' }], {
+      steps: [{ tool: 'clock', args: {}, result: { ok: true, output: '2026-08-21' } }],
+    });
+    const core = createCognitiveCore({ gateway, runtime });
+
+    await core.ask('que dia é hoje?');
+
+    const composeCall = calls[1]!;
+    const messages = composeCall.messages;
+    expect(messages.at(-2)).toEqual({ role: 'system', content: UNTRUSTED_TOOL_OUTPUT_FRAMING });
+    expect(messages.at(-1)!.role).toBe('user');
+    // TASK_FRAMING/compose() seguem idênticos: nenhuma 4ª parte (D6).
+    expect(messages[0]).toEqual({ role: 'system', content: TASK_FRAMING });
+  });
+
+  it('turno com plano cujos passos resultam em steps: [] ⇒ nenhuma mensagem de framing', async () => {
+    let call = 0;
+    const { gateway, calls } = stubGateway(async () => {
+      call += 1;
+      return call === 1 ? { text: '{"steps":[]}' } : { text: 'resposta sem execução' };
+    });
+    const runtime: Runtime = { tools: () => [], execute: async () => ({ steps: [] }) };
+    const core = createCognitiveCore({ gateway, runtime });
+
+    await core.ask('oi');
+
+    const composeCall = calls[1]!;
+    expect(composeCall.messages.some((m) => m.content === UNTRUSTED_TOOL_OUTPUT_FRAMING)).toBe(
+      false,
+    );
+  });
+
+  it('prefixo e fecho da composição permanecem inalterados', async () => {
+    let call = 0;
+    const { gateway, calls } = stubGateway(async () => {
+      call += 1;
+      return call === 1 ? { text: '{"steps":[{"tool":"clock","args":{}}]}' } : { text: 'composto' };
+    });
+    const runtime = runtimeWith([{ name: 'clock', description: 'hora' }], {
+      steps: [{ tool: 'clock', args: {}, result: { ok: true, output: 'x' } }],
+    });
+    const core = createCognitiveCore({ gateway, runtime });
+
+    await core.ask('que horas são?');
+
+    const userContent = calls[1]!.messages.at(-1)!.content;
+    expect(userContent).toContain('Resultados das ferramentas executadas:');
+    expect(userContent.endsWith('Responda ao objetivo usando esses resultados.')).toBe(true);
+  });
+
+  it('AskResult.steps[i].result.output é idêntico ao devolvido pela Tool mesmo truncado no prompt (D14)', async () => {
+    const bigOutput = 'A'.repeat(9_000);
+    let call = 0;
+    const { gateway, calls } = stubGateway(async () => {
+      call += 1;
+      return call === 1
+        ? { text: '{"steps":[{"tool":"http_get","args":{"url":"https://exemplo.com"}}]}' }
+        : { text: 'ok' };
+    });
+    const runtime = runtimeWith([{ name: 'http_get', description: 'busca' }], {
+      steps: [
+        {
+          tool: 'http_get',
+          args: { url: 'https://exemplo.com' },
+          result: { ok: true, output: bigOutput },
+        },
+      ],
+    });
+    const core = createCognitiveCore({ gateway, runtime });
+
+    const answer = await core.ask('busque a página');
+
+    expect(answer.steps![0]!.result.output).toBe(bigOutput);
+    expect(answer.steps![0]!.result.output).toHaveLength(9_000);
+    const composeCall = calls[1]!;
+    expect(
+      composeCall.messages.some((m) => m.content.includes('[… saída truncada pelo Atlas …]')),
+    ).toBe(true);
+  });
+
+  it('caminho de replan: a chamada de replanejamento recebe a framing imediatamente antes do user com falhas', async () => {
+    let call = 0;
+    const { gateway, calls } = stubGateway(async () => {
+      call += 1;
+      if (call === 1) return { text: '{"steps":[{"tool":"clock","args":{}}]}' };
+      if (call === 2) return { text: '{"steps":[{"tool":"clock","args":{}}]}' };
+      return { text: 'composto' };
+    });
+    const runtime = sequencedRuntime(
+      [{ name: 'clock', description: 'hora' }],
+      [
+        { steps: [{ tool: 'clock', args: {}, result: { ok: false, error: 'sem rede' } }] },
+        { steps: [{ tool: 'clock', args: {}, result: { ok: true, output: 'ok' } }] },
+      ],
+    );
+    const core = createCognitiveCore({ gateway, runtime });
+
+    await core.ask('que dia é hoje?');
+
+    const replanCall = calls[1]!;
+    const messages = replanCall.messages;
+    expect(messages.at(-2)).toEqual({ role: 'system', content: UNTRUSTED_TOOL_OUTPUT_FRAMING });
+    expect(messages.at(-1)!.role).toBe('user');
+    expect(messages.at(-1)!.content).toContain(
+      'Ajuste o plano e tente novamente, seguindo o mesmo formato.',
+    );
+  });
+
+  it('error de 8001 caracteres no passe anterior ⇒ o resumo de falhas chega truncado com o marcador', async () => {
+    const bigError = 'E'.repeat(8_001);
+    let call = 0;
+    const { gateway, calls } = stubGateway(async () => {
+      call += 1;
+      if (call === 1) return { text: '{"steps":[{"tool":"clock","args":{}}]}' };
+      if (call === 2) return { text: '{"steps":[{"tool":"clock","args":{}}]}' };
+      return { text: 'composto' };
+    });
+    const runtime = sequencedRuntime(
+      [{ name: 'clock', description: 'hora' }],
+      [
+        { steps: [{ tool: 'clock', args: {}, result: { ok: false, error: bigError } }] },
+        { steps: [{ tool: 'clock', args: {}, result: { ok: true, output: 'ok' } }] },
+      ],
+    );
+    const core = createCognitiveCore({ gateway, runtime });
+
+    await core.ask('que dia é hoje?');
+
+    const replanCall = calls[1]!;
+    expect(
+      replanCall.messages.some((m) => m.content.includes('[… saída truncada pelo Atlas …]')),
+    ).toBe(true);
+  });
+
+  it('numeração de summarizeFailures reinicia em 1 a cada passe (D18): replan contém id="1" mesmo com múltiplos passos no passe anterior', async () => {
+    let call = 0;
+    const { gateway, calls } = stubGateway(async () => {
+      call += 1;
+      if (call === 1) {
+        return { text: '{"steps":[{"tool":"clock","args":{}},{"tool":"clock","args":{}}]}' };
+      }
+      if (call === 2) return { text: '{"steps":[{"tool":"clock","args":{}}]}' };
+      return { text: 'composto' };
+    });
+    const runtime = sequencedRuntime(
+      [{ name: 'clock', description: 'hora' }],
+      [
+        {
+          steps: [
+            { tool: 'clock', args: {}, result: { ok: false, error: 'e1' } },
+            { tool: 'clock', args: {}, result: { ok: false, error: 'e2' } },
+          ],
+        },
+        { steps: [{ tool: 'clock', args: {}, result: { ok: true, output: 'ok' } }] },
+      ],
+    );
+    const core = createCognitiveCore({ gateway, runtime });
+
+    await core.ask('que dia é hoje?');
+
+    const replanCall = calls[1]!;
+    const userContent = replanCall.messages.at(-1)!.content;
+    const ids = [...userContent.matchAll(/id="(\d+)"/g)].map((m) => m[1]);
+    expect(ids).toEqual(['1', '2']);
+    expect(userContent).not.toContain('id="3"');
+  });
+
+  it('numeração contínua na composição sobre todos os passes (D18): id="1"…id="4" sem lacuna nem repetição', async () => {
+    let call = 0;
+    const { gateway, calls } = stubGateway(async () => {
+      call += 1;
+      if (call === 1) {
+        return { text: '{"steps":[{"tool":"clock","args":{}},{"tool":"clock","args":{}}]}' };
+      }
+      if (call === 2) {
+        return { text: '{"steps":[{"tool":"clock","args":{}},{"tool":"clock","args":{}}]}' };
+      }
+      return { text: 'composto' };
+    });
+    const runtime = sequencedRuntime(
+      [{ name: 'clock', description: 'hora' }],
+      [
+        {
+          steps: [
+            { tool: 'clock', args: {}, result: { ok: false, error: 'e1' } },
+            { tool: 'clock', args: {}, result: { ok: false, error: 'e2' } },
+          ],
+        },
+        {
+          steps: [
+            { tool: 'clock', args: {}, result: { ok: true, output: 'ok1' } },
+            { tool: 'clock', args: {}, result: { ok: true, output: 'ok2' } },
+          ],
+        },
+      ],
+    );
+    const core = createCognitiveCore({ gateway, runtime });
+
+    await core.ask('que dia é hoje?');
+
+    const composeCall = calls[2]!;
+    const userContent = composeCall.messages.at(-1)!.content;
+    const ids = [...userContent.matchAll(/id="(\d+)"/g)].map((m) => m[1]);
+    expect(ids).toEqual(['1', '2', '3', '4']);
   });
 });

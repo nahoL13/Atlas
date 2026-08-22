@@ -2,7 +2,7 @@
 
 > **Project Atlas — Estado do Trabalho Atual**
 
-Atualizado em: 2026-08-20 (SPEC-0056)
+Atualizado em: 2026-08-21 (SPEC-0058)
 
 ---
 
@@ -69,5 +69,6 @@ Objetivo: plataforma mínima operável + primeira interface executável (CLI) + 
 
 | [SPEC-0055](../implementation/specs/SPEC-0055-http-get-network-access.md) | Primeiro acesso à internet sob o portão de permissão — Tool `http_get` somente-leitura em `@atlas/tools` sobre `HttpPort`, host julgado pelo Network Access Gate do Permission Service (`ResourceType: 'network'` + `netRoots`, [ADR-0026](../06-adr/ADR-0026-network-access-gate.md), novo, Accepted); `--allow-net`/`ATLAS_ALLOW_NET` na CLI; `apps/desktop` sem política de rede nesta fatia; não fecha o item 1.4 | Done |
 | [SPEC-0056](../implementation/specs/SPEC-0056-project-structure-tool.md) | Tool `project_info` em `@atlas/tools` — segunda fatia do item 1.4 (leitura de estrutura de projeto), continuação incremental da SPEC-0028: descobre a raiz de um projeto (reuso do `GitReadPort.toplevel(cwd)`, método aditivo delegando à mesma descoberta de toplevel contida da SPEC-0028), lista manifests reconhecidos (tabela fixa de 16 nomes de arquivo → ecossistema) e scripts do `package.json`; ascensão ao repositório git só com `path` omitido; zero diff em `@atlas/contracts`/`packages/permissions`/`packages/runtime`/`apps/cli`/`apps/desktop`; não fecha o item 1.4 (resta execução de comandos, `ADR primeiro`) | Done |
+| [SPEC-0058](../implementation/specs/SPEC-0058-untrusted-tool-output-framing.md) | Endurecimento da composição de saídas de Tools no prompt do `@atlas/cognitive` — bloco delimitado `<tool_output id="N">`, instrução fixa de conteúdo não confiável e teto de tamanho por passo (`packages/cognitive/src/tool-output.ts`, novo), mitigação genérica de injeção indireta de prompt aplicável às 13 Tools existentes e a qualquer Tool futura; sem ADR novo; mitiga, não fecha, o residual do ADR-0026/SPEC-0055; `summarizeSteps` (memo entre turnos) fica deliberadamente fora do enquadramento (residual 10); não fecha item do Roadmap, desbloqueia a retomada da SPEC-0057 | Done |
 
 Detalhes de retomada: `docs/05-context/NEXT_CONTEXT.md`.
