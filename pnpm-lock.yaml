@@ -21,7 +21,7 @@ importers:
         specifier: ^10.1.8
         version: 10.1.8(eslint@10.6.0)
       harness-score:
-        specifier: ^1.6.3
+        specifier: 1.6.3
         version: 1.6.3
       prettier:
         specifier: ^3.9.5
