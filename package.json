@@ -23,6 +23,7 @@
     "@types/node": "^26.1.1",
     "eslint": "^10.6.0",
     "eslint-config-prettier": "^10.1.8",
+    "harness-score": "^1.6.3",
     "prettier": "^3.9.5",
     "tsx": "^4.23.0",
     "typescript": "^5.9.3",
