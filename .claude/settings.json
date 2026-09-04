@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/agent-workflow/hook.py\" --platform claude --event PreToolUse",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/agent-workflow/hook.py\" --platform claude --event PreToolUse",
             "timeout": 15,
             "statusMessage": "Verificando SPEC correspondente..."
           }
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/agent-workflow/hook.py\" --platform claude --event PostToolUse",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/agent-workflow/hook.py\" --platform claude --event PostToolUse",
             "timeout": 60,
             "statusMessage": "Rodando eslint..."
           }
@@ -31,7 +31,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/agent-workflow/hook.py\" --platform claude --event UserPromptSubmit",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/agent-workflow/hook.py\" --platform claude --event UserPromptSubmit",
             "timeout": 10
           }
         ]
@@ -42,7 +42,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd \"${CLAUDE_PROJECT_DIR:-.}\" && python3 scripts/agent-usage-report.py --executor claude >/dev/null 2>&1 || true",
+            "command": "cd \"${CLAUDE_PROJECT_DIR:-.}\" && python3 scripts/agent-usage-report.py --executor claude > /dev/null 2>&1 || true",
             "timeout": 30,
             "async": true,
             "statusMessage": "Atualizando log de uso de tokens..."

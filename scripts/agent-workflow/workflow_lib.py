@@ -149,10 +149,12 @@ def load_root_instruction(root: Path, filename: str) -> str:
 
 
 def render_hook_command(platform: str, event: str) -> str:
-    return (
-        'python3 "$(git rev-parse --show-toplevel)'
-        f'/scripts/agent-workflow/hook.py" --platform {platform} --event {event}'
+    script_ref = (
+        '"${CLAUDE_PROJECT_DIR:-.}/scripts/agent-workflow/hook.py"'
+        if platform == "claude"
+        else '"$(git rev-parse --show-toplevel)/scripts/agent-workflow/hook.py"'
     )
+    return f"python3 {script_ref} --platform {platform} --event {event}"
 
 
 def render_hook_settings(platform: str) -> str:
@@ -205,7 +207,7 @@ def render_hook_settings(platform: str) -> str:
                         "command": (
                             'cd "${'
                             + "CLAUDE"
-                            + '_PROJECT_DIR:-.}" && python3 scripts/agent-usage-report.py --executor claude >/dev/null 2>&1 || true'
+                            + '_PROJECT_DIR:-.}" && python3 scripts/agent-usage-report.py --executor claude > /dev/null 2>&1 || true'
                         ),
                         "timeout": 30,
                         "async": True,

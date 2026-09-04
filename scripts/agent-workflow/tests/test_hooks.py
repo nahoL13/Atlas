@@ -537,19 +537,22 @@ class HookTests(unittest.TestCase):
         codex = json.loads(outputs[Path(".codex/hooks.json")])
         self.assertEqual(set(claude["hooks"]), {"PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop"})
         self.assertEqual(set(codex["hooks"]), {"PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop"})
-        for config in (claude, codex):
-            for event in ("PreToolUse", "PostToolUse", "UserPromptSubmit"):
-                command = config["hooks"][event][0]["hooks"][0]["command"]
-                self.assertIn("git rev-parse --show-toplevel", command)
-                self.assertIn("scripts/agent-workflow/hook.py", command)
-                self.assertNotIn("CLAUDE" + "_PROJECT_DIR", command)
+        for event in ("PreToolUse", "PostToolUse", "UserPromptSubmit"):
+            claude_command = claude["hooks"][event][0]["hooks"][0]["command"]
+            self.assertIn("CLAUDE" + "_PROJECT_DIR", claude_command)
+            self.assertIn("scripts/agent-workflow/hook.py", claude_command)
+            self.assertNotIn("git rev-parse --show-toplevel", claude_command)
+            codex_command = codex["hooks"][event][0]["hooks"][0]["command"]
+            self.assertIn("git rev-parse --show-toplevel", codex_command)
+            self.assertIn("scripts/agent-workflow/hook.py", codex_command)
+            self.assertNotIn("CLAUDE" + "_PROJECT_DIR", codex_command)
         self.assertEqual(codex["hooks"]["PreToolUse"][0]["matcher"], "Edit|Write")
         self.assertEqual(codex["hooks"]["PostToolUse"][0]["matcher"], "Edit|Write")
         stop_hook = claude["hooks"]["Stop"][0]["hooks"][0]
         self.assertTrue(stop_hook["async"])
         self.assertEqual(
             stop_hook["command"],
-            'cd "${' + "CLAUDE" + '_PROJECT_DIR:-.}" && python3 scripts/agent-usage-report.py --executor claude >/dev/null 2>&1 || true',
+            'cd "${' + "CLAUDE" + '_PROJECT_DIR:-.}" && python3 scripts/agent-usage-report.py --executor claude > /dev/null 2>&1 || true',
         )
         self.assertEqual(
             codex["hooks"]["Stop"][0]["hooks"][0]["command"],
