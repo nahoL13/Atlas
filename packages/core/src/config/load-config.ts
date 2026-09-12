@@ -9,6 +9,7 @@ import {
 import { PERSONA_IDS } from '@atlas/persona';
 import { defaultConfig } from './defaults.js';
 import { DATA_DIR_ISSUE, isValidDataDir, mergeDataDir } from './data-dir.js';
+import { mergeAutoStartOllama } from './dependency-config.js';
 
 const PROVIDERS: readonly ProviderName[] = ['fake', 'local', 'remote'];
 
@@ -69,6 +70,7 @@ export function loadConfig(
   };
   const personaIds = options.personaIds ?? PERSONA_IDS;
   const tools = { searchUrl: override.tools?.searchUrl ?? defaults.tools.searchUrl };
+  const dependencies = { autoStartOllama: mergeAutoStartOllama(override) };
   const merged: AtlasConfig = {
     logLevel: override.logLevel ?? defaults.logLevel,
     dataDir: mergeDataDir(override),
@@ -77,6 +79,7 @@ export function loadConfig(
     permissions,
     model,
     tools,
+    dependencies,
   };
 
   const issues: string[] = [];
@@ -132,6 +135,10 @@ export function loadConfig(
       "tools.searchUrl deve ser '' (não configurado) ou uma URL http(s) absoluta, sem " +
         'credenciais embutidas, sem query string e sem fragmento',
     );
+  }
+
+  if (typeof dependencies.autoStartOllama !== 'boolean') {
+    issues.push('dependencies.autoStartOllama deve ser um booleano');
   }
 
   if (!PROVIDERS.includes(model.provider)) {

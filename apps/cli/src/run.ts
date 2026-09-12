@@ -1,5 +1,11 @@
 import { AtlasError, InvalidConfigError } from '@atlas/contracts';
-import { createAtlas } from '@atlas/core';
+import {
+  createAtlas,
+  createDependencyManager,
+  resolveDependencyConfig,
+  type DependencyManager,
+  type DependencyOutcome,
+} from '@atlas/core';
 import { runStatus } from './commands/status.js';
 import { runAsk } from './commands/ask.js';
 import { runChat } from './commands/chat.js';
@@ -30,6 +36,13 @@ export interface CliGateways {
 export interface CliDeps {
   fetch?: typeof fetch;
   createLineReader?: () => LineReader;
+  /**
+   * `DependencyManager` injetável (SPEC-0060, Escopo 4.2) — default
+   * `createDependencyManager()`. Nunca reutilizado entre invocações; a CLI
+   * cria uma instância nova por chamada de `run()` e nunca chama
+   * `release()` (ADR-0027(e)).
+   */
+  dependencies?: DependencyManager;
 }
 
 const HELP_TEXT = `Usage: atlas <command> [options]
@@ -99,6 +112,11 @@ Options:
       --rule <r>       Regra de comunicação (repetível; substitui a lista
                        inteira; persona create/edit; "" isolado limpa)
       --yes            Pula a confirmação de "persona delete"
+      --auto-start-ollama  Liga a auto-gerência do Ollama: se ele não estiver
+                       acessível, o Atlas tenta subir "ollama serve" uma vez
+                       por processo (nunca instala nem baixa o binário).
+                       ATLAS_AUTO_START_OLLAMA faz o mesmo papel (aceita
+                       1/true/yes/on ou 0/false/no/off, qualquer caixa).
 `;
 
 /**
@@ -109,6 +127,40 @@ Options:
  * Personas no arranque desde que `personaStorage` passou a ser injetado em
  * todo `createAtlas`).
  */
+/**
+ * Avisos de auto-start do Ollama (SPEC-0060, Decisão D13): textos pinados,
+ * stderr, e só nos desfechos `'started'`/`'failed'` — `'disabled'`/
+ * `'already-running'` são silenciosos. Nenhuma mensagem interpola stderr do
+ * processo externo (Restrição 8).
+ */
+function formatOllamaWarning(
+  outcome: DependencyOutcome,
+  ollamaBaseUrl: string,
+): string | undefined {
+  if (outcome.status === 'started') {
+    return 'Ollama iniciado automaticamente pelo Atlas.\n';
+  }
+  if (outcome.status !== 'failed') {
+    return undefined;
+  }
+  if (outcome.reason === 'binary-missing') {
+    return (
+      'Não foi possível iniciar o Ollama automaticamente: binário "ollama" não encontrado no ' +
+      'PATH. Seguindo sem auto-start.\n'
+    );
+  }
+  if (outcome.reason === 'spawn-failed') {
+    return (
+      'Não foi possível iniciar o Ollama automaticamente: falha ao iniciar o processo. ' +
+      'Seguindo sem auto-start.\n'
+    );
+  }
+  return (
+    `Não foi possível iniciar o Ollama automaticamente: sem resposta em ${ollamaBaseUrl} após ` +
+    '10s. Seguindo sem auto-start.\n'
+  );
+}
+
 function formatPersonaError(cause: AtlasError): string {
   return (
     `${cause.message}\n` +
@@ -202,6 +254,20 @@ export async function run(
     }
   }
 
+  // Auto-start do Ollama (SPEC-0060, Decisão D7): ÚNICO ponto de disparo por
+  // processo — depois dos desvios de help/version/persona, imediatamente
+  // antes de `createAtlas`. `ensure()` nunca lança (ADR-0027(f)); a CLI
+  // NUNCA chama `release()` (ADR-0027(e), CA 17).
+  const dependencyManager = deps.dependencies ?? createDependencyManager();
+  const dependencyConfig = resolveDependencyConfig(parsed.configOverride);
+  const dependencyReport = await dependencyManager.ensure(dependencyConfig);
+  for (const outcome of dependencyReport.outcomes) {
+    const warning = formatOllamaWarning(outcome, dependencyConfig.ollamaBaseUrl);
+    if (warning !== undefined) {
+      output.error(warning);
+    }
+  }
+
   // Para `chat`, o LineReader nasce antes do core: o ConfirmPort injetado no
   // Runtime (via CreateAtlasDeps.confirm) precisa reusá-lo, para que a
   // confirmação de ações destrutivas apareça inline na conversa sem abrir um
@@ -256,7 +322,7 @@ export async function run(
             runSkillsList(atlas, output);
           }
         } else {
-          runStatus(atlas, output);
+          runStatus(atlas, output, dependencyReport);
         }
       } finally {
         await atlas.shutdown();

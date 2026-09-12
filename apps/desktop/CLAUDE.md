@@ -2,7 +2,7 @@
 
 Interface gráfica do Atlas sobre Electron ([ADR-0019](../../docs/06-adr/ADR-0019-desktop-electron-stack.md)) — equivalente desktop de `@atlas/cli`. Abre a Fase 2 do Roadmap.
 
-Este arquivo descreve o **estado atual** e as **regras em vigor**. O histórico fatia a fatia vive nas SPECs (`docs/implementation/specs/`, SPEC-0031 a 0054) e em `CLAUDE-ARCHIVE.md` (versão anterior deste arquivo, congelada — não leia no arranque).
+Este arquivo descreve o **estado atual** e as **regras em vigor**. O histórico fatia a fatia vive nas SPECs (`docs/implementation/specs/`, SPEC-0031 a 0060) e em `CLAUDE-ARCHIVE.md` (versão anterior deste arquivo, congelada — não leia no arranque).
 
 ---
 
@@ -342,6 +342,16 @@ Uma **única** instância de módulo (mesmo molde da seleção de Persona/permis
 `#panel-system` mostra, nesta ordem: relógio (`#system-clock-date`/`#system-clock-time`, formato `<dia da semana>, DD/MM/AAAA` e `HH:MM:SS`, sem `Intl`) → tokens (`#system-tokens`, quatro desfechos exaustivos sobre `TokenUsageSnapshot`) → CPU/Memória/GPU/Rede (`#system-cpu`/`#system-memory`/`#system-gpu`/`#system-network`) → `#system-status`. Formatação pinada: separador decimal `,`, milhar `.`, base 1000 em bytes (`B`/`kB`/`MB`/`GB`/`TB`), três textos de indisponibilidade nomeados por `reason`. **Um único `setInterval` de 1000 ms**, criado só quando o painel fica visível e cancelado ao fechar/trocar de painel/`Escape`/backdrop/teardown — fora disso, nenhum timer desta fatia existe. Cada tick atualiza o relógio (`Date` local, sem IPC); a cada **dois** ticks (2000 ms) dispara `metrics.read()`/`tokens.read()`, sem reentrância (tick pulado se uma leitura ainda está em voo) e descartando resposta que chega após o painel fechar. Rejeição de qualquer `invoke` mostra os textos pinados de falha nas células e em `#system-status`, mantendo o painel utilizável — **nunca** alimenta `#global-alert` nem `#presence-core[data-state="error"]` (erro de painel fica no painel). A leitura **não** entra na serialização de gestos: não marca operação em voo, não é bloqueada por turno de chat/`ask` em voo, não é bloqueada por `micBusy()`.
 
 Manifesto de IDs estáticos passou de 77 para **86** (nove novos, todos dentro de `#panel-system`). Zero módulo/Tool/Skill/Persona novo; zero mudança em `apps/cli`/`@atlas/runtime`/`@atlas/tools`/`@atlas/permissions`/`@atlas/context`/`@atlas/memory`/`@atlas/persona`/`@atlas/skills`; layout v3.0 (SPEC-0053) intacto.
+
+---
+
+## Auto-start do Ollama (desde a SPEC-0060)
+
+Consome o [ADR-0027](../../docs/06-adr/ADR-0027-external-process-lifecycle-management.md) (novo, `Accepted`) — 1º consumidor real do ADR, que também nomeia uma 3ª SPEC candidata (auto-start do container SearXNG, ainda não implementada). `ensureExternalDependencies(env = process.env)`/`releaseExternalDependencies()` (`core-bridge.ts`, instância única de módulo do `DependencyManager` de `@atlas/core`) são chamadas **só** dentro de `app.whenReady()`/`before-quit` de `main.ts` (`void`, sem `await`, ao lado do teardown já existente de `closeAllChatSessions`/`piperTts.shutdown`) — **nenhum canal IPC novo, nenhum diff no renderer**.
+
+Opt-in **só** por `ATLAS_AUTO_START_OLLAMA` (sem flag, sem GUI — D15 mantida): `ensureExternalDependencies` é a **primeira leitura de `process.env` em `core-bridge.ts`**, por isso recebe `env` como parâmetro injetável (testável sem tocar `process.env` global). Valor válido dispara `createDependencyManager().ensure(resolveDependencyConfig({ dependencies: { autoStartOllama } }))`; valor **inválido** é tratado como **desligado** + uma linha pinada de `console.warn`, nunca uma exceção — divergência deliberada da CLI (que lança `CliUsageError` para o mesmo valor): o ADR-0027(f) proíbe categoricamente que a janela deixe de abrir por causa desta automação. Desfecho `'started'` ⇒ `console.info`; `'failed'` ⇒ `console.warn` com a `reason` — única superfície de transparência desta fatia no desktop (sem painel, sem `#global-alert`, sem diálogo).
+
+**Residual nomeado:** a única fonte de opt-in é uma variável de ambiente, e um app **empacotado** aberto por Finder/Dock tipicamente **não herda** o ambiente do shell — nem o opt-in nem os logs do main process são alcançáveis nesse modo. Esta fatia do desktop vale, na prática, só para lançamento via terminal/dev (`pnpm --filter @atlas/desktop start`), até uma fatia futura de painel fechar o resíduo — mesmo precedente da SPEC-0055/D17, fechado depois pela SPEC-0059 para o eixo de rede.
 
 ---
 

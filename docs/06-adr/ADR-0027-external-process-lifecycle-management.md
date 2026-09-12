@@ -252,3 +252,42 @@ modelo que o pedido original queria eliminar.
   vazio esperado em `@atlas/permissions`, `@atlas/runtime`, `@atlas/tools`,
   `@atlas/model-gateway` (a não ser pela leitura de `model.baseUrl` já
   pública, sem mudança de contrato).
+
+---
+
+# Atualização ([SPEC-0060](../implementation/specs/SPEC-0060-ollama-auto-start.md))
+
+A SPEC-0060 entregou a **2ª SPEC candidata** nomeada acima (auto-start do
+Ollama, CLI e desktop), consumindo este ADR **sem alterar nenhuma cláusula
+(a)–(h)** — o contrato técnico que o ADR delegou:
+
+- `createDependencyManager({ process?, sleep? }) → { ensure(config), release() }`
+  (`@atlas/core`, nova e independente do `Lifecycle` de `createAtlas` — (d)
+  confirmada: `createAtlas` sai sem uma linha alterada) + `ProcessPort`
+  (`isOllamaRunning`/`startOllama`/`stopOllama`, três operações nomeadas e
+  fixas — (b) confirmada) + adaptador real `nodeProcessPort()`.
+- `AtlasConfig.dependencies: { autoStartOllama: boolean }` (default `false`,
+  fail-closed), `--auto-start-ollama`/`ATLAS_AUTO_START_OLLAMA` na CLI (env
+  inválida ⇒ `CliUsageError`) e a mesma env no desktop (env inválida ⇒
+  desligado + `console.warn`, nunca lança — divergência deliberada entre as
+  duas bordas, justificada por (f): a CLI pode falhar alto, a janela não
+  pode arriscar não abrir).
+- **(a) confirmada**: o health-check HTTP (`GET <baseUrl>/api/tags`) não
+  passa por `evaluate`/`netRoots` — mesma categoria de egress do
+  `@atlas/model-gateway`, já assimétrica desde a SPEC-0004/ADR-0026.
+- **(c) confirmada, com um refinamento não previsto no ADR**: `ollamaBaseUrl`
+  só herda `model.baseUrl` quando o provider efetivo é `'local'` — reusar
+  `model.baseUrl` incondicionalmente (como o texto original de (c) sugeria)
+  sondaria o host de um provider `remote` de terceiro; a SPEC corrigiu isso
+  na 2ª rodada de revisão, sem reabrir a cláusula.
+- **(e) confirmada**: só o desktop desliga o que subiu (`before-quit`),
+  rastreado por um único campo privado do manager — posse é registrada no
+  sucesso do `spawn`, não na prontidão, para que um daemon lento nunca fique
+  órfão (achado da revisão, não previsto no texto original do ADR).
+- **(g) confirmada**: nenhuma automação liga sem o opt-in explícito e
+  dedicado; `model.provider === 'local'` não implica auto-start.
+- Zero linha em `@atlas/permissions`/`@atlas/runtime`/`@atlas/tools`; diff em
+  `@atlas/model-gateway` limitado à exportação de `OLLAMA_DEFAULT_BASE_URL`
+  (já pública em valor, sem mudança de comportamento).
+- Não fecha o item 1.4 do Roadmap. Desbloqueia a **3ª SPEC candidata**
+  (auto-start do container SearXNG) — ainda não implementada.

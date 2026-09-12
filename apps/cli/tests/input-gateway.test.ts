@@ -365,6 +365,59 @@ describe('CliInputGateway.normalize', () => {
     });
   });
 
+  describe('--auto-start-ollama / ATLAS_AUTO_START_OLLAMA (SPEC-0060, CA 15)', () => {
+    it('a flag --auto-start-ollama produz configOverride.dependencies.autoStartOllama === true', () => {
+      const gateway = createCliInputGateway();
+      const parsed = gateway.normalize(['status', '--auto-start-ollama'], {} as NodeJS.ProcessEnv);
+      expect(parsed.configOverride.dependencies).toEqual({ autoStartOllama: true });
+    });
+
+    it('ATLAS_AUTO_START_OLLAMA=1 produz autoStartOllama === true', () => {
+      const gateway = createCliInputGateway();
+      const parsed = gateway.normalize(['status'], {
+        ATLAS_AUTO_START_OLLAMA: '1',
+      } as NodeJS.ProcessEnv);
+      expect(parsed.configOverride.dependencies).toEqual({ autoStartOllama: true });
+    });
+
+    it('ATLAS_AUTO_START_OLLAMA=off produz autoStartOllama === false', () => {
+      const gateway = createCliInputGateway();
+      const parsed = gateway.normalize(['status'], {
+        ATLAS_AUTO_START_OLLAMA: 'off',
+      } as NodeJS.ProcessEnv);
+      expect(parsed.configOverride.dependencies).toEqual({ autoStartOllama: false });
+    });
+
+    it('ausência das duas fontes produz configOverride.dependencies === undefined', () => {
+      const gateway = createCliInputGateway();
+      const parsed = gateway.normalize(['status'], {} as NodeJS.ProcessEnv);
+      expect(parsed.configOverride.dependencies).toBeUndefined();
+    });
+
+    it('ATLAS_AUTO_START_OLLAMA=talvez lança CliUsageError listando os valores aceitos', () => {
+      const gateway = createCliInputGateway();
+      expect(() =>
+        gateway.normalize(['status'], { ATLAS_AUTO_START_OLLAMA: 'talvez' } as NodeJS.ProcessEnv),
+      ).toThrow(CliUsageError);
+      try {
+        gateway.normalize(['status'], { ATLAS_AUTO_START_OLLAMA: 'talvez' } as NodeJS.ProcessEnv);
+        expect.unreachable('deveria ter lançado CliUsageError');
+      } catch (error) {
+        expect(error).toBeInstanceOf(CliUsageError);
+        expect((error as CliUsageError).message).toContain('1/true/yes/on');
+        expect((error as CliUsageError).message).toContain('0/false/no/off');
+      }
+    });
+
+    it('flag presente + env inválida: a flag vence (não lança)', () => {
+      const gateway = createCliInputGateway();
+      const parsed = gateway.normalize(['status', '--auto-start-ollama'], {
+        ATLAS_AUTO_START_OLLAMA: 'talvez',
+      } as NodeJS.ProcessEnv);
+      expect(parsed.configOverride.dependencies).toEqual({ autoStartOllama: true });
+    });
+  });
+
   it('override com múltiplas raízes de read e write passa intacto pelo loadConfig do core', () => {
     const gateway = createCliInputGateway();
     const parsed = gateway.normalize(

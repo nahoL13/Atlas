@@ -1,7 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import type { AtlasConfig, AtlasPlatform } from '@atlas/contracts';
+import type { DependencyReport } from '@atlas/core';
 import { runStatus } from '../src/commands/status.js';
 import type { OutputGateway } from '../src/gateway/output-gateway.js';
+
+const DISABLED_REPORT: DependencyReport = {
+  outcomes: [{ dependency: 'ollama', status: 'disabled' }],
+};
+const ALREADY_RUNNING_REPORT: DependencyReport = {
+  outcomes: [{ dependency: 'ollama', status: 'already-running' }],
+};
+const STARTED_REPORT: DependencyReport = {
+  outcomes: [{ dependency: 'ollama', status: 'started' }],
+};
+const FAILED_TIMEOUT_REPORT: DependencyReport = {
+  outcomes: [{ dependency: 'ollama', status: 'failed', reason: 'timeout' }],
+};
 
 function capture() {
   const out: string[] = [];
@@ -25,6 +39,7 @@ function fakeAtlas(permissions: AtlasConfig['permissions'], searchUrl: string = 
       permissions,
       model: { provider: 'local', model: 'llama3.2' },
       tools: { searchUrl },
+      dependencies: { autoStartOllama: false },
     },
     persona: {
       id: 'jarvis',
@@ -80,6 +95,7 @@ describe('runStatus', () => {
         netRoots: ['example.com'],
       }),
       cap.gateway,
+      DISABLED_REPORT,
     );
     const text = cap.text();
     expect(text).toContain('Atlas: ready');
@@ -96,6 +112,7 @@ describe('runStatus', () => {
     runStatus(
       fakeAtlas({ readRoots: ['/home/x/project'], writeRoots: [], netRoots: [] }),
       cap.gateway,
+      DISABLED_REPORT,
     );
     expect(cap.text()).toContain('writeRoots: (nenhuma)');
   });
@@ -105,6 +122,7 @@ describe('runStatus', () => {
     runStatus(
       fakeAtlas({ readRoots: ['/home/x/project'], writeRoots: [], netRoots: [] }),
       cap.gateway,
+      DISABLED_REPORT,
     );
     expect(cap.text()).toContain('netRoots: (nenhum)');
   });
@@ -114,13 +132,18 @@ describe('runStatus', () => {
     runStatus(
       fakeAtlas({ readRoots: ['/x'], writeRoots: [], netRoots: ['a.com', 'b.com'] }),
       cap.gateway,
+      DISABLED_REPORT,
     );
     expect(cap.text()).toContain('netRoots: a.com, b.com');
   });
 
   it('exibe search: (não configurado) quando tools.searchUrl é vazio', () => {
     const cap = capture();
-    runStatus(fakeAtlas({ readRoots: ['/x'], writeRoots: [], netRoots: [] }, ''), cap.gateway);
+    runStatus(
+      fakeAtlas({ readRoots: ['/x'], writeRoots: [], netRoots: [] }, ''),
+      cap.gateway,
+      DISABLED_REPORT,
+    );
     expect(cap.text()).toContain('search: (não configurado)');
   });
 
@@ -129,7 +152,41 @@ describe('runStatus', () => {
     runStatus(
       fakeAtlas({ readRoots: ['/x'], writeRoots: [], netRoots: [] }, 'https://h/search'),
       cap.gateway,
+      DISABLED_REPORT,
     );
     expect(cap.text()).toContain('search: https://h/search');
+  });
+
+  // SPEC-0060/D14 (CA 20): quatro textos exaustivos, um por DependencyOutcome.
+  describe('linha ollama auto-start', () => {
+    const permissions: AtlasConfig['permissions'] = {
+      readRoots: ['/x'],
+      writeRoots: [],
+      netRoots: [],
+    };
+
+    it('"disabled" ⇒ "ollama auto-start: desligado"', () => {
+      const cap = capture();
+      runStatus(fakeAtlas(permissions), cap.gateway, DISABLED_REPORT);
+      expect(cap.text()).toContain('ollama auto-start: desligado');
+    });
+
+    it('"already-running" ⇒ "ollama auto-start: ligado (já em execução)"', () => {
+      const cap = capture();
+      runStatus(fakeAtlas(permissions), cap.gateway, ALREADY_RUNNING_REPORT);
+      expect(cap.text()).toContain('ollama auto-start: ligado (já em execução)');
+    });
+
+    it('"started" ⇒ "ollama auto-start: ligado (iniciado pelo Atlas)"', () => {
+      const cap = capture();
+      runStatus(fakeAtlas(permissions), cap.gateway, STARTED_REPORT);
+      expect(cap.text()).toContain('ollama auto-start: ligado (iniciado pelo Atlas)');
+    });
+
+    it('"failed"/"timeout" ⇒ "ollama auto-start: ligado (falhou: timeout)"', () => {
+      const cap = capture();
+      runStatus(fakeAtlas(permissions), cap.gateway, FAILED_TIMEOUT_REPORT);
+      expect(cap.text()).toContain('ollama auto-start: ligado (falhou: timeout)');
+    });
   });
 });

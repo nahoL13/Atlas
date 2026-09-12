@@ -2,7 +2,7 @@
 
 > **Project Atlas — Log de Custo de Token por SPEC**
 
-Atualizado em: 2026-08-22 (regenerado por `python3 scripts/agent-usage-report.py --executor all`)
+Atualizado em: 2026-09-04 (regenerado por `python3 scripts/agent-usage-report.py --executor all`)
 
 As métricas são separadas por executor. Tokens efetivos Claude usam os pesos históricos; Codex fica `N/D` até existir uma métrica comparável documentada. Snapshots de Codex são cumulativos e só o último total de cada transcript é lido.
 
@@ -62,15 +62,16 @@ As métricas são separadas por executor. Tokens efetivos Claude usam os pesos h
 | SPEC-0049 | Claude | Fechamento das duas direções residuais de serialização de gestos registradas pela SPEC-0048 (DoD-d): o painel `ask` do desktop passa a recusar um 2º `ask` concorrente e um `ask` disparado durante um turno de chat em voo, e a falha de `atlas.ask` deixa de virar unhandled rejection para aparecer no `#ask-result` | Done | 2 | 2026-08-06 | 20.345.139 | 3.913.578 | complete |
 | SPEC-0050 | Claude | Fechamento do resíduo D7 da SPEC-0049: o rastreio de operação em voo do `core-bridge` (`busySessions`/`inFlightOperations`) passa a ser guarda de entrada também de `resolveAskSnapshot` e `sendChatTurn` — somando-se aos consumidores que já existem (`updatePersona`, `selectPermissionRoots`) —, tornando o invariante "um round-trip contra o Core por vez" estrutural no main process, e não mais garantia exclusiva do renderer | Done | 2 | 2026-08-04 | 31.029.100 | 8.304.209 | complete |
 | SPEC-0051 | Claude | Cancelamento (desistência) de uma operação em voo no `apps/desktop`: um botão "Cancelar" por painel (`ask` e chat) faz a promessa do gesto assentar imediatamente com mensagem pinada, libera a interface e o main process para um gesto novo, e **contém** os efeitos do trabalho abandonado (nenhum `learned` persistido, nenhuma conversa atualizada, `ConfirmPort` fail-closed **pegajoso por sessão**, conversa afetada em quarentena), sem introduzir cancelamento real dentro do Core. | Done | 2 | 2026-08-05 | 99.432.888 | 13.842.602 | complete |
-| SPEC-0052 | Claude | Modo hands-free no `apps/desktop`: microfone aberto entre turnos sob toggle explícito, fim de fala detectado por VAD Silero em WASM no renderer, auto-envio da transcrição ao chat e resposta falada — com o microfone fechado durante o processamento e durante a fala | Draft | 5 | 2026-08-07 | 40.294.821 | 7.057.766 | complete |
+| SPEC-0052 | Claude | Modo hands-free no `apps/desktop`: microfone aberto entre turnos sob toggle explícito, fim de fala detectado por VAD Silero em WASM no renderer, auto-envio da transcrição ao chat e resposta falada — com o microfone fechado durante o processamento e durante a fala | Draft | 7 | 2026-09-04 | 59.117.418 | 10.098.326 | complete |
 | SPEC-0053 | Claude | Desktop v3.0: núcleo holográfico volumétrico (Canvas 2D, 400 pontos determinísticos, sete perfis de estado ligados a sinais reais de voz) substitui a esfera CSS-only; navegação passa a drawer overlay sob demanda com Sessão absorvendo a timeline integralmente; substitui integralmente as direções v1.x/v2.0 reprovadas em smoke humano | Done | 21 | 2026-08-18 | 222.553.211 | 35.802.728 | complete |
 | SPEC-0053 | Codex | Núcleo holográfico volumétrico, navegação por drawer e sessão sob demanda no | Done | 6 | 2026-08-07 | 79.822.388 | N/D | complete |
 | SPEC-0054 | Claude | (SPEC não encontrada em docs/implementation/specs/) | ? | 13 | 2026-08-19 | 187.714.357 | 27.616.545 | complete |
-| SPEC-0055 | Claude | Primeiro acesso à internet **sob o portão de permissão**: Tool `http_get` somente-leitura em `@atlas/tools` sobre a porta injetável `HttpPort`, com o host julgado pelo portão de rede do Permission Service (`ResourceType: 'network'` + política `netRoots`, ADR-0026) e configurável pela CLI (`--allow-net` / `ATLAS_ALLOW_NET`) | Draft | 12 | 2026-08-21 | 127.041.288 | 21.264.614 | complete |
+| SPEC-0055 | Claude | Primeiro acesso à internet **sob o portão de permissão**: Tool `http_get` somente-leitura em `@atlas/tools` sobre a porta injetável `HttpPort`, com o host julgado pelo portão de rede do Permission Service (`ResourceType: 'network'` + política `netRoots`, ADR-0026) e configurável pela CLI (`--allow-net` / `ATLAS_ALLOW_NET`) | Draft | 13 | 2026-08-23 | 131.742.508 | 22.794.122 | complete |
 | SPEC-0056 | Claude | Tool de leitura de estrutura de projeto (`project_info`) em `@atlas/tools`, com a raiz descoberta pelo `rev-parse` já contido da SPEC-0028 e manifests reconhecidos por tabela fixa | Done | 8 | 2026-08-21 | 60.164.781 | 10.237.100 | complete |
-| SPEC-0057 | Claude | Busca na internet por texto livre: Tool `web_search` em `@atlas/tools` sobre a porta injetável `SearchPort`, com adaptador default apoiado no `HttpPort` já endurecido da SPEC-0055, provedor **sem credencial** provisionado pelo usuário (endpoint compatível com a API JSON do SearXNG, configurado por `--search-url` / `ATLAS_SEARCH_URL`) e host julgado pelo mesmo portão de rede `netRoots` (ADR-0026) | Draft | 12 | 2026-08-22 | 114.232.648 | 19.705.932 | complete |
+| SPEC-0057 | Claude | Busca na internet por texto livre: Tool `web_search` em `@atlas/tools` sobre a porta injetável `SearchPort`, com adaptador default apoiado no `HttpPort` já endurecido da SPEC-0055, provedor **sem credencial** provisionado pelo usuário (endpoint compatível com a API JSON do SearXNG, configurado por `--search-url` / `ATLAS_SEARCH_URL`) e host julgado pelo mesmo portão de rede `netRoots` (ADR-0026) | Draft | 11 | 2026-08-22 | 89.131.798 | 15.364.879 | complete |
 | SPEC-0058 | Claude | Endurecimento da composição de saídas de Tools no prompt (`@atlas/cognitive`): delimitação estruturada por bloco `<tool_output>`, instrução fixa de conteúdo não confiável e teto de tamanho por passo — mitigação genérica de injeção indireta de prompt, aplicável a **toda** Tool | Draft | 8 | 2026-08-22 | 46.684.753 | 8.853.771 | complete |
-| SPEC-0059 | Claude | Desktop: painel de rede e busca — autorizar hosts (`netRoots`) e configurar/desativar o provedor de busca (`tools.searchUrl`) em runtime pela interface gráfica, com consentimento explícito por host, no molde de consentimento de política já estabelecido pela SPEC-0038 | Draft | 6 | 2026-08-22 | 123.639.304 | 16.544.289 | complete |
+| SPEC-0059 | Claude | Desktop: painel de rede e busca — autorizar hosts (`netRoots`) e configurar/desativar o provedor de busca (`tools.searchUrl`) em runtime pela interface gráfica, com consentimento explícito por host, no molde de consentimento de política já estabelecido pela SPEC-0038 | Draft | 9 | 2026-08-22 | 172.290.188 | 25.213.041 | complete |
+| SPEC-0060 | Claude | Auto-start do Ollama sob opt-in explícito: `createDependencyManager` + `ProcessPort` em `@atlas/core`, disparado uma vez por processo em `apps/cli` e uma vez por sessão de app em `apps/desktop`, degradando sem nunca bloquear o boot. | Draft | 7 | 2026-08-23 | 100.305.555 | 13.973.437 | complete |
 
 ## Detalhamento por fase
 
@@ -128,15 +129,16 @@ Valores em tokens efetivos. Codex não é somado nem comparado a Claude enquanto
 | SPEC-0049 | Claude | 677.295 | 0 | 439.408 | 1.052.170 | 415.004 | 1.329.701 | 0 |
 | SPEC-0050 | Claude | 826.040 | 3.578.699 | 867.789 | 864.266 | 695.112 | 1.472.303 | 0 |
 | SPEC-0051 | Claude | 1.107.198 | 23.450 | 935.085 | 8.915.134 | 1.178.794 | 1.682.941 | 0 |
-| SPEC-0052 | Claude | 2.837.170 | 0 | 794.333 | 0 | 994.857 | 2.431.406 | 0 |
+| SPEC-0052 | Claude | 5.669.952 | 0 | 794.333 | 0 | 994.857 | 2.431.406 | 207.778 |
 | SPEC-0053 | Claude | 7.965.554 | 1.996.006 | 1.000.863 | 18.752.363 | 3.097.778 | 2.990.164 | 0 |
 | SPEC-0053 | Codex | N/D | N/D | N/D | N/D | N/D | — | — |
 | SPEC-0054 | Claude | 3.784.527 | 2.394.055 | 1.135.657 | 13.556.745 | 2.987.996 | 3.757.565 | 0 |
-| SPEC-0055 | Claude | 2.730.954 | 4.037.593 | 2.349.982 | 7.224.968 | 1.334.549 | 3.586.568 | 0 |
+| SPEC-0055 | Claude | 2.730.954 | 5.567.101 | 2.349.982 | 7.224.968 | 1.334.549 | 3.586.568 | 0 |
 | SPEC-0056 | Claude | 2.233.378 | 414.488 | 1.426.208 | 2.825.319 | 547.533 | 2.790.174 | 0 |
-| SPEC-0057 | Claude | 7.008.851 | 2.934.196 | 1.648.322 | 4.278.416 | 677.738 | 2.994.400 | 164.009 |
+| SPEC-0057 | Claude | 2.667.798 | 2.934.196 | 1.648.322 | 4.278.416 | 677.738 | 2.994.400 | 164.009 |
 | SPEC-0058 | Claude | 350.742 | 838.425 | 2.330.681 | 2.569.249 | 559.106 | 2.205.568 | 0 |
-| SPEC-0059 | Claude | 0 | 1.811.757 | 2.107.309 | 11.698.065 | 898.971 | 28.187 | 0 |
+| SPEC-0059 | Claude | 5.121.641 | 3.109.569 | 2.107.309 | 11.698.065 | 898.971 | 2.277.486 | 0 |
+| SPEC-0060 | Claude | 1.075.749 | 1.020.966 | 2.706.818 | 9.103.530 | 66.374 | 0 | 0 |
 
 ## Eficiência de processo (overhead ÷ implementação)
 
@@ -185,11 +187,12 @@ Calculada separadamente por executor, apenas quando tokens efetivos comparáveis
 | SPEC-0051 | Claude | 8.915.134 | 4.927.468 | 0.6× |
 | SPEC-0053 | Claude | 18.752.363 | 17.050.365 | 0.9× |
 | SPEC-0054 | Claude | 13.556.745 | 14.059.800 | 1.0× |
-| SPEC-0055 | Claude | 7.224.968 | 14.039.646 | 1.9× |
+| SPEC-0055 | Claude | 7.224.968 | 15.569.154 | 2.2× |
 | SPEC-0056 | Claude | 2.825.319 | 7.411.781 | 2.6× |
-| SPEC-0057 | Claude | 4.278.416 | 15.427.516 | 3.6× |
+| SPEC-0057 | Claude | 4.278.416 | 11.086.463 | 2.6× |
 | SPEC-0058 | Claude | 2.569.249 | 6.284.522 | 2.4× |
-| SPEC-0059 | Claude | 11.698.065 | 4.846.224 | 0.4× |
+| SPEC-0059 | Claude | 11.698.065 | 13.514.976 | 1.2× |
+| SPEC-0060 | Claude | 9.103.530 | 4.869.907 | 0.5× |
 
 ## Como estimar antes de começar uma SPEC nova
 

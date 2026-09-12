@@ -229,4 +229,30 @@ describe('loadConfig', () => {
       expect(() => loadConfig({ tools: { searchUrl } })).toThrow(InvalidConfigError);
     });
   });
+
+  describe('dependencies.autoStartOllama (SPEC-0060/D24, CA 2)', () => {
+    it('loadConfig({}) devolve autoStartOllama false', () => {
+      expect(loadConfig({}).dependencies.autoStartOllama).toBe(false);
+    });
+
+    it('loadConfig({ dependencies: { autoStartOllama: true } }) devolve true', () => {
+      expect(
+        loadConfig({ dependencies: { autoStartOllama: true } }).dependencies.autoStartOllama,
+      ).toBe(true);
+    });
+
+    it('valor não booleano produz InvalidConfigError citando dependencies.autoStartOllama', () => {
+      try {
+        loadConfig({
+          dependencies: { autoStartOllama: 'sim' as unknown as boolean },
+        });
+        expect.unreachable('deveria ter lançado InvalidConfigError');
+      } catch (error) {
+        expect(error).toBeInstanceOf(InvalidConfigError);
+        expect((error as InvalidConfigError).issues.join('\n')).toContain(
+          'dependencies.autoStartOllama',
+        );
+      }
+    });
+  });
 });

@@ -6,6 +6,7 @@ import type {
   ModelGatewayConfig,
   ProviderName,
 } from '@atlas/contracts';
+import { parseBooleanSetting } from '@atlas/core';
 
 /**
  * Espelho local (não sobe a `@atlas/contracts`) dos 8 campos de `Persona`
@@ -77,6 +78,7 @@ interface CliValues {
   'allow-write'?: string[] | undefined;
   'allow-net'?: string[] | undefined;
   'search-url'?: string | undefined;
+  'auto-start-ollama'?: boolean | undefined;
   provider?: string | undefined;
   model?: string | undefined;
   'base-url'?: string | undefined;
@@ -271,6 +273,31 @@ function resolveConfigOverride(values: CliValues, env: NodeJS.ProcessEnv): Atlas
     override.tools = { searchUrl };
   }
 
+  // Auto-start do Ollama (SPEC-0060/D6): precedência flag > env — a flag,
+  // quando presente, decide sozinha (não consulta nem valida a env). Sem
+  // flag, a env é coerida por `parseBooleanSetting` (@atlas/core, origem
+  // única das duas bordas): `kind: 'invalid'` falha alto na CLI
+  // (CliUsageError), nunca vira `false` calado; `kind: 'unset'` não seta
+  // `override.dependencies` (cai no default do core).
+  let autoStartOllama: boolean | undefined;
+  if (values['auto-start-ollama'] === true) {
+    autoStartOllama = true;
+  } else {
+    const parsedEnvAutoStart = parseBooleanSetting(env.ATLAS_AUTO_START_OLLAMA);
+    if (parsedEnvAutoStart.kind === 'invalid') {
+      throw new CliUsageError(
+        `ATLAS_AUTO_START_OLLAMA inválida: "${parsedEnvAutoStart.received}" ` +
+          '(use: 1/true/yes/on ou 0/false/no/off)',
+      );
+    }
+    if (parsedEnvAutoStart.kind === 'value') {
+      autoStartOllama = parsedEnvAutoStart.value;
+    }
+  }
+  if (autoStartOllama !== undefined) {
+    override.dependencies = { autoStartOllama };
+  }
+
   return override;
 }
 
@@ -338,6 +365,7 @@ function parseArgvOrThrow(argv: string[]) {
         'allow-write': { type: 'string', multiple: true },
         'allow-net': { type: 'string', multiple: true },
         'search-url': { type: 'string' },
+        'auto-start-ollama': { type: 'boolean' },
         provider: { type: 'string' },
         model: { type: 'string' },
         'base-url': { type: 'string' },

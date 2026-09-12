@@ -159,6 +159,22 @@ export { resolveDataDir } from './config/data-dir.js';
 export { createLifecycle } from './lifecycle/lifecycle.js';
 export type { Lifecycle, LifecycleHooks } from './lifecycle/lifecycle.js';
 
+// Auto-gerência de processos externos (SPEC-0060, ADR-0027): unidade nova e
+// independente do `Lifecycle` acima — `createAtlas` sai sem uma linha
+// alterada (ADR-0027(d)); o dono é cada app, no seu próprio ponto de
+// entrada/saída (D21).
+export { resolveDependencyConfig, parseBooleanSetting } from './config/dependency-config.js';
+export type { DependencyConfig, ParsedBooleanSetting } from './config/dependency-config.js';
+export { nodeProcessPort } from './dependencies/node-process-port.js';
+export type { ProcessPort, OllamaStartOutcome } from './dependencies/process-port.js';
+export { createDependencyManager } from './dependencies/dependency-manager.js';
+export type {
+  DependencyManager,
+  DependencyReport,
+  DependencyOutcome,
+  OllamaFailureReason,
+} from './dependencies/dependency-manager.js';
+
 // Re-export de catálogo (SPEC-0037, Decisão D4; alargado pela SPEC-0039,
 // Decisão D12): superfície de leitura de catálogo/config inerte + a
 // composição do PersonaService sobre a porta de storage do ADR-0020, no

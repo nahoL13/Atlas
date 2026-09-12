@@ -1,14 +1,17 @@
 import { isAbsolute } from 'node:path';
 import {
   createAtlas,
+  createDependencyManager,
   createFilePersonaStorage,
   createPersonaService,
   loadConfig,
+  parseBooleanSetting,
   personaStoragePath,
+  resolveDependencyConfig,
   PERSONA_IDS,
   resolveDataDir,
 } from '@atlas/core';
-import type { PersonaStorage } from '@atlas/core';
+import type { DependencyManager, DependencyReport, PersonaStorage } from '@atlas/core';
 import type {
   ActionRequest,
   AtlasConfigOverride,
@@ -167,6 +170,72 @@ const tokenUsage = createTokenUsageAccumulator();
 /** Leitura síncrona do consumo acumulado — nunca sobe o Core (SPEC-0054). */
 export function readTokenUsage(): TokenUsageSnapshot {
   return tokenUsage.snapshot();
+}
+
+/**
+ * Auto-gerência do Ollama (SPEC-0060, Escopo 5.1): instância única de
+ * módulo do `DependencyManager` — mesmo molde do acumulador de tokens
+ * acima. `ensure()` é disparado uma vez por sessão de app
+ * (`app.whenReady()`, `main.ts`); `release()` só em `before-quit`, e só
+ * derruba o que **esta** sessão iniciou. `let` (não `const`) só para
+ * permitir a troca por um fake em teste (`__setDependencyManagerForTests`,
+ * abaixo) — em produção nunca é reatribuída: `nodeProcessPort()` real faria
+ * `apps/desktop/tests/core-bridge.dependencies.test.ts` spawnar um
+ * `ollama serve` de verdade, o que a Estratégia de Testes da SPEC-0060
+ * proíbe ("nenhum teste desta plataforma pode spawnar processo real").
+ */
+let dependencyManager = createDependencyManager();
+
+/**
+ * Texto pinado do `console.warn` para `ATLAS_AUTO_START_OLLAMA` inválida
+ * (SPEC-0060, Decisão D25, CA 22) — divergência deliberada da CLI, que
+ * lança `CliUsageError` para o mesmo valor (D6): lançar aqui, dentro de
+ * `app.whenReady()`, arriscaria a janela não abrir (ADR-0027(f)).
+ */
+export const INVALID_AUTO_START_OLLAMA_ENV_WARNING =
+  'Atlas: valor inválido em ATLAS_AUTO_START_OLLAMA; auto-start do Ollama desligado.';
+
+/**
+ * Dispara o auto-start do Ollama (SPEC-0060, Escopo 5.1) — primeira
+ * leitura de `process.env` em `core-bridge.ts` (até aqui o módulo só
+ * recebia `configOverride` por IPC); `env` é injetável por parâmetro para
+ * manter a função testável sem Electron. Env ausente/vazia ⇒ desligado
+ * (default do core); env inválida ⇒ desligado + `console.warn` pinado,
+ * **nunca lança** (D25) — divergência deliberada da CLI (`CliUsageError`,
+ * D6). Não é rastreada pelo registro de operação em voo da SPEC-0051: não
+ * sobe Core, não executa Tool.
+ */
+export async function ensureExternalDependencies(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<DependencyReport> {
+  const parsed = parseBooleanSetting(env['ATLAS_AUTO_START_OLLAMA']);
+  let autoStartOllama = false;
+  if (parsed.kind === 'invalid') {
+    console.warn(INVALID_AUTO_START_OLLAMA_ENV_WARNING);
+  } else if (parsed.kind === 'value') {
+    autoStartOllama = parsed.value;
+  }
+  const config = resolveDependencyConfig({ dependencies: { autoStartOllama } });
+  return dependencyManager.ensure(config);
+}
+
+/**
+ * Delega a `release()` do `DependencyManager` (SPEC-0060, Escopo 5.1) —
+ * derruba o Ollama só se **esta** sessão o iniciou; nunca lança.
+ */
+export async function releaseExternalDependencies(): Promise<void> {
+  await dependencyManager.release();
+}
+
+/**
+ * Uso exclusivo dos testes — troca o `DependencyManager` de módulo por um
+ * fake (`ProcessPort`/`sleep` injetados), para exercitar
+ * `ensureExternalDependencies`/`releaseExternalDependencies` sem nunca
+ * spawnar um processo real ou tocar rede (SPEC-0060, Estratégia de Testes).
+ * `__resetBridgeStateForTests()` restaura a instância default.
+ */
+export function __setDependencyManagerForTests(manager: DependencyManager): void {
+  dependencyManager = manager;
 }
 
 /**
@@ -536,6 +605,9 @@ export function __resetBridgeStateForTests(): void {
   policyApplicationInProgress = false;
   operations.clear();
   tokenUsage.reset();
+  // Restaura a instância default (SPEC-0060) — desfaz qualquer fake
+  // instalado por `__setDependencyManagerForTests`.
+  dependencyManager = createDependencyManager();
 }
 
 /**

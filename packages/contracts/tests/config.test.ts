@@ -49,3 +49,27 @@ describe('AtlasConfig.tools.searchUrl (SPEC-0057/D22)', () => {
     expect(withSearchUrl.tools?.searchUrl).toBe('https://h/search');
   });
 });
+
+describe('AtlasConfig.dependencies.autoStartOllama (SPEC-0060/D24)', () => {
+  it('dependencies.autoStartOllama é obrigatório em AtlasConfig', () => {
+    const dependencies: AtlasConfig['dependencies'] = { autoStartOllama: false };
+    expect(dependencies.autoStartOllama).toBe(false);
+  });
+
+  it('AtlasConfig.dependencies sem autoStartOllama NÃO compila (teste de tipo negativo)', () => {
+    // @ts-expect-error autoStartOllama é obrigatório na config resolvida (D24).
+    const invalid: AtlasConfig['dependencies'] = {};
+    expect(invalid).toBeDefined();
+  });
+
+  it('AtlasConfigOverride.dependencies e .autoStartOllama são opcionais', () => {
+    const empty: AtlasConfigOverride = {};
+    expect(empty.dependencies).toBeUndefined();
+
+    const emptyDeps: AtlasConfigOverride = { dependencies: {} };
+    expect(emptyDeps.dependencies?.autoStartOllama).toBeUndefined();
+
+    const withAutoStart: AtlasConfigOverride = { dependencies: { autoStartOllama: true } };
+    expect(withAutoStart.dependencies?.autoStartOllama).toBe(true);
+  });
+});

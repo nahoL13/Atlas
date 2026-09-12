@@ -14,10 +14,12 @@ import {
   createPersona,
   deletePersona,
   describePersona,
+  ensureExternalDependencies,
   forgetFact,
   listPersonas,
   openChatSession,
   readTokenUsage,
+  releaseExternalDependencies,
   resolveAskSnapshot,
   resolveMemorySnapshot,
   resolveStatusSnapshot,
@@ -509,6 +511,22 @@ void app.whenReady().then(() => {
       createWindow();
     }
   });
+
+  // Auto-start do Ollama (SPEC-0060, Escopo 5.2): uma vez por sessão de
+  // app, sem `await` — nunca atrasa/bloqueia a abertura da janela
+  // (ADR-0027(f)). Superfície de transparência desta fatia no desktop:
+  // linha de log no main process (D15/item 5.3).
+  void ensureExternalDependencies().then((report) => {
+    for (const outcome of report.outcomes) {
+      if (outcome.status === 'started') {
+        console.info('Atlas: Ollama iniciado automaticamente pelo Atlas.');
+      } else if (outcome.status === 'failed') {
+        console.warn(
+          `Atlas: não foi possível iniciar o Ollama automaticamente (${outcome.reason}).`,
+        );
+      }
+    }
+  });
 });
 
 app.on('window-all-closed', () => {
@@ -522,6 +540,9 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   void closeAllChatSessions();
   void piperTts.shutdown();
+  // SPEC-0060, Escopo 5.2: derruba só o Ollama que ESTA sessão iniciou
+  // (ADR-0027(e)) — sem `await`, mesmo padrão dos dois teardowns acima.
+  void releaseExternalDependencies();
   // D17: a app encerrando é um dos gatilhos de fechamento pinados da janela
   // de captura — nunca deixa a permissão de microfone concedida.
   captureWindow.end();

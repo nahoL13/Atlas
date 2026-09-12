@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createOllamaProvider } from '../src/providers/ollama.js';
+import { createOllamaProvider, OLLAMA_DEFAULT_BASE_URL } from '../src/providers/ollama.js';
 import { ModelGatewayError } from '../src/errors.js';
 import type { HttpDeps } from '../src/model-gateway.js';
 
@@ -50,6 +50,15 @@ describe('ollama provider', () => {
     const gateway = createOllamaProvider({ provider: 'local', model: 'llama3.2' }, deps);
     await gateway.generate({ messages: [{ role: 'user', content: 'oi' }] });
     expect(calls[0]!.url).toBe('http://localhost:11434/api/chat');
+  });
+
+  // SPEC-0060/D9: a constante exportada é a MESMA que o provider usa quando
+  // `baseUrl` é omitida — origem única de "onde o Ollama vive".
+  it('OLLAMA_DEFAULT_BASE_URL é a mesma base usada quando baseUrl é omitida', async () => {
+    const { deps, calls } = stubFetch(jsonResponse({ message: { content: 'x' } }));
+    const gateway = createOllamaProvider({ provider: 'local', model: 'llama3.2' }, deps);
+    await gateway.generate({ messages: [{ role: 'user', content: 'oi' }] });
+    expect(calls[0]!.url).toBe(`${OLLAMA_DEFAULT_BASE_URL}/api/chat`);
   });
 
   it('sem model lança ModelGatewayError', async () => {

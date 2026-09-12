@@ -7,7 +7,14 @@ import type {
 } from '../model-gateway.js';
 import { ModelGatewayError } from '../errors.js';
 
-const DEFAULT_BASE_URL = 'http://localhost:11434';
+/**
+ * Endereço default do daemon do Ollama — exportada (SPEC-0060/D9) para ser a
+ * **origem única** de "onde o Ollama vive", também consumida por
+ * `resolveDependencyConfig` (`@atlas/core`) para o auto-start (ADR-0027).
+ * Zero mudança de comportamento: era privada, hoje é pública com o mesmo
+ * valor.
+ */
+export const OLLAMA_DEFAULT_BASE_URL = 'http://localhost:11434';
 
 interface OllamaChatResponse {
   message?: { content?: string };
@@ -30,7 +37,7 @@ export function createOllamaProvider(
   config: ModelGatewayConfig,
   deps: HttpDeps = { fetch: globalThis.fetch },
 ): ModelGateway {
-  const baseUrl = config.baseUrl ?? DEFAULT_BASE_URL;
+  const baseUrl = config.baseUrl ?? OLLAMA_DEFAULT_BASE_URL;
 
   return {
     async generate(request: GenerateRequest): Promise<GenerateResult> {
