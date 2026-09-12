@@ -16,7 +16,8 @@
     "agent-workflow:generate": "python3 scripts/agent-workflow/generate.py",
     "agent-workflow:test": "python3 -m unittest discover -s scripts/agent-workflow/tests -p 'test_*.py' -v",
     "agent-workflow:check": "pnpm agent-workflow:test && python3 scripts/agent-workflow/check.py",
-    "agent-workflow:doctor": "python3 scripts/agent-workflow/doctor.py"
+    "agent-workflow:doctor": "python3 scripts/agent-workflow/doctor.py",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -24,10 +25,20 @@
     "eslint": "^10.6.0",
     "eslint-config-prettier": "^10.1.8",
     "harness-score": "1.6.3",
+    "husky": "9.1.7",
+    "lint-staged": "17.4.1",
     "prettier": "^3.9.5",
     "tsx": "^4.23.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.63.0",
     "vitest": "^4.1.10"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,mjs,cjs,json,yml,yaml}": [
+      "prettier --write"
+    ],
+    "*.{ts,tsx,js,mjs,cjs}": [
+      "eslint --fix"
+    ]
   }
 }

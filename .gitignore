@@ -11,6 +11,9 @@ __pycache__/
 .worktrees/
 .pnpm-store/
 
+# Husky: diretório interno recriado a cada `pnpm install` (script "prepare").
+.husky/_
+
 # Estado local do skill Superpowers (brainstorming, scratch) — não é
 # documentação do Atlas nem artefato de nenhuma SPEC.
 .superpowers/
