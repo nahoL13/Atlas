@@ -69,9 +69,27 @@ Lições que se repetiram em três ou mais SPECs. Este índice existe para sobre
 - **`vitest run` não faz typecheck** (esbuild só remove tipos) — um passo TDD "RED" que depende de erro de *tipo* só falha de verdade em `pnpm --filter <pkg> typecheck`.
 - **Smoke visual/sonoro das fatias desktop** — SPEC-0031 a 0046, 15 seguidas sem confirmação (o shell de automação não tem WindowServer, microfone nem os binários Piper/`whisper-cli`). Deixou de ser risco hipotético na **SPEC-0053**: o smoke humano rodou de fato pela primeira vez e **reprovou** a v2.0 (1.322 testes/80 arquivos, quatro gates técnicos verdes) por hierarquia/sobreposição/falta de volume — prova concreta de que gates técnicos verdes não bastam para aceite perceptivo. A v3.0 corrigiu e fechou os 15 itens `OK`. Fatia futura que tocar o núcleo/layout reabre a pendência.
 - **Contrato só sobe a `@atlas/contracts` com 2º consumidor real**, via ADR (ADR-0007). Tipos de uma app só (`StatusSnapshot`, `TurnSnapshot`, `FactSnapshot`) ficam locais.
-
+- **Duas fontes independentes da mesma regra de validação/precedência divergem** — SPEC-0055/D4 (`http_get`), SPEC-0057/D21 (`SearchPort`, `endpointUrl` como fonte única), SPEC-0061/D6 (`loadConfig` × `resolveDependencyConfig` sem `trim` no mesmo processo, produzindo "container liga, comando morre com `InvalidConfigError`"). A SPEC-0059 (`composeOverride`) é o contra-exemplo que evita a 3ª/4ª instância ao fazer dry-run e aplicação real chamarem literalmente a mesma função. Ao introduzir uma regra de normalização/validação em mais de um ponto, unifique-a numa função só ou prove que os pontos nunca divergem.
 
 # Registro
+
+## [SPEC-0061](specs/SPEC-0061-search-container-auto-start.md) — Auto-start do container Docker do provedor de busca: extensão aditiva de `ProcessPort`/`createDependencyManager` (CLI + desktop) (2026-09-13)
+
+**Descobrimos que...**
+
+D6 revelou uma variante nova do padrão "duas fontes da mesma regra divergem" (agora catalogado em "Padrões Recorrentes"): diferente das instâncias anteriores (SPEC-0055/D4, SPEC-0057/D21), aqui as duas fontes — `loadConfig` (lança `InvalidConfigError`) e `resolveDependencyConfig` (puro, nunca lança) — convivem no **mesmo processo**, e a divergência (`'  searxng  '` sem `trim` em `loadConfig`) produziria o pior desfecho possível: o container liga (resolvedor aceita) e o comando morre em seguida (`loadConfig` recusa) — efeito colateral sem comando. D9 achou, só no desenho e sem precisar de veto do `architecture-reviewer` desta vez, que `docker inspect` sem `--type container` resolve por herança automática de tipo e poderia confundir o container com uma imagem homônima — outra instância de "garantia em prosa tende a estar incompleta", aqui aplicada a um comando externo em vez de a uma contagem de consumidores. Diferente da SPEC-0060 (1º veto do `architecture-reviewer`, achados A1-A7), esta SPEC não registra rodada de correção de veto bloqueante — só um achado não-bloqueante (spawns de Docker/Ollama sem teto de tempo, fora do escopo dos CA) — sinal de que D6/D9/D11 já anteciparam, no próprio rascunho, a classe de risco que o gate da fatia irmã havia pego.
+
+**A arquitetura ajudou porque...**
+
+O molde "porta injetável com operações nomeadas e fixas, desfecho em união discriminada" (ADR-0027(b)/(c), provado pela SPEC-0060) absorveu a 2ª dependência sem generalizar `ProcessPort` para uma interface parametrizada por `DependencyId` — D2 recusa essa generalização explicitamente por falta de forma comum real entre health-check HTTP+spawn (Ollama) e `docker inspect`/`start`/`stop` (container), uma aplicação nova de "promover só com 2º consumidor real" (ADR-0007): aqui os dois consumidores reais existem, mas não compartilham forma, então a generalização é recusada mesmo assim. `runEnsure` reestruturado para compor um `DependencyOutcome` por dependência (em vez de *early return* de um `DependencyReport` inteiro por ramo) preservou byte a byte o comportamento observável do Ollama (Restrição 11) — os testes existentes do caminho Ollama passaram sem alteração de valores esperados, confirmando que encapsular o desfecho numa união discriminada desde a SPEC-0060 deixou a porta aberta para uma extensão estrutural sem regressão.
+
+**A arquitetura atrapalhou porque...**
+
+Nada de estrutural — os quatro comandos da raiz (1959/1959 testes) e os 39 Critérios de Aceitação passaram sem achado do `spec-validator`; diff confinado aos Arquivos Esperados. O único custo, nomeado e aceito pela própria SPEC: com os dois opt-ins ligados e ambas as dependências fora do ar, o pior caso de bloqueio antes do despacho do comando sobe de ~12s (SPEC-0060) para ~17s — consequência direta do tratamento sequencial (D4), escolhido deliberadamente sobre `Promise.all` para preservar a ordem determinística de chamadas que os testes pinam.
+
+**Precisamos mudar...**
+
+Nada de obrigatório para esta fatia. (1) Esta é a 3ª e última SPEC candidata do [ADR-0027](../06-adr/ADR-0027-external-process-lifecycle-management.md) — o ADR fica inteiramente consumido, nenhuma cláusula (a)–(h) sem implementação — encaminhamento: nenhum, resíduo fechado. (2) Nenhum dos três `spawn` de Docker/Ollama tem teto de tempo (achado não-bloqueante do `architecture-reviewer`, fora do escopo dos CA desta SPEC) — encaminhamento: candidato futuro registrado em `NEXT_CONTEXT.md`, sem SPEC própria. (3) Acesso ao socket do Docker equivale a privilégio elevado no host (Observações da própria SPEC) — mitigado por escopo (três operações fixas) e visibilidade (`atlas status`/stderr/log), não eliminado; mesma classe do resíduo de egress fora de `netRoots` já catalogado desde a SPEC-0055 — encaminhamento: nenhum novo, resíduo de segurança aceito e documentado. (4) O item 1.4 do Roadmap segue não fechado (resta a execução de comandos sob o Permission Service, `ADR primeiro`) — encaminhamento: candidato nomeado desde a SPEC-0028, sem SPEC própria hoje.
 
 ## [SPEC-0060](specs/SPEC-0060-ollama-auto-start.md) — Auto-start do Ollama sob opt-in explícito: `createDependencyManager`/`ProcessPort` em `@atlas/core`, CLI + desktop (2026-09-12)
 
@@ -145,24 +163,6 @@ Nada de estrutural — os quatro comandos da raiz (1636 testes/91 arquivos) e os
 
 Nada de obrigatório para esta fatia. (1) O residual 10 (memo `summarizeSteps` sem bloco/instrução, persistente entre turnos) segue registrado como caminho não coberto — fechá-lo por inteiro exigiria um canal estrutural de mensagem (`role: 'tool'` em `@atlas/contracts`), decisão arquitetural nova — encaminhamento: candidato de ADR próprio, sem SPEC própria hoje, registrado na SPEC-0058 (residual 10) e em `NEXT_CONTEXT.md`. (2) A metade "exfiltração via URL" do residual do ADR-0026 (SPEC-0055) segue intocada — encaminhamento: já registrado desde a SPEC-0055, sem mudança nesta fatia. (3) A SPEC-0057 (`web_search`, `Ready`) fica desbloqueada para retomada — não é mudança arquitetural, é nota de processo para a próxima sessão decidir.
 
-## [SPEC-0056](specs/SPEC-0056-project-structure-tool.md) — Tool de leitura de estrutura de projeto (`project_info`) em `@atlas/tools`, reusando a descoberta de toplevel da SPEC-0028 (2026-08-20)
-
-**Descobrimos que...**
-
-Reusar a descoberta de raiz da SPEC-0028 por método aditivo (`GitReadPort.toplevel(cwd)`, delegando à `resolveRepository` já existente) funcionou exatamente como o `architecture-reviewer` previu no próprio texto do Roadmap — zero linha de lógica duplicada, só a interface exposta. Descobrimos também que a disciplina de saída determinística que a SPEC-0055/D18 aplicou ao comportamento não-spec de um subprocesso/runtime (`redirect: 'manual'` do undici) se repete aqui num eixo diferente: `resolveRepository` embutia stderr do `git` na mensagem de erro (dependente de versão/locale, não determinístico), e `GitRootError`/`reason` (D12) resolve o mesmo problema — classificar por um campo estruturado em vez de casar/propagar texto de subprocesso — pela segunda vez em duas SPECs consecutivas. E a decisão de design mais consequente da SPEC (D11 — ascensão ao repositório só com `path` omitido) não veio do código, veio de uma pergunta de completude sobre o "Fora do Escopo": sem D11, a própria capacidade prometida ali ("descrever um subprojeto de monorepo") seria impossível de exercitar.
-
-**A arquitetura ajudou porque...**
-
-O molde "porta interna sem 2º consumidor real, método aditivo em vez de porta nova" (D4) generalizou de novo sem desenho — a mesma disciplina já vista em `FsReadPort`/`GitReadPort`/`HttpPort` nas SPECs 0011/0028/0055. O helper único de derivação de alvo (`resolveTargetDirectory`, ex-`resolveGitTarget`) ganhou um 2º consumidor não-git com uma renomeação mecânica de três linhas, em vez de bifurcar em duas implementações da mesma regra de argumento — o mesmo padrão que a SPEC-0055/D4 já tinha justificado para `http_get`. Falha estruturada por passo (ADR-0012) absorveu de graça a degradação de raiz (D3): nenhum caminho de erro do `git.toplevel` precisou de tratamento especial além do `try/catch` que a Tool já teria.
-
-**A arquitetura atrapalhou porque...**
-
-Nada de estrutural — os quatro comandos da raiz e os Critérios de Aceitação passaram sem achado do `spec-validator`. O único atrito foi de precisão de linguagem para a doc viva, e desta vez pego pelo próprio `spec-implementer` antes do fechamento, não pelo gate: duas generalizações que a implementação anterior (SPEC-0028) tornava tentador repetir de cabeça — "duas barreiras, como sempre" (falso quando `path` é explícito: só uma, `evaluate`) e "o portão bloqueia" para `path` inválido (falso: nem `requirements` nem `run` chegam a consultar porta alguma nesse caminho) — mesma classe já catalogada em "Padrões Recorrentes" como garantia em prosa incompleta, agora numa variante nova: o próprio autor da mudança sinalizou o risco ao `spec-closer`, em vez de o gate precisar pegá-lo.
-
-**Precisamos mudar...**
-
-Nada de obrigatório — os nove residuais desta fatia (listagem sem fecho atômico, TOCTOU de diretório-alvo, raiz ancestral só no caminho ascendente, degradação que não revela qual repositório foi recusado, sem teto de tamanho em `readFile`, conteúdo de terceiro no prompt, tabela de manifests parcial, Windows fora de escopo, `path` supérfluo desliga a ascensão) já estão escritos na SPEC e em `packages/tools/CLAUDE.md`, sem exigir ADR ou SPEC própria — são a mesma classe de residual documentado, não fechado, que o ADR-0014/SPEC-0028 já estabeleceram como aceitável. A terceira fatia nomeada do item 1.4 (execução de comandos sob o Permission Service) segue candidata, com dono e classificação (`ADR primeiro`) já registrados desde a SPEC-0028 — sem mudança aqui.
-
 ---
 
-**Entradas anteriores (SPEC-0055 e mais antigas):** `LESSONS_LEARNED-ARCHIVE.md`.
+**Entradas anteriores (SPEC-0056 e mais antigas):** `LESSONS_LEARNED-ARCHIVE.md`.

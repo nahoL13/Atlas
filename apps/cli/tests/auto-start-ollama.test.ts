@@ -188,3 +188,109 @@ describe('auto-start do Ollama — integração via run() (SPEC-0060)', () => {
     expect(h.out()).toContain('ATLAS_AUTO_START_OLLAMA');
   });
 });
+
+const CONTAINER_STARTED_REPORT: DependencyReport = {
+  outcomes: [
+    { dependency: 'ollama', status: 'disabled' },
+    { dependency: 'search-container', status: 'started', container: 'searxng' },
+  ],
+};
+const CONTAINER_FAILED_UNKNOWN_REPORT: DependencyReport = {
+  outcomes: [
+    { dependency: 'ollama', status: 'disabled' },
+    {
+      dependency: 'search-container',
+      status: 'failed',
+      reason: 'container-unknown',
+      container: 'searxng',
+    },
+  ],
+};
+const CONTAINER_DISABLED_REPORT: DependencyReport = {
+  outcomes: [
+    { dependency: 'ollama', status: 'disabled' },
+    { dependency: 'search-container', status: 'disabled' },
+  ],
+};
+const CONTAINER_ALREADY_RUNNING_REPORT: DependencyReport = {
+  outcomes: [
+    { dependency: 'ollama', status: 'disabled' },
+    { dependency: 'search-container', status: 'already-running', container: 'searxng' },
+  ],
+};
+const BOTH_STARTED_REPORT: DependencyReport = {
+  outcomes: [
+    { dependency: 'ollama', status: 'started' },
+    { dependency: 'search-container', status: 'started', container: 'searxng' },
+  ],
+};
+
+describe('auto-start do container de busca — integração via run() (SPEC-0061)', () => {
+  it('CA26: run() continua chamando ensure() exatamente 1x e nunca release()', async () => {
+    const h = harness();
+    const fake = createFakeDependencyManager(CONTAINER_STARTED_REPORT);
+    await run(['status'], {}, h.gateways, '0.1.0', { dependencies: fake.manager });
+    expect(fake.ensureCalls()).toBe(1);
+    expect(fake.releaseCalls()).toBe(0);
+  });
+
+  it('CA27: um desfecho "failed" do container não altera o código de saída nem impede o comando', async () => {
+    const h = harness();
+    const fake = createFakeDependencyManager(CONTAINER_FAILED_UNKNOWN_REPORT);
+    const code = await run(['status'], {}, h.gateways, '0.1.0', { dependencies: fake.manager });
+    expect(code).toBe(0);
+    expect(h.out()).toContain('Atlas: ready');
+  });
+
+  describe('CA28: avisos em stderr com os textos pinados de D12', () => {
+    it('"started" escreve o aviso pinado em stderr, e não o texto do Ollama', async () => {
+      const h = harness();
+      const fake = createFakeDependencyManager(CONTAINER_STARTED_REPORT);
+      await run(['status'], {}, h.gateways, '0.1.0', { dependencies: fake.manager });
+      expect(h.err()).toContain(
+        'Container de busca "searxng" iniciado automaticamente pelo Atlas.',
+      );
+      expect(h.err()).not.toContain('Ollama iniciado automaticamente');
+    });
+
+    it('"failed"/"container-unknown" escreve o aviso pinado em stderr', async () => {
+      const h = harness();
+      const fake = createFakeDependencyManager(CONTAINER_FAILED_UNKNOWN_REPORT);
+      await run(['status'], {}, h.gateways, '0.1.0', { dependencies: fake.manager });
+      expect(h.err()).toContain('o Docker não reconheceu esse container');
+      expect(h.err()).toContain('O Atlas nunca cria containers.');
+    });
+
+    it('"disabled" não escreve nada em stderr', async () => {
+      const h = harness();
+      const fake = createFakeDependencyManager(CONTAINER_DISABLED_REPORT);
+      await run(['status'], {}, h.gateways, '0.1.0', { dependencies: fake.manager });
+      expect(h.err()).toBe('');
+    });
+
+    it('"already-running" não escreve nada em stderr', async () => {
+      const h = harness();
+      const fake = createFakeDependencyManager(CONTAINER_ALREADY_RUNNING_REPORT);
+      await run(['status'], {}, h.gateways, '0.1.0', { dependencies: fake.manager });
+      expect(h.err()).toBe('');
+    });
+
+    it('um desfecho "started" do Ollama e do container juntos escrevem os dois avisos, cada um o seu', async () => {
+      const h = harness();
+      const fake = createFakeDependencyManager(BOTH_STARTED_REPORT);
+      await run(['status'], {}, h.gateways, '0.1.0', { dependencies: fake.manager });
+      expect(h.err()).toContain('Ollama iniciado automaticamente pelo Atlas.');
+      expect(h.err()).toContain(
+        'Container de busca "searxng" iniciado automaticamente pelo Atlas.',
+      );
+    });
+  });
+
+  it('CA30: HELP_TEXT cita --auto-start-search-container e ATLAS_AUTO_START_SEARCH_CONTAINER, com a nota de que o Atlas nunca cria/baixa/remove containers', async () => {
+    const h = harness();
+    await run(['--help'], {}, h.gateways, '0.1.0');
+    expect(h.out()).toContain('--auto-start-search-container');
+    expect(h.out()).toContain('ATLAS_AUTO_START_SEARCH_CONTAINER');
+    expect(h.out()).toContain('NUNCA cria, baixa ou remove');
+  });
+});

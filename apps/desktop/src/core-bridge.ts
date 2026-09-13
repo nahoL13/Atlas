@@ -6,6 +6,7 @@ import {
   createPersonaService,
   loadConfig,
   parseBooleanSetting,
+  parseContainerNameSetting,
   personaStoragePath,
   resolveDependencyConfig,
   PERSONA_IDS,
@@ -196,26 +197,49 @@ export const INVALID_AUTO_START_OLLAMA_ENV_WARNING =
   'Atlas: valor inválido em ATLAS_AUTO_START_OLLAMA; auto-start do Ollama desligado.';
 
 /**
- * Dispara o auto-start do Ollama (SPEC-0060, Escopo 5.1) — primeira
- * leitura de `process.env` em `core-bridge.ts` (até aqui o módulo só
- * recebia `configOverride` por IPC); `env` é injetável por parâmetro para
- * manter a função testável sem Electron. Env ausente/vazia ⇒ desligado
- * (default do core); env inválida ⇒ desligado + `console.warn` pinado,
- * **nunca lança** (D25) — divergência deliberada da CLI (`CliUsageError`,
- * D6). Não é rastreada pelo registro de operação em voo da SPEC-0051: não
- * sobe Core, não executa Tool.
+ * Texto pinado do `console.warn` para `ATLAS_AUTO_START_SEARCH_CONTAINER`
+ * inválida (SPEC-0061, Escopo 6.1) — mesma divergência deliberada da CLI
+ * (`CliUsageError` para o mesmo valor): lançar aqui, dentro de
+ * `app.whenReady()`, arriscaria a janela não abrir (ADR-0027(f)).
+ */
+export const INVALID_SEARCH_CONTAINER_ENV_WARNING =
+  'Atlas: valor inválido em ATLAS_AUTO_START_SEARCH_CONTAINER; auto-start do container de ' +
+  'busca desligado.';
+
+/**
+ * Dispara o auto-start do Ollama e do container de busca (SPEC-0060/
+ * SPEC-0061, Escopo 5.1/6.1) — primeira leitura de `process.env` em
+ * `core-bridge.ts` (até aqui o módulo só recebia `configOverride` por IPC);
+ * `env` é injetável por parâmetro para manter a função testável sem
+ * Electron. Env ausente/vazia ⇒ desligado (default do core); env inválida ⇒
+ * desligado + `console.warn` pinado, **nunca lança** (D25/D6 da SPEC-0061) —
+ * divergência deliberada da CLI (`CliUsageError`). As duas variáveis são
+ * independentes: uma inválida não impede a outra de ser exercitada. Não é
+ * rastreada pelo registro de operação em voo da SPEC-0051: não sobe Core,
+ * não executa Tool.
  */
 export async function ensureExternalDependencies(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<DependencyReport> {
-  const parsed = parseBooleanSetting(env['ATLAS_AUTO_START_OLLAMA']);
+  const parsedOllama = parseBooleanSetting(env['ATLAS_AUTO_START_OLLAMA']);
   let autoStartOllama = false;
-  if (parsed.kind === 'invalid') {
+  if (parsedOllama.kind === 'invalid') {
     console.warn(INVALID_AUTO_START_OLLAMA_ENV_WARNING);
-  } else if (parsed.kind === 'value') {
-    autoStartOllama = parsed.value;
+  } else if (parsedOllama.kind === 'value') {
+    autoStartOllama = parsedOllama.value;
   }
-  const config = resolveDependencyConfig({ dependencies: { autoStartOllama } });
+
+  const parsedContainer = parseContainerNameSetting(env['ATLAS_AUTO_START_SEARCH_CONTAINER']);
+  let autoStartSearchContainer = '';
+  if (parsedContainer.kind === 'invalid') {
+    console.warn(INVALID_SEARCH_CONTAINER_ENV_WARNING);
+  } else if (parsedContainer.kind === 'value') {
+    autoStartSearchContainer = parsedContainer.value;
+  }
+
+  const config = resolveDependencyConfig({
+    dependencies: { autoStartOllama, autoStartSearchContainer },
+  });
   return dependencyManager.ensure(config);
 }
 

@@ -255,4 +255,54 @@ describe('loadConfig', () => {
       }
     });
   });
+
+  describe('dependencies.autoStartSearchContainer (SPEC-0061, CA 2)', () => {
+    it('loadConfig({}) devolve autoStartSearchContainer vazio', () => {
+      expect(loadConfig({}).dependencies.autoStartSearchContainer).toBe('');
+    });
+
+    it('loadConfig({ dependencies: { autoStartSearchContainer: "searxng" } }) devolve "searxng"', () => {
+      expect(
+        loadConfig({ dependencies: { autoStartSearchContainer: 'searxng' } }).dependencies
+          .autoStartSearchContainer,
+      ).toBe('searxng');
+    });
+
+    it.each([42 as unknown as string, 'a b', '-x', 'nome;rm -rf', 'a'.repeat(200)])(
+      'valor inválido (%j) produz InvalidConfigError citando dependencies.autoStartSearchContainer',
+      (value) => {
+        try {
+          loadConfig({ dependencies: { autoStartSearchContainer: value } });
+          expect.unreachable('deveria ter lançado InvalidConfigError');
+        } catch (error) {
+          expect(error).toBeInstanceOf(InvalidConfigError);
+          expect((error as InvalidConfigError).issues.join('\n')).toContain(
+            'dependencies.autoStartSearchContainer',
+          );
+        }
+      },
+    );
+
+    describe('regra única de trim (D6, CA 2a)', () => {
+      it('"  searxng  " não lança e resolve para "searxng" (trimado)', () => {
+        expect(() =>
+          loadConfig({ dependencies: { autoStartSearchContainer: '  searxng  ' } }),
+        ).not.toThrow();
+        expect(
+          loadConfig({ dependencies: { autoStartSearchContainer: '  searxng  ' } }).dependencies
+            .autoStartSearchContainer,
+        ).toBe('searxng');
+      });
+
+      it('"   " não lança e resolve para "" (desligado)', () => {
+        expect(() =>
+          loadConfig({ dependencies: { autoStartSearchContainer: '   ' } }),
+        ).not.toThrow();
+        expect(
+          loadConfig({ dependencies: { autoStartSearchContainer: '   ' } }).dependencies
+            .autoStartSearchContainer,
+        ).toBe('');
+      });
+    });
+  });
 });

@@ -25,14 +25,21 @@ export interface AtlasConfig {
    */
   readonly tools: { readonly searchUrl: string };
   /**
-   * Auto-gerência de processos externos (SPEC-0060, ADR-0027) — namespace de
-   * módulo, no mesmo molde de `tools`/`permissions`/`memory`.
+   * Auto-gerência de processos externos (SPEC-0060/SPEC-0061, ADR-0027) —
+   * namespace de módulo, no mesmo molde de `tools`/`permissions`/`memory`.
    * `autoStartOllama`: opt-in explícito para subir `ollama serve`
    * automaticamente quando ele não está acessível. Default: `false`
    * (fail-closed) — sem esta flag, nenhum health-check e nenhum processo é
    * disparado.
+   * `autoStartSearchContainer`: opt-in explícito e **nominal** para ligar
+   * (nunca criar) um container Docker já existente, quando ele estiver
+   * parado. Default: `''` (desligado, fail-closed) — o nome identifica o
+   * alvo; sem nome, nenhum `docker inspect`/`start` é disparado.
    */
-  readonly dependencies: { readonly autoStartOllama: boolean };
+  readonly dependencies: {
+    readonly autoStartOllama: boolean;
+    readonly autoStartSearchContainer: string;
+  };
 }
 
 export interface AtlasConfigOverride {
@@ -47,5 +54,5 @@ export interface AtlasConfigOverride {
   };
   model?: Partial<ModelGatewayConfig>;
   tools?: { searchUrl?: string };
-  dependencies?: { readonly autoStartOllama?: boolean };
+  dependencies?: { readonly autoStartOllama?: boolean; readonly autoStartSearchContainer?: string };
 }

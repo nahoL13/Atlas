@@ -52,13 +52,16 @@ describe('AtlasConfig.tools.searchUrl (SPEC-0057/D22)', () => {
 
 describe('AtlasConfig.dependencies.autoStartOllama (SPEC-0060/D24)', () => {
   it('dependencies.autoStartOllama é obrigatório em AtlasConfig', () => {
-    const dependencies: AtlasConfig['dependencies'] = { autoStartOllama: false };
+    const dependencies: AtlasConfig['dependencies'] = {
+      autoStartOllama: false,
+      autoStartSearchContainer: '',
+    };
     expect(dependencies.autoStartOllama).toBe(false);
   });
 
   it('AtlasConfig.dependencies sem autoStartOllama NÃO compila (teste de tipo negativo)', () => {
     // @ts-expect-error autoStartOllama é obrigatório na config resolvida (D24).
-    const invalid: AtlasConfig['dependencies'] = {};
+    const invalid: AtlasConfig['dependencies'] = { autoStartSearchContainer: '' };
     expect(invalid).toBeDefined();
   });
 
@@ -71,5 +74,31 @@ describe('AtlasConfig.dependencies.autoStartOllama (SPEC-0060/D24)', () => {
 
     const withAutoStart: AtlasConfigOverride = { dependencies: { autoStartOllama: true } };
     expect(withAutoStart.dependencies?.autoStartOllama).toBe(true);
+  });
+});
+
+describe('AtlasConfig.dependencies.autoStartSearchContainer (SPEC-0061)', () => {
+  it('dependencies.autoStartSearchContainer é obrigatório em AtlasConfig', () => {
+    const dependencies: AtlasConfig['dependencies'] = {
+      autoStartOllama: false,
+      autoStartSearchContainer: '',
+    };
+    expect(dependencies.autoStartSearchContainer).toBe('');
+  });
+
+  it('AtlasConfig.dependencies sem autoStartSearchContainer NÃO compila (teste de tipo negativo)', () => {
+    // @ts-expect-error autoStartSearchContainer é obrigatório na config resolvida.
+    const invalid: AtlasConfig['dependencies'] = { autoStartOllama: false };
+    expect(invalid).toBeDefined();
+  });
+
+  it('AtlasConfigOverride.dependencies.autoStartSearchContainer é opcional', () => {
+    const empty: AtlasConfigOverride = { dependencies: { autoStartOllama: true } };
+    expect(empty.dependencies?.autoStartSearchContainer).toBeUndefined();
+
+    const withContainer: AtlasConfigOverride = {
+      dependencies: { autoStartSearchContainer: 'searxng' },
+    };
+    expect(withContainer.dependencies?.autoStartSearchContainer).toBe('searxng');
   });
 });

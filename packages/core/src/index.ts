@@ -163,16 +163,31 @@ export type { Lifecycle, LifecycleHooks } from './lifecycle/lifecycle.js';
 // independente do `Lifecycle` acima — `createAtlas` sai sem uma linha
 // alterada (ADR-0027(d)); o dono é cada app, no seu próprio ponto de
 // entrada/saída (D21).
-export { resolveDependencyConfig, parseBooleanSetting } from './config/dependency-config.js';
-export type { DependencyConfig, ParsedBooleanSetting } from './config/dependency-config.js';
+export {
+  resolveDependencyConfig,
+  parseBooleanSetting,
+  isValidContainerName,
+  parseContainerNameSetting,
+} from './config/dependency-config.js';
+export type {
+  DependencyConfig,
+  ParsedBooleanSetting,
+  ParsedContainerNameSetting,
+} from './config/dependency-config.js';
 export { nodeProcessPort } from './dependencies/node-process-port.js';
-export type { ProcessPort, OllamaStartOutcome } from './dependencies/process-port.js';
+export type {
+  ProcessPort,
+  OllamaStartOutcome,
+  SearchContainerState,
+  SearchContainerStartOutcome,
+} from './dependencies/process-port.js';
 export { createDependencyManager } from './dependencies/dependency-manager.js';
 export type {
   DependencyManager,
   DependencyReport,
   DependencyOutcome,
   OllamaFailureReason,
+  SearchContainerFailureReason,
 } from './dependencies/dependency-manager.js';
 
 // Re-export de catálogo (SPEC-0037, Decisão D4; alargado pela SPEC-0039,

@@ -291,3 +291,64 @@ Ollama, CLI e desktop), consumindo este ADR **sem alterar nenhuma cláusula
   (já pública em valor, sem mudança de comportamento).
 - Não fecha o item 1.4 do Roadmap. Desbloqueia a **3ª SPEC candidata**
   (auto-start do container SearXNG) — ainda não implementada.
+
+---
+
+# Atualização ([SPEC-0061](../implementation/specs/SPEC-0061-search-container-auto-start.md))
+
+A SPEC-0061 entregou a **3ª e última SPEC candidata** nomeada acima
+(auto-start do container Docker do provedor de busca, CLI e desktop),
+consumindo este ADR **sem alterar nenhuma cláusula (a)–(h)** — com ela, o
+ADR fica inteiramente consumido; nenhuma cláusula restante fica sem
+implementação.
+
+- `ProcessPort` (`@atlas/core`) estendida de forma aditiva com três
+  operações nomeadas e fixas sobre `search-container`
+  (`inspectSearchContainer`/`startSearchContainer`/`stopSearchContainer` —
+  (b) confirmada: nenhuma operação genérica de execução de comando) e
+  adaptador real em `nodeProcessPort()`; `createDependencyManager` passa a
+  cuidar das duas dependências no mesmo `ensure(config)`/`release()`
+  ((d) confirmada: `createAtlas`/`Lifecycle` seguem sem uma linha alterada).
+  `DependencyReport.outcomes` passa a carregar **sempre exatamente dois**
+  elementos, em ordem pinada (`'ollama'` primeiro), tratados
+  sequencialmente e de forma independente.
+- `AtlasConfig.dependencies.autoStartSearchContainer: string` (default
+  `''`, fail-closed) — opt-in **nominal**, não booleano: diferente do
+  Ollama, o container não tem identidade default, então "se" e "qual" se
+  fundem no mesmo campo. `--auto-start-search-container <nome>`/
+  `ATLAS_AUTO_START_SEARCH_CONTAINER` na CLI (valor inválido ⇒
+  `CliUsageError`) e a mesma env no desktop (valor inválido ⇒ desligado +
+  `console.warn`, nunca lança — mesma divergência deliberada de (f) já
+  confirmada pela SPEC-0060).
+- **(h) rastreada operação a operação, por escrito** (a leitura literal de
+  (h) só nomeia `start`): `docker inspect --type container --format
+  '{{.State.Running}}' <nome>` deriva de **(c)** (health-check pela porta
+  injetável) mais **(h)** (escopo restrito ao container nomeado, `--type
+  container` fecha a ambiguidade do `inspect` sem tipo); `docker start
+  <nome>` deriva de **(h)**; `docker stop <nome>` deriva de **(e)**
+  (desligamento simétrico do que o Atlas subiu), **não** de (h). Nenhuma
+  operação destrutiva (`run`/`create`/`pull`/`build`/`exec`/`rm`/`kill`/
+  `compose`) é autorizada por (e) nem por (h) — o Atlas nunca cria, baixa
+  ou remove um container; um nome desconhecido (`docker inspect` saindo
+  `!= 0`) é sempre falha reportada, nunca convite a provisionar.
+- **(e) confirmada, mesmo molde do Ollama**: posse do container é
+  registrada no sucesso do `start`, não na prontidão — preservada mesmo em
+  `'failed'/'timeout'`, para que um container lento a assentar nunca fique
+  órfão ao fechar a janela; só o desktop desliga o que a própria sessão
+  ligou, cada dependência com captura própria (a falha de uma nunca impede
+  a outra).
+- **(g) confirmada**: o opt-in não deriva de `tools.searchUrl` estar
+  configurado (SPEC-0057) nem o contrário — as duas capacidades são
+  independentes por decisão explícita.
+- **(a) confirmada, com um residual nomeado e não fechado**: ligar o
+  container **não** concede `netRoots` — o host do endpoint de busca
+  continua exigindo autorização explícita (`--allow-net`/painel da
+  SPEC-0059); configurar uma capacidade não concede outra.
+- Zero linha em `@atlas/permissions`/`@atlas/runtime`/`@atlas/tools`/
+  `@atlas/model-gateway`; diff em `apps/desktop` confinado a
+  `core-bridge.ts`/`main.ts` (D15 — sem painel/canal IPC novo, mesmo
+  precedente residual da SPEC-0060, fechado no eixo de rede pela SPEC-0059).
+- Não fecha o item 1.4 do Roadmap (resta a execução de comandos sob o
+  Permission Service, `ADR primeiro`). **Este ADR está agora inteiramente
+  consumido** — as três SPECs candidatas nomeadas em "Observações" foram
+  todas implementadas (SPEC-0059, SPEC-0060, SPEC-0061).

@@ -117,6 +117,15 @@ Options:
                        por processo (nunca instala nem baixa o binário).
                        ATLAS_AUTO_START_OLLAMA faz o mesmo papel (aceita
                        1/true/yes/on ou 0/false/no/off, qualquer caixa).
+      --auto-start-search-container <nome>  Liga a auto-gerência do container
+                       Docker do provedor de busca: se ele existir e estiver
+                       parado, o Atlas liga (docker start) esse container uma
+                       vez por processo. O Atlas NUNCA cria, baixa ou remove
+                       containers — um nome desconhecido é reportado como
+                       falha, não um convite a provisionar.
+                       ATLAS_AUTO_START_SEARCH_CONTAINER faz o mesmo papel
+                       (não repetível). O host do endpoint de busca continua
+                       precisando de --allow-net/ATLAS_ALLOW_NET.
 `;
 
 /**
@@ -134,7 +143,7 @@ Options:
  * processo externo (Restrição 8).
  */
 function formatOllamaWarning(
-  outcome: DependencyOutcome,
+  outcome: Extract<DependencyOutcome, { dependency: 'ollama' }>,
   ollamaBaseUrl: string,
 ): string | undefined {
   if (outcome.status === 'started') {
@@ -158,6 +167,47 @@ function formatOllamaWarning(
   return (
     `Não foi possível iniciar o Ollama automaticamente: sem resposta em ${ollamaBaseUrl} após ` +
     '10s. Seguindo sem auto-start.\n'
+  );
+}
+
+/**
+ * Avisos de auto-start do container de busca (SPEC-0061, Decisão D12):
+ * textos pinados, stderr, só nos desfechos `'started'`/`'failed'` —
+ * `'disabled'`/`'already-running'` são silenciosos. Nunca interpola
+ * stdout/stderr do `docker` (Restrição 9) — só o nome do container, já
+ * normalizado e validado.
+ */
+function formatSearchContainerWarning(
+  outcome: Extract<DependencyOutcome, { dependency: 'search-container' }>,
+): string | undefined {
+  if (outcome.status === 'started') {
+    return `Container de busca "${outcome.container}" iniciado automaticamente pelo Atlas.\n`;
+  }
+  if (outcome.status !== 'failed') {
+    return undefined;
+  }
+  if (outcome.reason === 'docker-unavailable') {
+    return (
+      `Não foi possível iniciar o container de busca "${outcome.container}": binário "docker" ` +
+      'não encontrado ou não executável. Seguindo sem auto-start.\n'
+    );
+  }
+  if (outcome.reason === 'container-unknown') {
+    return (
+      `Não foi possível iniciar o container de busca "${outcome.container}": o Docker não ` +
+      'reconheceu esse container (inexistente ou daemon inacessível). O Atlas nunca cria ' +
+      'containers. Seguindo sem auto-start.\n'
+    );
+  }
+  if (outcome.reason === 'start-failed') {
+    return (
+      `Não foi possível iniciar o container de busca "${outcome.container}": o Docker recusou ` +
+      'o start. Seguindo sem auto-start.\n'
+    );
+  }
+  return (
+    `Não foi possível iniciar o container de busca "${outcome.container}": não ficou em ` +
+    'execução após 5s. Seguindo sem auto-start.\n'
   );
 }
 
@@ -262,7 +312,12 @@ export async function run(
   const dependencyConfig = resolveDependencyConfig(parsed.configOverride);
   const dependencyReport = await dependencyManager.ensure(dependencyConfig);
   for (const outcome of dependencyReport.outcomes) {
-    const warning = formatOllamaWarning(outcome, dependencyConfig.ollamaBaseUrl);
+    // Narrowing por `dependency` (SPEC-0061): sem isso, um desfecho
+    // 'started' do container imprimiria o texto do Ollama, e vice-versa.
+    const warning =
+      outcome.dependency === 'ollama'
+        ? formatOllamaWarning(outcome, dependencyConfig.ollamaBaseUrl)
+        : formatSearchContainerWarning(outcome);
     if (warning !== undefined) {
       output.error(warning);
     }

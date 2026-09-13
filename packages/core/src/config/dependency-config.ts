@@ -3,12 +3,13 @@ import { OLLAMA_DEFAULT_BASE_URL } from '@atlas/model-gateway';
 import { defaultConfig } from './defaults.js';
 
 /**
- * Config de dependências externas resolvida (SPEC-0060, Escopo 2.3) — molde
- * exato de `resolveDataDir` (SPEC-0039/D17).
+ * Config de dependências externas resolvida (SPEC-0060/SPEC-0061, Escopo
+ * 2.3) — molde exato de `resolveDataDir` (SPEC-0039/D17).
  */
 export interface DependencyConfig {
   readonly autoStartOllama: boolean;
   readonly ollamaBaseUrl: string;
+  readonly autoStartSearchContainer: string;
 }
 
 /**
@@ -39,6 +40,50 @@ function resolveOllamaBaseUrl(override: AtlasConfigOverride = {}): string {
 }
 
 /**
+ * Predicado **puro**, origem única da regra de formato de nome de container
+ * Docker (SPEC-0061, Decisão D9): charset do próprio Docker. Recebe sempre
+ * um valor já `trim`ado.
+ */
+export function isValidContainerName(value: string): boolean {
+  return /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(value);
+}
+
+interface NormalizedContainerName {
+  readonly value: string;
+  readonly valid: boolean;
+}
+
+/**
+ * Regra única de normalização de nome de container (SPEC-0061, Decisão D6):
+ * `trim` primeiro; `''` após o `trim` é sempre "desligado" (`valid: true`,
+ * `value: ''`), nunca erro; qualquer outro valor precisa satisfazer
+ * `isValidContainerName`. Consumida por `loadConfig`, por
+ * `resolveDependencyConfig` e por `parseContainerNameSetting` — nenhum ponto
+ * valida sem `trim`.
+ */
+export function normalizeContainerName(raw: string): NormalizedContainerName {
+  const trimmed = raw.trim();
+  if (trimmed === '') {
+    return { value: '', valid: true };
+  }
+  return { value: trimmed, valid: isValidContainerName(trimmed) };
+}
+
+/**
+ * Precedência de `dependencies.autoStartSearchContainer` (`override >
+ * defaults`), normalizando **fail-closed** (SPEC-0061, Decisão D6): valor
+ * ausente ou que não satisfaça `isValidContainerName` (após `trim`) resolve
+ * para `''` (desligado). Pura, sem IO, nunca lança.
+ */
+export function mergeAutoStartSearchContainer(override: AtlasConfigOverride = {}): string {
+  const raw =
+    override.dependencies?.autoStartSearchContainer ??
+    defaultConfig().dependencies.autoStartSearchContainer;
+  const { value, valid } = normalizeContainerName(raw);
+  return valid ? value : '';
+}
+
+/**
  * Resolve **somente** a config de dependências de um `AtlasConfigOverride`,
  * pela mesma precedência de `loadConfig` — **pura, sem IO**, e **sem nunca
  * validar** os campos `persona`/`model.provider` (não aciona `PERSONA_IDS`,
@@ -49,7 +94,35 @@ export function resolveDependencyConfig(override: AtlasConfigOverride = {}): Dep
   return {
     autoStartOllama: mergeAutoStartOllama(override),
     ollamaBaseUrl: resolveOllamaBaseUrl(override),
+    autoStartSearchContainer: mergeAutoStartSearchContainer(override),
   };
+}
+
+export type ParsedContainerNameSetting =
+  | { readonly kind: 'unset' }
+  | { readonly kind: 'value'; readonly value: string }
+  | { readonly kind: 'invalid'; readonly received: string };
+
+/**
+ * Coerção **pura** de string de ambiente/flag para nome de container
+ * (SPEC-0061, Escopo 2.3) — irmã de `parseBooleanSetting`, origem única
+ * consumida pelas duas bordas (CLI/desktop). `undefined`/`''`/só-espaços ⇒
+ * `'unset'`; valor que passa em `isValidContainerName` após `trim` ⇒
+ * `'value'` (com o valor **trimado**); qualquer outro ⇒ `'invalid'` com o
+ * **valor cru**.
+ */
+export function parseContainerNameSetting(raw: string | undefined): ParsedContainerNameSetting {
+  if (raw === undefined) {
+    return { kind: 'unset' };
+  }
+  const { value, valid } = normalizeContainerName(raw);
+  if (value === '') {
+    return { kind: 'unset' };
+  }
+  if (!valid) {
+    return { kind: 'invalid', received: raw };
+  }
+  return { kind: 'value', value };
 }
 
 export type ParsedBooleanSetting =

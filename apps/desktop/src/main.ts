@@ -512,17 +512,30 @@ void app.whenReady().then(() => {
     }
   });
 
-  // Auto-start do Ollama (SPEC-0060, Escopo 5.2): uma vez por sessão de
-  // app, sem `await` — nunca atrasa/bloqueia a abertura da janela
-  // (ADR-0027(f)). Superfície de transparência desta fatia no desktop:
-  // linha de log no main process (D15/item 5.3).
+  // Auto-start do Ollama e do container de busca (SPEC-0060/SPEC-0061,
+  // Escopo 5.2/6.2): uma vez por sessão de app, sem `await` — nunca
+  // atrasa/bloqueia a abertura da janela (ADR-0027(f)). Superfície de
+  // transparência desta fatia no desktop: linha de log no main process
+  // (D15/D14/item 6.3). Narrowing por `outcome.dependency` (SPEC-0061):
+  // sem isso, um desfecho do container seria logado com o texto do Ollama.
   void ensureExternalDependencies().then((report) => {
     for (const outcome of report.outcomes) {
-      if (outcome.status === 'started') {
-        console.info('Atlas: Ollama iniciado automaticamente pelo Atlas.');
+      if (outcome.dependency === 'ollama') {
+        if (outcome.status === 'started') {
+          console.info('Atlas: Ollama iniciado automaticamente pelo Atlas.');
+        } else if (outcome.status === 'failed') {
+          console.warn(
+            `Atlas: não foi possível iniciar o Ollama automaticamente (${outcome.reason}).`,
+          );
+        }
+      } else if (outcome.status === 'started') {
+        console.info(
+          `Atlas: container de busca "${outcome.container}" iniciado automaticamente pelo Atlas.`,
+        );
       } else if (outcome.status === 'failed') {
         console.warn(
-          `Atlas: não foi possível iniciar o Ollama automaticamente (${outcome.reason}).`,
+          `Atlas: não foi possível iniciar o container de busca "${outcome.container}" ` +
+            `(${outcome.reason}).`,
         );
       }
     }

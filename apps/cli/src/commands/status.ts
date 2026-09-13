@@ -4,13 +4,15 @@ import type { OutputGateway } from '../gateway/output-gateway.js';
 
 /**
  * Linha `ollama auto-start: …` (SPEC-0060, Decisão D14 — emendada na 2ª
- * rodada): **quatro** textos exaustivos, função total do `DependencyReport`.
- * Sem outcome de `ollama` no relatório (inalcançável em produção — `run.ts`
- * sempre roda `ensure` antes de `createAtlas`, D7), degrada para o texto de
- * "desligado" em vez de inventar um 5º texto.
+ * rodada; SPEC-0061 corrige a seleção para buscar por `dependency` em vez de
+ * assumir `outcomes[0]`, agora que o relatório carrega sempre dois
+ * desfechos): **quatro** textos exaustivos, função total do
+ * `DependencyReport`. Sem outcome de `ollama` no relatório (inalcançável em
+ * produção — `run.ts` sempre roda `ensure` antes de `createAtlas`, D7),
+ * degrada para o texto de "desligado" em vez de inventar um 5º texto.
  */
 function formatAutoStartLine(report: DependencyReport): string {
-  const outcome = report.outcomes[0];
+  const outcome = report.outcomes.find((candidate) => candidate.dependency === 'ollama');
   if (outcome === undefined || outcome.status === 'disabled') {
     return 'ollama auto-start: desligado';
   }
@@ -21,6 +23,26 @@ function formatAutoStartLine(report: DependencyReport): string {
     return 'ollama auto-start: ligado (iniciado pelo Atlas)';
   }
   return `ollama auto-start: ligado (falhou: ${outcome.reason})`;
+}
+
+/**
+ * Linha `search container auto-start: …` (SPEC-0061, Decisão D13): **quatro**
+ * textos exaustivos, função total do `DependencyReport`, seleção por
+ * `dependency` (nunca por índice). O nome do container aparece porque a
+ * identidade do alvo é escolhida pelo usuário (D3).
+ */
+function formatSearchContainerAutoStartLine(report: DependencyReport): string {
+  const outcome = report.outcomes.find((candidate) => candidate.dependency === 'search-container');
+  if (outcome === undefined || outcome.status === 'disabled') {
+    return 'search container auto-start: desligado';
+  }
+  if (outcome.status === 'already-running') {
+    return `search container auto-start: "${outcome.container}" (já em execução)`;
+  }
+  if (outcome.status === 'started') {
+    return `search container auto-start: "${outcome.container}" (iniciado pelo Atlas)`;
+  }
+  return `search container auto-start: "${outcome.container}" (falhou: ${outcome.reason})`;
 }
 
 export function runStatus(
@@ -46,6 +68,7 @@ export function runStatus(
       }`,
       `search: ${config.tools.searchUrl !== '' ? config.tools.searchUrl : '(não configurado)'}`,
       formatAutoStartLine(report),
+      formatSearchContainerAutoStartLine(report),
       '',
     ].join('\n'),
   );

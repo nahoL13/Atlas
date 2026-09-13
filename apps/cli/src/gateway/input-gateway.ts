@@ -6,7 +6,7 @@ import type {
   ModelGatewayConfig,
   ProviderName,
 } from '@atlas/contracts';
-import { parseBooleanSetting } from '@atlas/core';
+import { parseBooleanSetting, parseContainerNameSetting } from '@atlas/core';
 
 /**
  * Espelho local (não sobe a `@atlas/contracts`) dos 8 campos de `Persona`
@@ -79,6 +79,7 @@ interface CliValues {
   'allow-net'?: string[] | undefined;
   'search-url'?: string | undefined;
   'auto-start-ollama'?: boolean | undefined;
+  'auto-start-search-container'?: string | undefined;
   provider?: string | undefined;
   model?: string | undefined;
   'base-url'?: string | undefined;
@@ -294,8 +295,39 @@ function resolveConfigOverride(values: CliValues, env: NodeJS.ProcessEnv): Atlas
       autoStartOllama = parsedEnvAutoStart.value;
     }
   }
-  if (autoStartOllama !== undefined) {
-    override.dependencies = { autoStartOllama };
+  // Auto-start do container de busca (SPEC-0061/D6): mesma precedência,
+  // mesmo molde — a flag, quando presente, decide sozinha (não consulta a
+  // env), no precedente de `--search-url` (D5 desta SPEC).
+  let autoStartSearchContainer: string | undefined;
+  if (values['auto-start-search-container'] !== undefined) {
+    const parsedFlag = parseContainerNameSetting(values['auto-start-search-container']);
+    if (parsedFlag.kind === 'invalid') {
+      throw new CliUsageError(
+        `--auto-start-search-container inválido: "${parsedFlag.received}" (nome de container ` +
+          'Docker: começa por alfanumérico, apenas [a-zA-Z0-9_.-], até 128 caracteres)',
+      );
+    }
+    if (parsedFlag.kind === 'value') {
+      autoStartSearchContainer = parsedFlag.value;
+    }
+  } else {
+    const parsedEnvContainer = parseContainerNameSetting(env.ATLAS_AUTO_START_SEARCH_CONTAINER);
+    if (parsedEnvContainer.kind === 'invalid') {
+      throw new CliUsageError(
+        `ATLAS_AUTO_START_SEARCH_CONTAINER inválida: "${parsedEnvContainer.received}" (nome de ` +
+          'container Docker: começa por alfanumérico, apenas [a-zA-Z0-9_.-], até 128 caracteres)',
+      );
+    }
+    if (parsedEnvContainer.kind === 'value') {
+      autoStartSearchContainer = parsedEnvContainer.value;
+    }
+  }
+
+  if (autoStartOllama !== undefined || autoStartSearchContainer !== undefined) {
+    override.dependencies = {
+      ...(autoStartOllama !== undefined ? { autoStartOllama } : {}),
+      ...(autoStartSearchContainer !== undefined ? { autoStartSearchContainer } : {}),
+    };
   }
 
   return override;
@@ -366,6 +398,7 @@ function parseArgvOrThrow(argv: string[]) {
         'allow-net': { type: 'string', multiple: true },
         'search-url': { type: 'string' },
         'auto-start-ollama': { type: 'boolean' },
+        'auto-start-search-container': { type: 'string' },
         provider: { type: 'string' },
         model: { type: 'string' },
         'base-url': { type: 'string' },

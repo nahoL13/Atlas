@@ -14,9 +14,9 @@ export function defaultConfig(): AtlasConfig {
       model: 'llama3.2',
     },
     tools: { searchUrl: '' },
-    // Auto-gerência de processos externos (SPEC-0060/D24): fail-closed —
-    // sem opt-in explícito, nenhum health-check e nenhum processo é
-    // disparado.
-    dependencies: { autoStartOllama: false },
+    // Auto-gerência de processos externos (SPEC-0060/SPEC-0061, D24):
+    // fail-closed — sem opt-in explícito, nenhum health-check e nenhum
+    // processo é disparado.
+    dependencies: { autoStartOllama: false, autoStartSearchContainer: '' },
   };
 }

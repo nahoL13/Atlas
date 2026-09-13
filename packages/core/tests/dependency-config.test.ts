@@ -1,14 +1,40 @@
 import { describe, expect, it } from 'vitest';
 import { OLLAMA_DEFAULT_BASE_URL } from '@atlas/model-gateway';
-import { parseBooleanSetting, resolveDependencyConfig } from '../src/config/dependency-config.js';
+import {
+  isValidContainerName,
+  parseBooleanSetting,
+  parseContainerNameSetting,
+  resolveDependencyConfig,
+} from '../src/config/dependency-config.js';
 import { createDependencyManager } from '../src/dependencies/dependency-manager.js';
-import type { OllamaStartOutcome, ProcessPort } from '../src/dependencies/process-port.js';
+import type {
+  OllamaStartOutcome,
+  ProcessPort,
+  SearchContainerStartOutcome,
+  SearchContainerState,
+} from '../src/dependencies/process-port.js';
+
+function fakeProcess(overrides: Partial<ProcessPort> = {}): ProcessPort {
+  return {
+    isOllamaRunning: async () => true,
+    startOllama: async (): Promise<OllamaStartOutcome> => ({ started: true }),
+    stopOllama: async () => {},
+    inspectSearchContainer: async (): Promise<SearchContainerState> => 'unknown',
+    startSearchContainer: async (): Promise<SearchContainerStartOutcome> => ({
+      started: false,
+      reason: 'container-unknown',
+    }),
+    stopSearchContainer: async () => {},
+    ...overrides,
+  };
+}
 
 describe('resolveDependencyConfig (SPEC-0060, CA 3)', () => {
-  it('resolveDependencyConfig({}) devolve autoStartOllama false e ollamaBaseUrl default', () => {
+  it('resolveDependencyConfig({}) devolve autoStartOllama false, ollamaBaseUrl default e autoStartSearchContainer vazio (CA 5)', () => {
     expect(resolveDependencyConfig({})).toEqual({
       autoStartOllama: false,
       ollamaBaseUrl: OLLAMA_DEFAULT_BASE_URL,
+      autoStartSearchContainer: '',
     });
   });
 
@@ -58,14 +84,12 @@ describe('resolveDependencyConfig (SPEC-0060, CA 3)', () => {
   describe('não-regressão do vazamento nomeado pelo veto (CA 3b)', () => {
     it('com provider remote, o ProcessPort fake só vê OLLAMA_DEFAULT_BASE_URL', async () => {
       const calls: string[] = [];
-      const process: ProcessPort = {
+      const process: ProcessPort = fakeProcess({
         isOllamaRunning: async (baseUrl) => {
           calls.push(baseUrl);
           return true;
         },
-        startOllama: async (): Promise<OllamaStartOutcome> => ({ started: true }),
-        stopOllama: async () => {},
-      };
+      });
       const manager = createDependencyManager({ process });
       const config = resolveDependencyConfig({
         dependencies: { autoStartOllama: true },
@@ -77,6 +101,71 @@ describe('resolveDependencyConfig (SPEC-0060, CA 3)', () => {
       expect(calls).toEqual([OLLAMA_DEFAULT_BASE_URL]);
       expect(calls).not.toContain('https://api.terceiro.com');
     });
+  });
+
+  describe('autoStartSearchContainer (SPEC-0061, CA 5)', () => {
+    it('nome válido resolve para o próprio nome', () => {
+      expect(
+        resolveDependencyConfig({ dependencies: { autoStartSearchContainer: 'searxng' } })
+          .autoStartSearchContainer,
+      ).toBe('searxng');
+    });
+
+    it('nome inválido normaliza fail-closed para vazio e não lança', () => {
+      expect(() =>
+        resolveDependencyConfig({ dependencies: { autoStartSearchContainer: 'a b' } }),
+      ).not.toThrow();
+      expect(
+        resolveDependencyConfig({ dependencies: { autoStartSearchContainer: 'a b' } })
+          .autoStartSearchContainer,
+      ).toBe('');
+    });
+  });
+
+  describe('regra única de trim (D6, CA 2a)', () => {
+    it('"  searxng  " resolve para "searxng" (trimado)', () => {
+      expect(
+        resolveDependencyConfig({ dependencies: { autoStartSearchContainer: '  searxng  ' } })
+          .autoStartSearchContainer,
+      ).toBe('searxng');
+    });
+
+    it('"   " resolve para "" (desligado)', () => {
+      expect(
+        resolveDependencyConfig({ dependencies: { autoStartSearchContainer: '   ' } })
+          .autoStartSearchContainer,
+      ).toBe('');
+    });
+  });
+});
+
+describe('isValidContainerName (SPEC-0061, CA 3)', () => {
+  it.each(['searxng', 'searxng_1', 'my.search-01', 'A1'])('aceita %j', (value) => {
+    expect(isValidContainerName(value)).toBe(true);
+  });
+
+  it.each(['', '   ', '-abc', '.abc', 'a b', 'a/b', 'a;b', 'a\nb', 'a'.repeat(129)])(
+    'recusa %j',
+    (value) => {
+      expect(isValidContainerName(value)).toBe(false);
+    },
+  );
+});
+
+describe('parseContainerNameSetting (SPEC-0061/D6, CA 4)', () => {
+  it.each([undefined, '', '   '])('%j é "unset"', (raw) => {
+    expect(parseContainerNameSetting(raw)).toEqual({ kind: 'unset' });
+  });
+
+  it('"  searxng  " é "value" com o valor trimado', () => {
+    expect(parseContainerNameSetting('  searxng  ')).toEqual({
+      kind: 'value',
+      value: 'searxng',
+    });
+  });
+
+  it('"a b" é "invalid" com o valor cru (sem trim)', () => {
+    expect(parseContainerNameSetting('a b')).toEqual({ kind: 'invalid', received: 'a b' });
   });
 });
 

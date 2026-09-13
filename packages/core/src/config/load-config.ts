@@ -9,7 +9,7 @@ import {
 import { PERSONA_IDS } from '@atlas/persona';
 import { defaultConfig } from './defaults.js';
 import { DATA_DIR_ISSUE, isValidDataDir, mergeDataDir } from './data-dir.js';
-import { mergeAutoStartOllama } from './dependency-config.js';
+import { mergeAutoStartOllama, normalizeContainerName } from './dependency-config.js';
 
 const PROVIDERS: readonly ProviderName[] = ['fake', 'local', 'remote'];
 
@@ -70,7 +70,20 @@ export function loadConfig(
   };
   const personaIds = options.personaIds ?? PERSONA_IDS;
   const tools = { searchUrl: override.tools?.searchUrl ?? defaults.tools.searchUrl };
-  const dependencies = { autoStartOllama: mergeAutoStartOllama(override) };
+  const autoStartSearchContainerRaw =
+    override.dependencies?.autoStartSearchContainer ??
+    defaults.dependencies.autoStartSearchContainer;
+  const normalizedContainerName =
+    typeof autoStartSearchContainerRaw === 'string'
+      ? normalizeContainerName(autoStartSearchContainerRaw)
+      : { value: '', valid: false };
+  const dependencies = {
+    autoStartOllama: mergeAutoStartOllama(override),
+    // Regra única de normalização (SPEC-0061/D6): `trim` antes de julgar; o
+    // valor guardado na config resolvida é sempre o trimado, nunca o cru —
+    // paridade com `resolveDependencyConfig`.
+    autoStartSearchContainer: normalizedContainerName.value,
+  };
   const merged: AtlasConfig = {
     logLevel: override.logLevel ?? defaults.logLevel,
     dataDir: mergeDataDir(override),
@@ -139,6 +152,13 @@ export function loadConfig(
 
   if (typeof dependencies.autoStartOllama !== 'boolean') {
     issues.push('dependencies.autoStartOllama deve ser um booleano');
+  }
+
+  if (!normalizedContainerName.valid) {
+    issues.push(
+      "dependencies.autoStartSearchContainer deve ser '' (desligado) ou um nome de container " +
+        'Docker válido (começa por alfanumérico, apenas [a-zA-Z0-9_.-], até 128 caracteres)',
+    );
   }
 
   if (!PROVIDERS.includes(model.provider)) {

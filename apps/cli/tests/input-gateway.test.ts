@@ -418,6 +418,68 @@ describe('CliInputGateway.normalize', () => {
     });
   });
 
+  describe('--auto-start-search-container / ATLAS_AUTO_START_SEARCH_CONTAINER (SPEC-0061, CA 24/25)', () => {
+    it('a flag produz configOverride.dependencies.autoStartSearchContainer === "searxng"', () => {
+      const gateway = createCliInputGateway();
+      const parsed = gateway.normalize(
+        ['status', '--auto-start-search-container', 'searxng'],
+        {} as NodeJS.ProcessEnv,
+      );
+      expect(parsed.configOverride.dependencies).toEqual({ autoStartSearchContainer: 'searxng' });
+    });
+
+    it('ATLAS_AUTO_START_SEARCH_CONTAINER=searxng produz o mesmo resultado', () => {
+      const gateway = createCliInputGateway();
+      const parsed = gateway.normalize(['status'], {
+        ATLAS_AUTO_START_SEARCH_CONTAINER: 'searxng',
+      } as NodeJS.ProcessEnv);
+      expect(parsed.configOverride.dependencies).toEqual({ autoStartSearchContainer: 'searxng' });
+    });
+
+    it('a flag vence a env', () => {
+      const gateway = createCliInputGateway();
+      const parsed = gateway.normalize(['status', '--auto-start-search-container', 'flagname'], {
+        ATLAS_AUTO_START_SEARCH_CONTAINER: 'envname',
+      } as NodeJS.ProcessEnv);
+      expect(parsed.configOverride.dependencies).toEqual({ autoStartSearchContainer: 'flagname' });
+    });
+
+    it('ausência das duas fontes não cria a chave (sem --auto-start-ollama, dependencies segue undefined)', () => {
+      const gateway = createCliInputGateway();
+      const parsed = gateway.normalize(['status'], {} as NodeJS.ProcessEnv);
+      expect(parsed.configOverride.dependencies).toBeUndefined();
+    });
+
+    it('ATLAS_AUTO_START_SEARCH_CONTAINER="a b" lança CliUsageError citando a regra de formato', () => {
+      const gateway = createCliInputGateway();
+      expect(() =>
+        gateway.normalize(['status'], {
+          ATLAS_AUTO_START_SEARCH_CONTAINER: 'a b',
+        } as NodeJS.ProcessEnv),
+      ).toThrow(CliUsageError);
+    });
+
+    it('as duas flags juntas produzem os dois campos em configOverride.dependencies', () => {
+      const gateway = createCliInputGateway();
+      const parsed = gateway.normalize(
+        ['status', '--auto-start-ollama', '--auto-start-search-container', 'searxng'],
+        {} as NodeJS.ProcessEnv,
+      );
+      expect(parsed.configOverride.dependencies).toEqual({
+        autoStartOllama: true,
+        autoStartSearchContainer: 'searxng',
+      });
+    });
+
+    it('--auto-start-search-container "" (flag presente, valor vazio) desliga e não consulta a env', () => {
+      const gateway = createCliInputGateway();
+      const parsed = gateway.normalize(['status', '--auto-start-search-container', ''], {
+        ATLAS_AUTO_START_SEARCH_CONTAINER: 'searxng',
+      } as NodeJS.ProcessEnv);
+      expect(parsed.configOverride.dependencies).toBeUndefined();
+    });
+  });
+
   it('override com múltiplas raízes de read e write passa intacto pelo loadConfig do core', () => {
     const gateway = createCliInputGateway();
     const parsed = gateway.normalize(

@@ -5,16 +5,51 @@ import { runStatus } from '../src/commands/status.js';
 import type { OutputGateway } from '../src/gateway/output-gateway.js';
 
 const DISABLED_REPORT: DependencyReport = {
-  outcomes: [{ dependency: 'ollama', status: 'disabled' }],
+  outcomes: [
+    { dependency: 'ollama', status: 'disabled' },
+    { dependency: 'search-container', status: 'disabled' },
+  ],
 };
 const ALREADY_RUNNING_REPORT: DependencyReport = {
-  outcomes: [{ dependency: 'ollama', status: 'already-running' }],
+  outcomes: [
+    { dependency: 'ollama', status: 'already-running' },
+    { dependency: 'search-container', status: 'disabled' },
+  ],
 };
 const STARTED_REPORT: DependencyReport = {
-  outcomes: [{ dependency: 'ollama', status: 'started' }],
+  outcomes: [
+    { dependency: 'ollama', status: 'started' },
+    { dependency: 'search-container', status: 'disabled' },
+  ],
 };
 const FAILED_TIMEOUT_REPORT: DependencyReport = {
-  outcomes: [{ dependency: 'ollama', status: 'failed', reason: 'timeout' }],
+  outcomes: [
+    { dependency: 'ollama', status: 'failed', reason: 'timeout' },
+    { dependency: 'search-container', status: 'disabled' },
+  ],
+};
+const CONTAINER_ALREADY_RUNNING_REPORT: DependencyReport = {
+  outcomes: [
+    { dependency: 'ollama', status: 'disabled' },
+    { dependency: 'search-container', status: 'already-running', container: 'searxng' },
+  ],
+};
+const CONTAINER_STARTED_REPORT: DependencyReport = {
+  outcomes: [
+    { dependency: 'ollama', status: 'disabled' },
+    { dependency: 'search-container', status: 'started', container: 'searxng' },
+  ],
+};
+const CONTAINER_FAILED_REPORT: DependencyReport = {
+  outcomes: [
+    { dependency: 'ollama', status: 'disabled' },
+    {
+      dependency: 'search-container',
+      status: 'failed',
+      reason: 'container-unknown',
+      container: 'searxng',
+    },
+  ],
 };
 
 function capture() {
@@ -39,7 +74,7 @@ function fakeAtlas(permissions: AtlasConfig['permissions'], searchUrl: string = 
       permissions,
       model: { provider: 'local', model: 'llama3.2' },
       tools: { searchUrl },
-      dependencies: { autoStartOllama: false },
+      dependencies: { autoStartOllama: false, autoStartSearchContainer: '' },
     },
     persona: {
       id: 'jarvis',
@@ -187,6 +222,49 @@ describe('runStatus', () => {
       const cap = capture();
       runStatus(fakeAtlas(permissions), cap.gateway, FAILED_TIMEOUT_REPORT);
       expect(cap.text()).toContain('ollama auto-start: ligado (falhou: timeout)');
+    });
+  });
+
+  // SPEC-0061/D13: quatro textos exaustivos, seleção por `dependency` (não
+  // mais `outcomes[0]`); a linha do Ollama continua correta mesmo com dois
+  // outcomes no relatório (CA 29).
+  describe('linha search container auto-start', () => {
+    const permissions: AtlasConfig['permissions'] = {
+      readRoots: ['/x'],
+      writeRoots: [],
+      netRoots: [],
+    };
+
+    it('"disabled" ⇒ "search container auto-start: desligado"', () => {
+      const cap = capture();
+      runStatus(fakeAtlas(permissions), cap.gateway, DISABLED_REPORT);
+      expect(cap.text()).toContain('search container auto-start: desligado');
+    });
+
+    it('"already-running" ⇒ nome + "(já em execução)"', () => {
+      const cap = capture();
+      runStatus(fakeAtlas(permissions), cap.gateway, CONTAINER_ALREADY_RUNNING_REPORT);
+      expect(cap.text()).toContain('search container auto-start: "searxng" (já em execução)');
+    });
+
+    it('"started" ⇒ nome + "(iniciado pelo Atlas)"', () => {
+      const cap = capture();
+      runStatus(fakeAtlas(permissions), cap.gateway, CONTAINER_STARTED_REPORT);
+      expect(cap.text()).toContain('search container auto-start: "searxng" (iniciado pelo Atlas)');
+    });
+
+    it('"failed" ⇒ nome + "(falhou: <reason>)"', () => {
+      const cap = capture();
+      runStatus(fakeAtlas(permissions), cap.gateway, CONTAINER_FAILED_REPORT);
+      expect(cap.text()).toContain(
+        'search container auto-start: "searxng" (falhou: container-unknown)',
+      );
+    });
+
+    it('a linha do Ollama continua correta mesmo com o relatório carregando dois outcomes', () => {
+      const cap = capture();
+      runStatus(fakeAtlas(permissions), cap.gateway, CONTAINER_STARTED_REPORT);
+      expect(cap.text()).toContain('ollama auto-start: desligado');
     });
   });
 });
