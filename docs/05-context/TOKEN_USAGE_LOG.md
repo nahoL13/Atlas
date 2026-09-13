@@ -72,7 +72,7 @@ As métricas são separadas por executor. Tokens efetivos Claude usam os pesos h
 | SPEC-0058 | Claude | Endurecimento da composição de saídas de Tools no prompt (`@atlas/cognitive`): delimitação estruturada por bloco `<tool_output>`, instrução fixa de conteúdo não confiável e teto de tamanho por passo — mitigação genérica de injeção indireta de prompt, aplicável a **toda** Tool | Draft | 8 | 2026-08-22 | 46.684.753 | 8.853.771 | complete |
 | SPEC-0059 | Claude | Desktop: painel de rede e busca — autorizar hosts (`netRoots`) e configurar/desativar o provedor de busca (`tools.searchUrl`) em runtime pela interface gráfica, com consentimento explícito por host, no molde de consentimento de política já estabelecido pela SPEC-0038 | Draft | 9 | 2026-08-22 | 172.290.188 | 25.213.041 | complete |
 | SPEC-0060 | Claude | Auto-start do Ollama sob opt-in explícito: `createDependencyManager` + `ProcessPort` em `@atlas/core`, disparado uma vez por processo em `apps/cli` e uma vez por sessão de app em `apps/desktop`, degradando sem nunca bloquear o boot. | Draft | 7 | 2026-09-12 | 100.305.555 | 13.973.437 | complete |
-| SPEC-0061 | Claude | Auto-start do container Docker do provedor de busca sob opt-in explícito e nominal: `ProcessPort`/`createDependencyManager` (`@atlas/core`) estendidos de forma aditiva com três operações Docker nomeadas — só `start` de um container **já existente**, nunca `run`/`create`/`pull` —, disparados uma vez por processo em `apps/cli` e uma vez por sessão de app em `apps/desktop`. | Draft | 2 | 2026-09-13 | 15.543.082 | 3.090.250 | complete |
+| SPEC-0061 | Claude | Auto-start do container Docker do provedor de busca sob opt-in explícito e nominal: `ProcessPort`/`createDependencyManager` (`@atlas/core`) estendidos de forma aditiva com três operações Docker nomeadas — só `start` de um container **já existente**, nunca `run`/`create`/`pull` —, disparados uma vez por processo em `apps/cli` e uma vez por sessão de app em `apps/desktop`. | Draft | 4 | 2026-09-13 | 39.128.756 | 6.767.258 | complete |
 
 ## Detalhamento por fase
 
@@ -140,7 +140,7 @@ Valores em tokens efetivos. Codex não é somado nem comparado a Claude enquanto
 | SPEC-0058 | Claude | 350.742 | 838.425 | 2.330.681 | 2.569.249 | 559.106 | 2.205.568 | 0 |
 | SPEC-0059 | Claude | 5.121.641 | 3.109.569 | 2.107.309 | 11.698.065 | 898.971 | 2.277.486 | 0 |
 | SPEC-0060 | Claude | 1.075.749 | 1.020.966 | 2.706.818 | 9.103.530 | 66.374 | 0 | 0 |
-| SPEC-0061 | Claude | 90.520 | 708.797 | 0 | 1.843.822 | 1.155.908 | 0 | 0 |
+| SPEC-0061 | Claude | 686.323 | 708.797 | 0 | 1.843.822 | 1.155.908 | 3.081.205 | 0 |
 
 ## Eficiência de processo (overhead ÷ implementação)
 
@@ -195,7 +195,7 @@ Calculada separadamente por executor, apenas quando tokens efetivos comparáveis
 | SPEC-0058 | Claude | 2.569.249 | 6.284.522 | 2.4× |
 | SPEC-0059 | Claude | 11.698.065 | 13.514.976 | 1.2× |
 | SPEC-0060 | Claude | 9.103.530 | 4.869.907 | 0.5× |
-| SPEC-0061 | Claude | 1.843.822 | 1.955.225 | 1.1× |
+| SPEC-0061 | Claude | 1.843.822 | 5.632.233 | 3.1× |
 
 ## Como estimar antes de começar uma SPEC nova
 
