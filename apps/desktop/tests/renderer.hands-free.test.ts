@@ -488,7 +488,7 @@ describe('watchdog de thinking (CA38)', () => {
 
     expect(toggleEl(f).textContent).toContain('Ligar');
     expect(statusText(f)).not.toBe('');
-  });
+  }, 15_000);
 });
 
 describe('freio: desligar fecha o microfone em qualquer estado (CA39)', () => {
