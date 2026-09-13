@@ -149,10 +149,11 @@ class UsageTests(unittest.TestCase):
             root = Path(temp)
             log_path, cache_path = root / "TOKEN_USAGE_LOG.md", root / "usage-cache.json"
             log_path.write_text(build_spec_log([]), encoding="utf-8")
-            update_usage_files(log_path, cache_path, [first], now="2026-08-05T10:00:01Z")
-            merged = update_usage_files(
-                log_path, cache_path, [second], now="2026-08-05T10:01:01Z"
-            )
+            with patch("usage_lib.SPECS_DIR", root):
+                update_usage_files(log_path, cache_path, [first], now="2026-08-05T10:00:01Z")
+                merged = update_usage_files(
+                    log_path, cache_path, [second], now="2026-08-05T10:01:01Z"
+                )
         self.assertIn("| SPEC-0052 | Codex |", merged)
         self.assertIn("| SPEC-0052 | Codex | (SPEC não encontrada em docs/implementation/specs/) | ? | 2 | 2026-08-05 | 300 | N/D | complete |", merged)
         self.assertIn("| SPEC-0052 | Codex | N/D | N/D |", merged)
@@ -163,10 +164,11 @@ class UsageTests(unittest.TestCase):
             root = Path(temp)
             log_path, cache_path = root / "TOKEN_USAGE_LOG.md", root / "usage-cache.json"
             log_path.write_text(build_spec_log([]), encoding="utf-8")
-            update_usage_files(log_path, cache_path, [record], now="2026-08-05T10:00:01Z")
-            once = update_usage_files(
-                log_path, cache_path, [record], now="2026-08-05T10:00:02Z"
-            )
+            with patch("usage_lib.SPECS_DIR", root):
+                update_usage_files(log_path, cache_path, [record], now="2026-08-05T10:00:01Z")
+                once = update_usage_files(
+                    log_path, cache_path, [record], now="2026-08-05T10:00:02Z"
+                )
         self.assertIn("| SPEC-0052 | Codex | (SPEC não encontrada em docs/implementation/specs/) | ? | 1 | 2026-08-05 | 100 | N/D | complete |", once)
 
     def test_later_snapshot_replaces_same_session_contribution(self) -> None:
@@ -176,10 +178,11 @@ class UsageTests(unittest.TestCase):
             root = Path(temp)
             log_path, cache_path = root / "TOKEN_USAGE_LOG.md", root / "usage-cache.json"
             log_path.write_text(build_spec_log([]), encoding="utf-8")
-            update_usage_files(log_path, cache_path, [first], now="2026-08-05T10:00:01Z")
-            merged = update_usage_files(
-                log_path, cache_path, [later], now="2026-08-05T10:05:01Z"
-            )
+            with patch("usage_lib.SPECS_DIR", root):
+                update_usage_files(log_path, cache_path, [first], now="2026-08-05T10:00:01Z")
+                merged = update_usage_files(
+                    log_path, cache_path, [later], now="2026-08-05T10:05:01Z"
+                )
         self.assertIn("| SPEC-0052 | Codex | (SPEC não encontrada em docs/implementation/specs/) | ? | 1 | 2026-08-05 | 180 | N/D | complete |", merged)
 
     def test_distinct_sessions_accumulate_after_idempotent_merge(self) -> None:
@@ -189,10 +192,11 @@ class UsageTests(unittest.TestCase):
             root = Path(temp)
             log_path, cache_path = root / "TOKEN_USAGE_LOG.md", root / "usage-cache.json"
             log_path.write_text(build_spec_log([]), encoding="utf-8")
-            update_usage_files(log_path, cache_path, [first], now="2026-08-05T10:00:01Z")
-            merged = update_usage_files(
-                log_path, cache_path, [second], now="2026-08-05T10:01:01Z"
-            )
+            with patch("usage_lib.SPECS_DIR", root):
+                update_usage_files(log_path, cache_path, [first], now="2026-08-05T10:00:01Z")
+                merged = update_usage_files(
+                    log_path, cache_path, [second], now="2026-08-05T10:01:01Z"
+                )
         self.assertIn("| SPEC-0052 | Codex | (SPEC não encontrada em docs/implementation/specs/) | ? | 2 | 2026-08-05 | 300 | N/D | complete |", merged)
 
     def test_first_cache_migration_preserves_history_and_cuts_over_sessions(self) -> None:
