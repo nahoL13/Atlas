@@ -176,6 +176,13 @@
                 O provedor de busca só funciona se o host do endpoint estiver autorizado na lista de
                 rede acima — o Atlas não autoriza nada automaticamente.
               </p>
+              <p>
+                O Atlas só liga um container Docker que já existe — nunca cria, baixa ou remove.
+                Ligar o container não autoriza nenhum host na lista de Rede acima.
+              </p>
+              <input id="search-container-input" type="text" placeholder="nome-do-container" />
+              <button id="search-container-apply" type="button">Ligar container</button>
+              <p id="search-container-status"></p>
             </div>
             <p id="network-inforce"></p>
             <button id="network-apply" type="button">Aplicar rede e busca</button>
@@ -216,6 +223,7 @@
             <p id="system-memory"></p>
             <p id="system-gpu"></p>
             <p id="system-network"></p>
+            <div id="system-dependencies"></div>
             <p id="system-status"></p>
           </section>
         </div>

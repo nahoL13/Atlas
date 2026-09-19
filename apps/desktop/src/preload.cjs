@@ -51,4 +51,9 @@ contextBridge.exposeInMainWorld('atlas', {
   tokens: {
     read: () => ipcRenderer.invoke('atlas:tokens:read'),
   },
+  dependencies: {
+    read: () => ipcRenderer.invoke('atlas:dependencies:read'),
+    startSearchContainer: (container) =>
+      ipcRenderer.invoke('atlas:dependencies:search-container', container),
+  },
 });

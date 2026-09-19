@@ -15,9 +15,11 @@ import {
   deletePersona,
   describePersona,
   ensureExternalDependencies,
+  ensureSearchContainer,
   forgetFact,
   listPersonas,
   openChatSession,
+  readDependencyStatus,
   readTokenUsage,
   releaseExternalDependencies,
   resolveAskSnapshot,
@@ -440,6 +442,15 @@ ipcMain.handle('atlas:vad:resources', () => vadResources.load());
 // módulo (D4) — leitura sob demanda, sem processo residente nem push.
 ipcMain.handle('atlas:metrics:read', () => systemMetrics.read());
 ipcMain.handle('atlas:tokens:read', () => readTokenUsage());
+
+// Auto-start de dependências externas (SPEC-0062, Escopo 4.2): dois canais,
+// um por gesto (D18) — leitura síncrona do estado da sessão e o gesto de
+// GUI que liga sob demanda um container de busca já nomeado. Nenhum canal
+// existente muda.
+ipcMain.handle('atlas:dependencies:read', () => readDependencyStatus());
+ipcMain.handle('atlas:dependencies:search-container', (_event, container: string) =>
+  ensureSearchContainer(container),
+);
 
 // Gesto de escape (SPEC-0051): canal síncrono na semântica de `handle`
 // (nunca sobe/desliga um Core) — só marca como abandonada toda operação

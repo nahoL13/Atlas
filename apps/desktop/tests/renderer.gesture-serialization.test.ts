@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type {
   RendererAskSnapshot,
+  RendererDependencyOutcome,
   RendererFixture,
   RendererFixtureOptions,
   RendererTurnSnapshot,
@@ -631,5 +632,97 @@ describe('gesto de escape — clique aciona window.atlas.cancel() e o aviso de t
     const result = f.document.getElementById('ask-result')?.textContent ?? '';
     expect(result).toContain('⚠️ Pergunta cancelada pelo usuário.');
     expect(result).toContain(CANCEL_NOTICE);
+  });
+});
+
+// SPEC-0062 (CA38, D6/D8): o gesto de ligar o container Docker do provedor
+// de busca fica FORA da serialização de gestos — não sobe Core, não executa
+// Tool, não altera política. Nem `chatTurnInFlight`/`askInFlight`/
+// `micBusy()`/`policyApplicationInFlight` o desabilitam, e ele próprio não
+// desabilita nenhum outro controle.
+describe('gesto do container Docker (SPEC-0062) — fora da serialização (CA38)', () => {
+  it('#search-container-input/#search-container-apply seguem habilitados durante um turno de chat em voo', async () => {
+    let resolveSend: ((value: RendererTurnSnapshot) => void) | undefined;
+    const sendPromise = new Promise<RendererTurnSnapshot>((resolve) => {
+      resolveSend = resolve;
+    });
+    const f = await open({ chatSend: () => sendPromise });
+
+    await submitChat(f, 'olá');
+    expectAllDisabled(collectSerializedControls(f), true);
+
+    expect(
+      (f.document.getElementById('search-container-input') as unknown as { disabled: boolean })
+        .disabled,
+    ).toBe(false);
+    expect(
+      (f.document.getElementById('search-container-apply') as unknown as { disabled: boolean })
+        .disabled,
+    ).toBe(false);
+
+    resolveSend?.({ reply: 'oi', steps: [], learned: [] });
+    await f.flush();
+  });
+
+  it('#search-container-input/#search-container-apply seguem habilitados durante um ask em voo', async () => {
+    let resolveAsk: ((value: RendererAskSnapshot) => void) | undefined;
+    const askPromise = new Promise<RendererAskSnapshot>((resolve) => {
+      resolveAsk = resolve;
+    });
+    const f = await open({ atlas: { ask: () => askPromise } });
+
+    submitAsk(f, 'faça algo');
+
+    expect(
+      (f.document.getElementById('search-container-input') as unknown as { disabled: boolean })
+        .disabled,
+    ).toBe(false);
+    expect(
+      (f.document.getElementById('search-container-apply') as unknown as { disabled: boolean })
+        .disabled,
+    ).toBe(false);
+
+    resolveAsk?.({ text: 'pronto', steps: [], learned: [] });
+    await f.flush();
+  });
+
+  it('o clique roda mesmo com um turno de chat em voo — não é bloqueado por chatTurnInFlight', async () => {
+    let resolveSend: ((value: RendererTurnSnapshot) => void) | undefined;
+    const sendPromise = new Promise<RendererTurnSnapshot>((resolve) => {
+      resolveSend = resolve;
+    });
+    const f = await open({ chatSend: () => sendPromise });
+
+    await submitChat(f, 'olá');
+    expectAllDisabled(collectSerializedControls(f), true);
+
+    setValue(f, 'search-container-input', 'searxng');
+    f.document
+      .getElementById('search-container-apply')
+      ?.dispatchEvent(new f.window.Event('click', { bubbles: true, cancelable: true }));
+    await f.flush();
+
+    expect(f.calls.searchContainerStartCalls).toEqual(['searxng']);
+
+    resolveSend?.({ reply: 'oi', steps: [], learned: [] });
+    await f.flush();
+  });
+
+  it('o gesto não desabilita nenhum controle da lista serializada (chat/ask seguem livres)', async () => {
+    let resolve: ((value: RendererDependencyOutcome) => void) | undefined;
+    const gate = new Promise<RendererDependencyOutcome>((res) => {
+      resolve = res;
+    });
+    const f = await open({ startSearchContainer: () => gate });
+
+    setValue(f, 'search-container-input', 'searxng');
+    f.document
+      .getElementById('search-container-apply')
+      ?.dispatchEvent(new f.window.Event('click', { bubbles: true, cancelable: true }));
+
+    expectAllDisabled(collectSerializedControls(f), false);
+
+    resolve?.({ dependency: 'search-container', status: 'started', container: 'searxng' });
+    await f.flush();
   });
 });

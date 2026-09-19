@@ -180,3 +180,54 @@ de uma nova SPEC já ter fechado a superfície de rede/busca do desktop
   comandos sob o Permission Service) nem o [ADR-0026](ADR-0026-network-access-gate.md).
 - SPEC candidata (nome de trabalho): auto-start sempre-ativo do Ollama no
   desktop + campo de nome do container no painel de rede/busca.
+
+---
+
+# Atualização ([SPEC-0062](../implementation/specs/SPEC-0062-desktop-dependency-autostart-default.md))
+
+A SPEC-0062 implementou este ADR **sem alterar nenhuma cláusula (i)–(iv)**.
+Contrato técnico exato que o ADR delegou:
+
+- **(i) — onde o default `true` é aplicado**: numa constante exportada,
+  `DESKTOP_AUTO_START_OLLAMA_DEFAULT`, em
+  `apps/desktop/src/core-bridge.ts` — **nunca** em `@atlas/core`.
+  `defaultConfig()`/`resolveDependencyConfig` (compartilhados com
+  `apps/cli`) seguem dizendo `autoStartOllama: false`; o desktop resolve o
+  valor de borda **antes** de chamar `resolveDependencyConfig`, no mesmo
+  papel que uma flag de CLI ou uma env já ocupam na precedência `flags >
+  env > defaults` — não é um segundo lugar onde "o default da plataforma"
+  vive. Valor **inválido** de `ATLAS_AUTO_START_OLLAMA` continua ⇒
+  desligado + o mesmo `console.warn` pinado (`INVALID_AUTO_START_OLLAMA_ENV_WARNING`,
+  byte a byte); só o caso *ausente* mudou de polaridade.
+- **(ii) — o campo novo do painel de rede/busca é um gesto próprio, não uma
+  extensão de `selectNetworkAccess`.** `DependencyManager.ensureSearchContainer`
+  (extensão aditiva do contrato técnico do ADR-0027, ver a nota de
+  Atualização lá) é chamado por uma função nova de `core-bridge.ts`
+  (`ensureSearchContainer`), exposta por um canal IPC próprio
+  (`'atlas:dependencies:search-container'`) e por um botão próprio
+  (`#search-container-apply`, dentro de `#search-detail`) — **não** reusa
+  `network-grant-dialog.ts` nem qualquer diálogo de consentimento: digitar
+  o nome e clicar **é** o opt-in explícito que a cláusula já previa.
+  **Divergência de mecanismo, registrada por escrito para que ninguém leia
+  (ii) e conclua que o código a implementa ao pé da letra**: a letra da
+  cláusula descreve o campo como algo que "ao ser preenchido popula o
+  mesmo `autoStartSearchContainer` que hoje só a env aceita" — mas popular
+  a config **no momento do gesto seria inerte**, porque `ensure` é
+  memoizado por instância (SPEC-0060/D18) e já assentou em
+  `app.whenReady()`, então nenhum container subiria. A equivalência que
+  (ii) de fato exige é cumprida em **efeito** (postura fail-closed
+  preservada, nenhum nome adivinhado, preencher o campo é o opt-in
+  explícito), não em **mecanismo**.
+- **(iii)** confirmada sem mudança: falha continua degradando, nunca
+  bloqueando o boot — nem o auto-start do Ollama nem o gesto de GUI do
+  container lançam.
+- **(iv) — a visibilidade escolhida** é o painel `Sistema` (SPEC-0054),
+  que ganha a seção `#system-dependencies` com uma linha por dependência
+  desta sessão, somada aos logs de `console.info`/`console.warn` já
+  existentes (que não mudam) — o log do main process é provadamente
+  inalcançável num app empacotado, então a transparência efetiva exigida
+  pelo Artigo 7 precisa de uma superfície dentro da própria janela.
+- `apps/cli` sai com diff vazio, exceto pelo fake tipado de
+  `DependencyManager` em `apps/cli/tests/auto-start-ollama.test.ts`
+  (`ensureSearchContainer` aditivo, exigido só pelo typecheck do package —
+  nenhuma linha de comportamento muda).

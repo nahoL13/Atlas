@@ -2,7 +2,7 @@
 
 > **Project Atlas — Log de Custo de Token por SPEC**
 
-Atualizado em: 2026-09-13 (regenerado por `python3 scripts/agent-usage-report.py --executor all`)
+Atualizado em: 2026-09-19 (regenerado por `python3 scripts/agent-usage-report.py --executor all`)
 
 As métricas são separadas por executor. Tokens efetivos Claude usam os pesos históricos; Codex fica `N/D` até existir uma métrica comparável documentada. Snapshots de Codex são cumulativos e só o último total de cada transcript é lido.
 
@@ -70,9 +70,10 @@ As métricas são separadas por executor. Tokens efetivos Claude usam os pesos h
 | SPEC-0056 | Claude | Tool de leitura de estrutura de projeto (`project_info`) em `@atlas/tools`, com a raiz descoberta pelo `rev-parse` já contido da SPEC-0028 e manifests reconhecidos por tabela fixa | Done | 8 | 2026-08-21 | 60.164.781 | 10.237.100 | complete |
 | SPEC-0057 | Claude | Busca na internet por texto livre: Tool `web_search` em `@atlas/tools` sobre a porta injetável `SearchPort`, com adaptador default apoiado no `HttpPort` já endurecido da SPEC-0055, provedor **sem credencial** provisionado pelo usuário (endpoint compatível com a API JSON do SearXNG, configurado por `--search-url` / `ATLAS_SEARCH_URL`) e host julgado pelo mesmo portão de rede `netRoots` (ADR-0026) | Draft | 11 | 2026-08-22 | 89.131.798 | 15.364.879 | complete |
 | SPEC-0058 | Claude | Endurecimento da composição de saídas de Tools no prompt (`@atlas/cognitive`): delimitação estruturada por bloco `<tool_output>`, instrução fixa de conteúdo não confiável e teto de tamanho por passo — mitigação genérica de injeção indireta de prompt, aplicável a **toda** Tool | Draft | 8 | 2026-08-22 | 46.684.753 | 8.853.771 | complete |
-| SPEC-0059 | Claude | Desktop: painel de rede e busca — autorizar hosts (`netRoots`) e configurar/desativar o provedor de busca (`tools.searchUrl`) em runtime pela interface gráfica, com consentimento explícito por host, no molde de consentimento de política já estabelecido pela SPEC-0038 | Draft | 9 | 2026-08-22 | 172.290.188 | 25.213.041 | complete |
-| SPEC-0060 | Claude | Auto-start do Ollama sob opt-in explícito: `createDependencyManager` + `ProcessPort` em `@atlas/core`, disparado uma vez por processo em `apps/cli` e uma vez por sessão de app em `apps/desktop`, degradando sem nunca bloquear o boot. | Draft | 7 | 2026-09-12 | 100.305.555 | 13.973.437 | complete |
-| SPEC-0061 | Claude | Auto-start do container Docker do provedor de busca sob opt-in explícito e nominal: `ProcessPort`/`createDependencyManager` (`@atlas/core`) estendidos de forma aditiva com três operações Docker nomeadas — só `start` de um container **já existente**, nunca `run`/`create`/`pull` —, disparados uma vez por processo em `apps/cli` e uma vez por sessão de app em `apps/desktop`. | Draft | 4 | 2026-09-13 | 39.128.756 | 6.767.258 | complete |
+| SPEC-0059 | Claude | Desktop: painel de rede e busca — autorizar hosts (`netRoots`) e configurar/desativar o provedor de busca (`tools.searchUrl`) em runtime pela interface gráfica, com consentimento explícito por host, no molde de consentimento de política já estabelecido pela SPEC-0038 | Draft | 9 | 2026-09-13 | 172.290.188 | 25.213.041 | complete |
+| SPEC-0060 | Claude | Auto-start do Ollama sob opt-in explícito: `createDependencyManager` + `ProcessPort` em `@atlas/core`, disparado uma vez por processo em `apps/cli` e uma vez por sessão de app em `apps/desktop`, degradando sem nunca bloquear o boot. | Draft | 9 | 2026-09-13 | 102.595.413 | 14.827.826 | complete |
+| SPEC-0061 | Claude | Auto-start do container Docker do provedor de busca sob opt-in explícito e nominal: `ProcessPort`/`createDependencyManager` (`@atlas/core`) estendidos de forma aditiva com três operações Docker nomeadas — só `start` de um container **já existente**, nunca `run`/`create`/`pull` —, disparados uma vez por processo em `apps/cli` e uma vez por sessão de app em `apps/desktop`. | Draft | 5 | 2026-09-13 | 43.402.496 | 7.957.334 | complete |
+| SPEC-0062 | Claude | Auto-start do Ollama ligado **por padrão** no `apps/desktop` (env explícita como via de desligamento) e campo de nome do container Docker do provedor de busca no painel de rede/busca, com a tentativa automática auditável no painel `Sistema`. | Draft | 10 | 2026-09-19 | 123.633.015 | 18.654.293 | complete |
 
 ## Detalhamento por fase
 
@@ -139,8 +140,9 @@ Valores em tokens efetivos. Codex não é somado nem comparado a Claude enquanto
 | SPEC-0057 | Claude | 2.667.798 | 2.934.196 | 1.648.322 | 4.278.416 | 677.738 | 2.994.400 | 164.009 |
 | SPEC-0058 | Claude | 350.742 | 838.425 | 2.330.681 | 2.569.249 | 559.106 | 2.205.568 | 0 |
 | SPEC-0059 | Claude | 5.121.641 | 3.109.569 | 2.107.309 | 11.698.065 | 898.971 | 2.277.486 | 0 |
-| SPEC-0060 | Claude | 1.075.749 | 1.020.966 | 2.706.818 | 9.103.530 | 66.374 | 0 | 0 |
-| SPEC-0061 | Claude | 686.323 | 708.797 | 0 | 1.843.822 | 1.155.908 | 3.081.205 | 0 |
+| SPEC-0060 | Claude | 1.075.749 | 1.875.355 | 2.706.818 | 9.103.530 | 66.374 | 0 | 0 |
+| SPEC-0061 | Claude | 728.579 | 1.856.617 | 0 | 1.843.822 | 1.155.908 | 3.081.205 | 0 |
+| SPEC-0062 | Claude | 4.603.692 | 1.102.622 | 1.524.014 | 10.068.741 | 1.214.887 | 140.337 | 0 |
 
 ## Eficiência de processo (overhead ÷ implementação)
 
@@ -194,8 +196,9 @@ Calculada separadamente por executor, apenas quando tokens efetivos comparáveis
 | SPEC-0057 | Claude | 4.278.416 | 11.086.463 | 2.6× |
 | SPEC-0058 | Claude | 2.569.249 | 6.284.522 | 2.4× |
 | SPEC-0059 | Claude | 11.698.065 | 13.514.976 | 1.2× |
-| SPEC-0060 | Claude | 9.103.530 | 4.869.907 | 0.5× |
-| SPEC-0061 | Claude | 1.843.822 | 5.632.233 | 3.1× |
+| SPEC-0060 | Claude | 9.103.530 | 5.724.296 | 0.6× |
+| SPEC-0061 | Claude | 1.843.822 | 6.822.309 | 3.7× |
+| SPEC-0062 | Claude | 10.068.741 | 8.585.552 | 0.9× |
 
 ## Como estimar antes de começar uma SPEC nova
 

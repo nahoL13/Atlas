@@ -2,7 +2,7 @@
 
 > **Project Atlas — Contexto de Retomada para a Próxima Sessão**
 
-Atualizado em: 2026-09-13 (SPEC-0061)
+Atualizado em: 2026-09-19 (SPEC-0062)
 
 Este documento responde a uma pergunta só: **o que fazer agora**. Ele é lido no arranque de toda sessão e de todo subagent, então é mantido curto por design — teto de ~8 KB.
 
@@ -17,15 +17,15 @@ Este documento responde a uma pergunta só: **o que fazer agora**. Ele é lido n
 
 # Estado Imediato
 
-**Fase 2 (`apps/desktop`) em andamento; Fase 1 fechada por inteiro, mas com candidatos ainda sendo entregues em paralelo** (item 1.4, resta só execução de comandos sob o Permission Service, `ADR primeiro`). Itens 2.1, 2.2 (1ª linha), 2.3 e 2.4 fechados; wake word (2.3, "candidato, não comprometido") segue em aberto. *Observabilidade do Ambiente* — exceção consciente sem item de Roadmap — foi entregue por inteiro pela SPEC-0054. O [ADR-0027](../06-adr/ADR-0027-external-process-lifecycle-management.md) (auto-gerência de processo externo) fica **inteiramente consumido**: as três SPECs candidatas que ele nomeava (0059/0060/0061) estão todas `Done`.
+**Fase 2 (`apps/desktop`) em andamento; Fase 1 fechada por inteiro, mas com candidatos ainda sendo entregues em paralelo** (item 1.4, resta só execução de comandos sob o Permission Service, `ADR primeiro`). Itens 2.1, 2.2 (1ª linha), 2.3 e 2.4 fechados; wake word (2.3, "candidato, não comprometido") segue em aberto. *Observabilidade do Ambiente* — exceção consciente sem item de Roadmap — foi entregue por inteiro pela SPEC-0054. O [ADR-0027](../06-adr/ADR-0027-external-process-lifecycle-management.md) (auto-gerência de processo externo) segue **inteiramente consumido** (SPECs 0059/0060/0061); o [ADR-0028](../06-adr/ADR-0028-desktop-dependency-autostart-default.md) (supersessão parcial do ADR-0027(g), só `apps/desktop`/só Ollama) foi implementado por inteiro pela SPEC-0062.
 
 Últimas três fatias (detalhe completo em `PLATFORM_STATE.md` e na SPEC de cada uma):
 
-- **SPEC-0061** `Done` (2026-09-13) — 3ª e última SPEC do ADR-0027: auto-start do container Docker do provedor de busca. Extensão aditiva de `ProcessPort`/`createDependencyManager` (`@atlas/core`, sem módulo novo): `inspectSearchContainer`/`startSearchContainer`/`stopSearchContainer`; `AtlasConfig.dependencies.autoStartSearchContainer: string` (opt-in nominal, `''` = desligado); `--auto-start-search-container <nome>`/`ATLAS_AUTO_START_SEARCH_CONTAINER` na CLI e a mesma env no desktop (sem GUI, D15). `DependencyReport.outcomes` sempre dois elementos, sequenciais e independentes. Ligar o container **não** concede `netRoots`. Diff vazio em `@atlas/permissions`/renderer. **Não** fecha o item 1.4. Detalhe: `packages/core/CLAUDE.md`.
-- **SPEC-0060** `Done` (2026-09-12) — 1º consumidor real do ADR-0027: auto-start do Ollama sob opt-in explícito, mesma unidade `createDependencyManager`/`ProcessPort`, disparado uma vez por processo (CLI, `--auto-start-ollama`) e por sessão de app (desktop, sem GUI). Posse pela autoria do `spawn`, não pela prontidão. Detalhe: `packages/core/CLAUDE.md`.
-- **SPEC-0059** `Done` (2026-08-22) — painel de rede/busca do desktop: `netRoots`/`tools.searchUrl` em runtime (`selectNetworkAccess`, `network-grant-dialog.ts`, canal `'atlas:network:select'`, mutex compartilhado com `selectPermissionRoots`). Fecha o residual nomeado das SPECs 0055/0057. Smoke manual em janela real pendente (sem WindowServer). Detalhe: `apps/desktop/CLAUDE.md`.
+- **SPEC-0062** `Done` (2026-09-19) — implementa o ADR-0028: no desktop, o auto-start do Ollama vira **repouso** (`DESKTOP_AUTO_START_OLLAMA_DEFAULT = true`; `ATLAS_AUTO_START_OLLAMA=false` desliga explicitamente; `@atlas/core`/`apps/cli` seguem `false`). Container de busca segue fail-closed (ADR-0027(g) intacta), com uma 2ª porta de entrada: campo no painel de rede/busca aciona `DependencyManager.ensureSearchContainer` (método aditivo, posse vira `Set<string>`, `release()` drena trabalho em voo antes de desligar). Painel `Sistema` audita a tentativa (`#system-dependencies`). Manifesto de IDs 99→103. Não fecha o item 1.4. Origem incomum: pedido original ("sempre automático, sem flag") contradizia o ADR-0027(g), motivando o ADR-0028 antes da SPEC. Detalhe: `packages/core/CLAUDE.md`, `apps/desktop/CLAUDE.md`.
+- **SPEC-0061** `Done` (2026-09-13) — 3ª e última SPEC do ADR-0027: auto-start do container Docker do provedor de busca. Extensão aditiva de `ProcessPort`/`createDependencyManager` (`@atlas/core`): `inspectSearchContainer`/`startSearchContainer`/`stopSearchContainer`; `AtlasConfig.dependencies.autoStartSearchContainer: string` (nominal, `''` = desligado); CLI/env no desktop (GUI só depois, SPEC-0062). `DependencyReport.outcomes` sempre dois elementos. Ligar o container **não** concede `netRoots`. Detalhe: `packages/core/CLAUDE.md`.
+- **SPEC-0060** `Done` (2026-09-12) — 1º consumidor real do ADR-0027: auto-start do Ollama sob opt-in explícito, `createDependencyManager`/`ProcessPort`, uma vez por processo (CLI) e por sessão de app (desktop; default invertido depois pela SPEC-0062). Posse pela autoria do `spawn`, não pela prontidão. Detalhe: `packages/core/CLAUDE.md`.
 
-Suíte atual: **1959 testes / 101 arquivos**. `lint`/`typecheck`/`test`/`format:check` verdes.
+Suíte atual: **2039 testes / 102 arquivos**. `lint`/`typecheck`/`test`/`format:check` verdes.
 
 ---
 

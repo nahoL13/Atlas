@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type {
+  RendererDependencyOutcome,
+  RendererDependencyStatusSnapshot,
   RendererFixture,
   RendererFixtureOptions,
   RendererSystemMetricsSnapshot,
@@ -535,5 +537,250 @@ describe('não entra na serialização de gestos (CA31)', () => {
     await f.flush();
 
     expect(f.calls.chatSend).toHaveLength(1);
+  });
+});
+
+// SPEC-0062 (CAs 39-41): o painel Sistema ganha uma 3ª leitura por tick
+// (`dependencies.read()`), sobre a MESMA cadência/timer/reentrância/descarte
+// já provados acima para metrics/tokens — nenhum timer novo, nenhuma mudança
+// na cadência 1s/2s. `#system-dependencies` mostra uma linha por dependência
+// desta sessão, com os textos exaustivos de D17 (nenhum `reason` cru).
+
+const NO_DEPENDENCIES: RendererDependencyStatusSnapshot = {
+  ollama: undefined,
+  searchContainers: [],
+};
+
+// `Omit`/`Extract` sobre a união `RendererDependencyOutcome` colapsariam
+// `reason`/`container` (interseção de chaves comuns, não união por membro)
+// — por isso os dois formatos são declarados aqui, à mão, espelhando os
+// quatro/quatro casos de `DependencyOutcome` (`@atlas/core`).
+type OllamaOutcomeInput =
+  | { readonly status: 'disabled' }
+  | { readonly status: 'already-running' }
+  | { readonly status: 'started' }
+  | {
+      readonly status: 'failed';
+      readonly reason: 'binary-missing' | 'spawn-failed' | 'timeout';
+    };
+
+type ContainerOutcomeInput =
+  | { readonly status: 'disabled' }
+  | { readonly status: 'already-running'; readonly container: string }
+  | { readonly status: 'started'; readonly container: string }
+  | {
+      readonly status: 'failed';
+      readonly reason: 'docker-unavailable' | 'container-unknown' | 'start-failed' | 'timeout';
+      readonly container: string;
+    };
+
+function ollamaOutcome(outcome: OllamaOutcomeInput): RendererDependencyOutcome {
+  return { dependency: 'ollama', ...outcome } as RendererDependencyOutcome;
+}
+
+function containerOutcome(outcome: ContainerOutcomeInput): RendererDependencyOutcome {
+  return { dependency: 'search-container', ...outcome } as RendererDependencyOutcome;
+}
+
+describe('dependências externas — 3º invoke no mesmo tick, sem timer novo (CA39)', () => {
+  it('leitura imediata inclui dependencies.read(); o tick de 2000ms dispara os três invokes juntos', async () => {
+    const f = await open({
+      metricsSnapshot: ALL_UNSUPPORTED,
+      tokensSnapshot: ZERO_TOKENS,
+      dependenciesStatus: NO_DEPENDENCIES,
+    });
+    await openSystemPanel(f);
+    expect(f.calls.metricsReadCalls).toBe(1);
+    expect(f.calls.tokensReadCalls).toBe(1);
+    expect(f.calls.dependenciesReadCalls).toBe(1);
+
+    f.clock.advance(1000); // 1000ms — só relógio, nenhuma leitura nova
+    await f.flush();
+    expect(f.calls.dependenciesReadCalls).toBe(1);
+
+    f.clock.advance(1000); // completa 2000ms — os três juntos, mesmo tick
+    await f.flush();
+    expect(f.calls.metricsReadCalls).toBe(2);
+    expect(f.calls.tokensReadCalls).toBe(2);
+    expect(f.calls.dependenciesReadCalls).toBe(2);
+  });
+
+  it('fechar o painel cancela o timer único; uma resposta de dependencies.read() que chega depois é descartada', async () => {
+    const gate = deferred<RendererDependencyStatusSnapshot>();
+    const f = await open({
+      metricsSnapshot: ALL_UNSUPPORTED,
+      tokensSnapshot: ZERO_TOKENS,
+      atlas: { dependencies: { read: () => gate.promise } },
+    });
+    await openSystemPanel(f);
+    expect(text(f, 'system-dependencies')).toBe('');
+
+    systemNavControl(f).click(); // fecha o painel ANTES de a leitura assentar
+
+    gate.resolve({
+      ollama: ollamaOutcome({ status: 'started' }),
+      searchContainers: [],
+    });
+    await f.flush();
+
+    expect(text(f, 'system-dependencies')).toBe('');
+  });
+});
+
+describe('#system-dependencies — linhas exaustivas por dependência (CA40)', () => {
+  it('mostra o texto de "ainda verificando" enquanto ollama é undefined, e a linha pinada de lista vazia', async () => {
+    const f = await open({
+      metricsSnapshot: ALL_UNSUPPORTED,
+      tokensSnapshot: ZERO_TOKENS,
+      dependenciesStatus: NO_DEPENDENCIES,
+    });
+    await openSystemPanel(f);
+
+    expect(text(f, 'system-dependencies')).toContain('Ollama: ainda verificando');
+    expect(text(f, 'system-dependencies')).toContain('Nenhum container de busca nesta sessão.');
+  });
+
+  it.each([
+    [ollamaOutcome({ status: 'disabled' }), 'Ollama: auto-start desligado.'],
+    [ollamaOutcome({ status: 'already-running' }), 'Ollama: já estava em execução.'],
+    [ollamaOutcome({ status: 'started' }), 'Ollama: iniciado automaticamente pelo Atlas.'],
+    [
+      ollamaOutcome({ status: 'failed', reason: 'binary-missing' }),
+      'Ollama: não foi possível iniciar (binário do Ollama não encontrado).',
+    ],
+    [
+      ollamaOutcome({ status: 'failed', reason: 'spawn-failed' }),
+      'Ollama: não foi possível iniciar (falha ao iniciar o processo do Ollama).',
+    ],
+    [
+      ollamaOutcome({ status: 'failed', reason: 'timeout' }),
+      'Ollama: não foi possível iniciar (tempo esgotado esperando o Ollama responder).',
+    ],
+  ])('desfecho de Ollama %j pinta "%s"', async (outcome, expected) => {
+    const f = await open({
+      metricsSnapshot: ALL_UNSUPPORTED,
+      tokensSnapshot: ZERO_TOKENS,
+      dependenciesStatus: { ollama: outcome, searchContainers: [] },
+    });
+    await openSystemPanel(f);
+
+    expect(text(f, 'system-dependencies')).toContain(expected);
+  });
+
+  it.each([
+    [
+      containerOutcome({ status: 'already-running', container: 'searxng' }),
+      'Container de busca "searxng": já estava em execução.',
+    ],
+    [
+      containerOutcome({ status: 'started', container: 'searxng' }),
+      'Container de busca "searxng": iniciado automaticamente pelo Atlas.',
+    ],
+    [
+      containerOutcome({ status: 'failed', reason: 'docker-unavailable', container: 'searxng' }),
+      'Container de busca "searxng": não foi possível iniciar (Docker indisponível).',
+    ],
+    [
+      containerOutcome({ status: 'failed', reason: 'container-unknown', container: 'searxng' }),
+      'Container de busca "searxng": não foi possível iniciar ' +
+        '(o Atlas nunca cria containers — verifique o nome).',
+    ],
+    [
+      containerOutcome({ status: 'failed', reason: 'start-failed', container: 'searxng' }),
+      'Container de busca "searxng": não foi possível iniciar (falha ao iniciar o container).',
+    ],
+    [
+      containerOutcome({ status: 'failed', reason: 'timeout', container: 'searxng' }),
+      'Container de busca "searxng": não foi possível iniciar ' +
+        '(tempo esgotado esperando o container ficar pronto).',
+    ],
+  ])('desfecho de container %j pinta "%s"', async (outcome, expected) => {
+    const f = await open({
+      metricsSnapshot: ALL_UNSUPPORTED,
+      tokensSnapshot: ZERO_TOKENS,
+      dependenciesStatus: { ollama: undefined, searchContainers: [outcome] },
+    });
+    await openSystemPanel(f);
+
+    expect(text(f, 'system-dependencies')).toContain(expected);
+  });
+
+  it('duas entradas distintas de searchContainers produzem DUAS linhas (D22 — o painel não sub-reporta o que a sessão possui)', async () => {
+    const f = await open({
+      metricsSnapshot: ALL_UNSUPPORTED,
+      tokensSnapshot: ZERO_TOKENS,
+      dependenciesStatus: {
+        ollama: ollamaOutcome({ status: 'already-running' }),
+        searchContainers: [
+          containerOutcome({ status: 'started', container: 'bootstrap' }),
+          containerOutcome({ status: 'already-running', container: 'gesto' }),
+        ],
+      },
+    });
+    await openSystemPanel(f);
+
+    const dependenciesText = text(f, 'system-dependencies');
+    expect(dependenciesText).toContain(
+      'Container de busca "bootstrap": iniciado automaticamente pelo Atlas.',
+    );
+    expect(dependenciesText).toContain('Container de busca "gesto": já estava em execução.');
+    expect(f.document.querySelectorAll('#system-dependencies p')).toHaveLength(3); // Ollama + 2 containers
+  });
+
+  it('rejeição de dependencies.read() pinta o texto pinado de falha na célula e em #system-status, sem tocar #global-alert/#presence-core', async () => {
+    const f = await open({
+      metricsSnapshot: ALL_UNSUPPORTED,
+      tokensSnapshot: ZERO_TOKENS,
+      atlas: { dependencies: { read: () => Promise.reject(new Error('boom')) } },
+    });
+    await openSystemPanel(f);
+
+    expect(text(f, 'system-dependencies')).toBe('Falha ao ler o estado das dependências externas.');
+    expect(text(f, 'system-status')).toBe('Falha ao ler as métricas do sistema.');
+    expect((f.document.getElementById('global-alert') as HTMLElement).hidden).toBe(true);
+    expect((f.document.getElementById('presence-core') as HTMLElement).dataset.state).not.toBe(
+      'error',
+    );
+  });
+});
+
+describe('#system-dependencies — nenhuma reason crua na interface (CA41)', () => {
+  it('as sete reasons (três do Ollama, quatro do container) são todas traduzidas', async () => {
+    const rawReasons = [
+      'binary-missing',
+      'spawn-failed',
+      'timeout',
+      'docker-unavailable',
+      'container-unknown',
+      'start-failed',
+    ];
+    const outcomes: RendererDependencyOutcome[] = [
+      ollamaOutcome({ status: 'failed', reason: 'binary-missing' }),
+      ollamaOutcome({ status: 'failed', reason: 'spawn-failed' }),
+      ollamaOutcome({ status: 'failed', reason: 'timeout' }),
+      containerOutcome({ status: 'failed', reason: 'docker-unavailable', container: 'a' }),
+      containerOutcome({ status: 'failed', reason: 'container-unknown', container: 'a' }),
+      containerOutcome({ status: 'failed', reason: 'start-failed', container: 'a' }),
+      containerOutcome({ status: 'failed', reason: 'timeout', container: 'a' }),
+    ];
+
+    for (const outcome of outcomes) {
+      const f = await open({
+        metricsSnapshot: ALL_UNSUPPORTED,
+        tokensSnapshot: ZERO_TOKENS,
+        dependenciesStatus:
+          outcome.dependency === 'ollama'
+            ? { ollama: outcome, searchContainers: [] }
+            : { ollama: undefined, searchContainers: [outcome] },
+      });
+      await openSystemPanel(f);
+
+      const dependenciesText = text(f, 'system-dependencies');
+      for (const raw of rawReasons) {
+        expect(dependenciesText).not.toContain(raw);
+      }
+      f.close();
+      fixture = undefined;
+    }
   });
 });

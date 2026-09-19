@@ -23,10 +23,10 @@ Auto-start do Ollama ligado **por padrão** no `apps/desktop` (env explícita co
 **Status**
 
 - [ ] Draft
-- [x] Ready
+- [ ] Ready
 - [ ] In Progress
 - [ ] Review
-- [ ] Done
+- [x] Done
 
 ---
 

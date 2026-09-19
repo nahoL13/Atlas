@@ -352,3 +352,46 @@ implementação.
   Permission Service, `ADR primeiro`). **Este ADR está agora inteiramente
   consumido** — as três SPECs candidatas nomeadas em "Observações" foram
   todas implementadas (SPEC-0059, SPEC-0060, SPEC-0061).
+
+---
+
+# Atualização ([SPEC-0062](../implementation/specs/SPEC-0062-desktop-dependency-autostart-default.md))
+
+A SPEC-0062 estendeu de forma **aditiva** o contrato técnico deste ADR, sem
+abrir nenhuma cláusula nova nem nomear nenhuma SPEC candidata nova — o ADR
+segue **inteiramente consumido**, tal como a SPEC-0061 o deixou.
+
+- `DependencyManager` ganha `ensureSearchContainer(container: string):
+  Promise<DependencyOutcome>` — **operação nomeada e fixa** sobre o mesmo
+  `ProcessPort` (**(b) confirmada**: continua sem existir `run(command,
+  args)` genérico); delega ao mesmo caminho privado que o `ensure` de
+  bootstrap já usava para o container (nenhuma lógica duplicada), e nunca
+  toca o caminho do Ollama.
+- Posse do container passa de um campo único para um `Set<string>` — a
+  sessão pode ligar mais de um nome (bootstrap **e** o gesto de GUI que o
+  [ADR-0028](ADR-0028-desktop-dependency-autostart-default.md) autorizou);
+  `release()` continua desligando **só** o que a própria instância possui,
+  cada nome com captura própria (**(e) confirmada**, agora estendida a um
+  conjunto em vez de um valor único), e passa a **drenar o trabalho em
+  voo** (`Promise.allSettled` sobre o `pending` do `ensure` e as tentativas
+  de container ainda não assentadas) antes de ler a posse — sem isso, um
+  `ensureSearchContainer` disparado pela GUI e ainda em polling no instante
+  do `before-quit` registraria posse num conjunto já limpo, deixando um
+  container do Atlas de pé.
+- **(d) confirmada**: `createAtlas`/`Lifecycle` seguem sem uma linha
+  alterada — o gesto novo vive inteiramente dentro do `DependencyManager`
+  já existente, nenhum segundo dono.
+- **(h) confirmada**: nenhuma operação Docker além de
+  `inspect`/`start`/`stop` do container nomeado; o Atlas continua nunca
+  criando, baixando ou removendo um container, também pelo gesto de GUI.
+- **(g) recebe supersessão parcial, mas só pela mão do ADR-0028 — não por
+  este ADR nem por esta SPEC.** Para o Ollama, o desktop passa a resolver
+  `autoStartOllama` com repouso `true` (opt-in por env vira via de
+  *desligamento*, não de ligação) — supersessão já decidida e delimitada
+  pelo ADR-0028(i), restrita a `apps/desktop`. Para o container de busca,
+  (g) segue **intacta**: `autoStartSearchContainer` continua fail-closed,
+  `''` = desligado, nenhum nome é adivinhado — o que a SPEC-0062 entrega é
+  só uma **segunda porta de entrada** (o campo no painel da SPEC-0059) para
+  o mesmo opt-in explícito, nunca um novo default.
+- Zero linha em `@atlas/permissions`/`@atlas/runtime`/`@atlas/tools`/
+  `@atlas/model-gateway`/`apps/cli/src`; `@atlas/contracts` intocado.

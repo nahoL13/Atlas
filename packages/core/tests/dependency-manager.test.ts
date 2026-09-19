@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { createDependencyManager } from '../src/dependencies/dependency-manager.js';
 import type { DependencyConfig } from '../src/config/dependency-config.js';
@@ -788,5 +789,418 @@ describe('createDependencyManager — container de busca (SPEC-0061)', () => {
 
     expect(second).toEqual(first);
     expect(process.counts).toEqual(countsAfterFirst);
+  });
+});
+
+/** Portão de sincronização de teste (SPEC-0062/CA 13.1): permite pausar o
+ * manager exatamente num `await sleep(...)` controlado, sem depender de
+ * contagem de microtasks. */
+function createGate() {
+  let resolvers: Array<() => void> = [];
+  return {
+    wait: (): Promise<void> =>
+      new Promise<void>((resolve) => {
+        resolvers.push(resolve);
+      }),
+    open: (): void => {
+      const toResolve = resolvers;
+      resolvers = [];
+      for (const resolve of toResolve) {
+        resolve();
+      }
+    },
+    hasWaiters: (): boolean => resolvers.length > 0,
+  };
+}
+
+async function flushUntil(predicate: () => boolean, maxTicks = 1000): Promise<void> {
+  for (let i = 0; i < maxTicks && !predicate(); i += 1) {
+    await Promise.resolve();
+  }
+}
+
+describe('createDependencyManager — ensureSearchContainer sob demanda (SPEC-0062)', () => {
+  it('CA1: existe, é chamável com uma string e devolve um DependencyOutcome de search-container; ensure/release mantêm assinatura', async () => {
+    const recorder = createRecorder();
+    const process = createFakeProcess(recorder);
+    const manager = createDependencyManager({ process, sleep: recorder.sleep });
+
+    const outcome = await manager.ensureSearchContainer(CONTAINER_NAME);
+
+    expect(outcome.dependency).toBe('search-container');
+    expect(typeof manager.ensure).toBe('function');
+    expect(typeof manager.release).toBe('function');
+  });
+
+  it('CA2: ensureSearchContainer("") devolve "disabled" sem tocar a porta', async () => {
+    const recorder = createRecorder();
+    const process = createFakeProcess(recorder);
+    const manager = createDependencyManager({ process, sleep: recorder.sleep });
+
+    const outcome = await manager.ensureSearchContainer('');
+
+    expect(outcome).toEqual({ dependency: 'search-container', status: 'disabled' });
+    expect(process.counts.inspectSearchContainer).toBe(0);
+    expect(process.counts.startSearchContainer).toBe(0);
+    expect(process.counts.stopSearchContainer).toBe(0);
+  });
+
+  it('CA3: inspect "running" ⇒ "already-running" sem start', async () => {
+    const recorder = createRecorder();
+    const process = createFakeProcess(recorder, { inspectSearchContainer: async () => 'running' });
+    const manager = createDependencyManager({ process, sleep: recorder.sleep });
+
+    const outcome = await manager.ensureSearchContainer(CONTAINER_NAME);
+
+    expect(outcome).toEqual({
+      dependency: 'search-container',
+      status: 'already-running',
+      container: CONTAINER_NAME,
+    });
+    expect(process.counts.startSearchContainer).toBe(0);
+  });
+
+  it('CA3: "stopped" + start ok + polling "running" ⇒ "started"', async () => {
+    const recorder = createRecorder();
+    let pollCount = 0;
+    const process = createFakeProcess(recorder, {
+      inspectSearchContainer: async () => {
+        pollCount += 1;
+        return pollCount === 1 ? 'stopped' : 'running';
+      },
+    });
+    const manager = createDependencyManager({ process, sleep: recorder.sleep });
+
+    const outcome = await manager.ensureSearchContainer(CONTAINER_NAME);
+
+    expect(outcome).toEqual({
+      dependency: 'search-container',
+      status: 'started',
+      container: CONTAINER_NAME,
+    });
+  });
+
+  it('CA3: "unknown" ⇒ failed/container-unknown sem start', async () => {
+    const recorder = createRecorder();
+    const process = createFakeProcess(recorder, { inspectSearchContainer: async () => 'unknown' });
+    const manager = createDependencyManager({ process, sleep: recorder.sleep });
+
+    const outcome = await manager.ensureSearchContainer(CONTAINER_NAME);
+
+    expect(outcome).toEqual({
+      dependency: 'search-container',
+      status: 'failed',
+      reason: 'container-unknown',
+      container: CONTAINER_NAME,
+    });
+    expect(process.counts.startSearchContainer).toBe(0);
+  });
+
+  it('CA3: "unavailable" ⇒ failed/docker-unavailable sem start', async () => {
+    const recorder = createRecorder();
+    const process = createFakeProcess(recorder, {
+      inspectSearchContainer: async () => 'unavailable',
+    });
+    const manager = createDependencyManager({ process, sleep: recorder.sleep });
+
+    const outcome = await manager.ensureSearchContainer(CONTAINER_NAME);
+
+    expect(outcome).toEqual({
+      dependency: 'search-container',
+      status: 'failed',
+      reason: 'docker-unavailable',
+      container: CONTAINER_NAME,
+    });
+    expect(process.counts.startSearchContainer).toBe(0);
+  });
+
+  it('CA4: porta que rejeita em qualquer operação Docker produz failed/start-failed, nunca lança', async () => {
+    const recorder = createRecorder();
+    const process = createFakeProcess(recorder, {
+      inspectSearchContainer: async () => {
+        throw new Error('boom');
+      },
+    });
+    const manager = createDependencyManager({ process, sleep: recorder.sleep });
+
+    const outcome = await manager.ensureSearchContainer(CONTAINER_NAME);
+
+    expect(outcome).toEqual({
+      dependency: 'search-container',
+      status: 'failed',
+      reason: 'start-failed',
+      container: CONTAINER_NAME,
+    });
+  });
+
+  it('CA5: ensureSearchContainer nunca toca o caminho do Ollama', async () => {
+    const recorder = createRecorder();
+    const process = createFakeProcess(recorder, {
+      inspectSearchContainer: async () => 'running',
+    });
+    const manager = createDependencyManager({ process, sleep: recorder.sleep });
+
+    await manager.ensureSearchContainer(CONTAINER_NAME);
+
+    expect(process.counts.isOllamaRunning).toBe(0);
+    expect(process.counts.startOllama).toBe(0);
+    expect(process.counts.stopOllama).toBe(0);
+  });
+
+  it('CA6: grep — a sequência inspectSearchContainer → startSearchContainer → polling ocorre uma única vez no arquivo', async () => {
+    const source = await readFile(
+      new URL('../src/dependencies/dependency-manager.ts', import.meta.url),
+      'utf8',
+    );
+    const matches = source.match(
+      /inspectSearchContainer[\s\S]*?startSearchContainer[\s\S]*?pollContainerUntilReady/g,
+    );
+    expect(matches).toHaveLength(1);
+  });
+
+  it('CA7: duas chamadas concorrentes com o mesmo nome compartilham a mesma tentativa', async () => {
+    const recorder = createRecorder();
+    let pollCount = 0;
+    const process = createFakeProcess(recorder, {
+      inspectSearchContainer: async () => {
+        pollCount += 1;
+        return pollCount === 1 ? 'stopped' : 'running';
+      },
+    });
+    const manager = createDependencyManager({ process, sleep: recorder.sleep });
+
+    const [first, second] = await Promise.all([
+      manager.ensureSearchContainer(CONTAINER_NAME),
+      manager.ensureSearchContainer(CONTAINER_NAME),
+    ]);
+
+    expect(first).toEqual(second);
+    expect(process.counts.inspectSearchContainer).toBe(2); // 1 inicial + 1 poll
+    expect(process.counts.startSearchContainer).toBe(1);
+  });
+
+  it('CA8: após "started"/"already-running", chamada seguinte com o mesmo nome não toca a porta', async () => {
+    const recorder = createRecorder();
+    const process = createFakeProcess(recorder, { inspectSearchContainer: async () => 'running' });
+    const manager = createDependencyManager({ process, sleep: recorder.sleep });
+
+    const first = await manager.ensureSearchContainer(CONTAINER_NAME);
+    const countsAfterFirst = { ...process.counts };
+    const second = await manager.ensureSearchContainer(CONTAINER_NAME);
+
+    expect(second).toEqual(first);
+    expect(process.counts).toEqual(countsAfterFirst);
+  });
+
+  it('CA9: após "failed", chamada seguinte com o mesmo nome tenta de novo', async () => {
+    const recorder = createRecorder();
+    let attempts = 0;
+    const process = createFakeProcess(recorder, {
+      inspectSearchContainer: async () => {
+        attempts += 1;
+        return attempts === 1 ? 'unknown' : 'running';
+      },
+    });
+    const manager = createDependencyManager({ process, sleep: recorder.sleep });
+
+    const first = await manager.ensureSearchContainer(CONTAINER_NAME);
+    expect(first).toMatchObject({ status: 'failed', reason: 'container-unknown' });
+
+    const second = await manager.ensureSearchContainer(CONTAINER_NAME);
+    expect(second).toEqual({
+      dependency: 'search-container',
+      status: 'already-running',
+      container: CONTAINER_NAME,
+    });
+    expect(process.counts.inspectSearchContainer).toBe(2);
+  });
+
+  it('CA10: ensure(config) seguido de ensureSearchContainer no mesmo nome não repete inspect/start (desfecho retido)', async () => {
+    const recorder = createRecorder();
+    const process = createFakeProcess(recorder, { inspectSearchContainer: async () => 'running' });
+    const manager = createDependencyManager({ process, sleep: recorder.sleep });
+
+    const report = await manager.ensure(enabledContainerConfig());
+    const countsAfterEnsure = { ...process.counts };
+    const outcome = await manager.ensureSearchContainer(CONTAINER_NAME);
+
+    expect(outcome).toEqual(report.outcomes[1]);
+    expect(process.counts).toEqual(countsAfterEnsure);
+  });
+
+  it('CA10: ensureSearchContainer seguido de ensure(config) no mesmo nome não repete inspect/start (ordem inversa, desfecho retido)', async () => {
+    const recorder = createRecorder();
+    const process = createFakeProcess(recorder, { inspectSearchContainer: async () => 'running' });
+    const manager = createDependencyManager({ process, sleep: recorder.sleep });
+
+    const outcome = await manager.ensureSearchContainer(CONTAINER_NAME);
+    const countsAfterGesture = { ...process.counts };
+    const report = await manager.ensure(enabledContainerConfig());
+
+    expect(report.outcomes[1]).toEqual(outcome);
+    expect(process.counts).toEqual(countsAfterGesture);
+  });
+
+  it('CA10: com desfecho "failed", a chamada seguinte por qualquer via inspeciona de novo', async () => {
+    const recorder = createRecorder();
+    let attempts = 0;
+    const process = createFakeProcess(recorder, {
+      inspectSearchContainer: async () => {
+        attempts += 1;
+        return attempts === 1 ? 'unknown' : 'running';
+      },
+    });
+    const manager = createDependencyManager({ process, sleep: recorder.sleep });
+
+    const first = await manager.ensure(enabledContainerConfig());
+    expect(first.outcomes[1]).toMatchObject({ status: 'failed', reason: 'container-unknown' });
+
+    const second = await manager.ensureSearchContainer(CONTAINER_NAME);
+    expect(second).toEqual({
+      dependency: 'search-container',
+      status: 'already-running',
+      container: CONTAINER_NAME,
+    });
+    expect(process.counts.inspectSearchContainer).toBe(2);
+  });
+
+  it('CA11: release() derruba TODOS os containers que esta instância ligou, ordem de inserção, captura própria', async () => {
+    const recorder = createRecorder();
+    const process = createFakeProcess(recorder, {
+      inspectSearchContainer: async () => 'stopped',
+      stopSearchContainer: async (name: string) => {
+        if (name === 'a') {
+          throw new Error('boom');
+        }
+      },
+    });
+    const manager = createDependencyManager({ process, sleep: recorder.sleep });
+
+    await manager.ensure({
+      autoStartOllama: false,
+      ollamaBaseUrl: 'http://x:1',
+      autoStartSearchContainer: 'a',
+    });
+    await manager.ensureSearchContainer('b');
+
+    await expect(manager.release()).resolves.toBeUndefined();
+
+    const stopOrder = recorder.calls.filter((c) => c === 'stopSearchContainer');
+    expect(stopOrder).toHaveLength(2);
+    expect(process.counts.stopSearchContainer).toBe(2);
+  });
+
+  it('CA12: release() não derruba container sem posse ("disabled"/"already-running"/"failed" sem start) e é no-op sem ensure prévio; 2x não repete stop', async () => {
+    const recorder = createRecorder();
+    const process = createFakeProcess(recorder, { inspectSearchContainer: async () => 'running' });
+    const manager = createDependencyManager({ process, sleep: recorder.sleep });
+
+    await manager.ensureSearchContainer(CONTAINER_NAME);
+    await manager.release();
+    await manager.release();
+
+    expect(process.counts.stopSearchContainer).toBe(0);
+  });
+
+  it('CA13: ligar "a" e depois "b" não chama stopSearchContainer("a") antes do release()', async () => {
+    const recorder = createRecorder();
+    const process = createFakeProcess(recorder, { inspectSearchContainer: async () => 'stopped' });
+    const manager = createDependencyManager({ process, sleep: recorder.sleep });
+
+    await manager.ensureSearchContainer('a');
+    expect(process.counts.stopSearchContainer).toBe(0);
+    await manager.ensureSearchContainer('b');
+    expect(process.counts.stopSearchContainer).toBe(0);
+
+    await manager.release();
+    expect(process.counts.stopSearchContainer).toBe(2);
+  });
+
+  it('CA13.1: release() drena um ensureSearchContainer em voo antes de decidir a posse — container nunca fica órfão', async () => {
+    const recorder = createRecorder();
+    const sleepGate = createGate();
+    let inspectCalls = 0;
+    const process = createFakeProcess(recorder, {
+      inspectSearchContainer: async () => {
+        inspectCalls += 1;
+        return inspectCalls === 1 ? 'stopped' : 'running';
+      },
+    });
+    const manager = createDependencyManager({ process, sleep: sleepGate.wait });
+
+    const ensurePromise = manager.ensureSearchContainer('a');
+    const releasePromise = manager.release();
+
+    await flushUntil(() => sleepGate.hasWaiters());
+    sleepGate.open();
+
+    await ensurePromise;
+    await releasePromise;
+
+    expect(process.counts.stopSearchContainer).toBe(1);
+    expect(recorder.calls.filter((c) => c === 'stopSearchContainer')).toEqual([
+      'stopSearchContainer',
+    ]);
+  });
+
+  it('CA13.1: o mesmo vale para um ensure() de bootstrap em voo', async () => {
+    const recorder = createRecorder();
+    const sleepGate = createGate();
+    let inspectCalls = 0;
+    const process = createFakeProcess(recorder, {
+      inspectSearchContainer: async () => {
+        inspectCalls += 1;
+        return inspectCalls === 1 ? 'stopped' : 'running';
+      },
+    });
+    const manager = createDependencyManager({ process, sleep: sleepGate.wait });
+
+    const ensurePromise = manager.ensure(enabledContainerConfig());
+    const releasePromise = manager.release();
+
+    await flushUntil(() => sleepGate.hasWaiters());
+    sleepGate.open();
+
+    await ensurePromise;
+    await releasePromise;
+
+    expect(process.counts.stopSearchContainer).toBe(1);
+  });
+
+  it('CA13.2: release() com trabalho em voo que assenta em "failed" continua não lançando e é idempotente', async () => {
+    const recorder = createRecorder();
+    const sleepGate = createGate();
+    let inspectCalls = 0;
+    const process = createFakeProcess(recorder, {
+      inspectSearchContainer: async () => {
+        inspectCalls += 1;
+        if (inspectCalls === 1) {
+          return 'stopped';
+        }
+        throw new Error('boom durante o polling');
+      },
+    });
+    const manager = createDependencyManager({ process, sleep: sleepGate.wait });
+
+    const ensurePromise = manager.ensureSearchContainer('a');
+    const releasePromise = manager.release();
+
+    await flushUntil(() => sleepGate.hasWaiters());
+    sleepGate.open();
+
+    const outcome = await ensurePromise;
+    expect(outcome).toEqual({
+      dependency: 'search-container',
+      status: 'failed',
+      reason: 'start-failed',
+      container: 'a',
+    });
+    await expect(releasePromise).resolves.toBeUndefined();
+
+    // Posse é preservada mesmo com falha DURANTE o polling (regra herdada),
+    // então a drenagem ainda produz um stop; uma 2ª release() não repete nada.
+    expect(process.counts.stopSearchContainer).toBe(1);
+    await expect(manager.release()).resolves.toBeUndefined();
+    expect(process.counts.stopSearchContainer).toBe(1);
   });
 });

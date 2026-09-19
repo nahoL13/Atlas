@@ -12,7 +12,12 @@ import {
   PERSONA_IDS,
   resolveDataDir,
 } from '@atlas/core';
-import type { DependencyManager, DependencyReport, PersonaStorage } from '@atlas/core';
+import type {
+  DependencyManager,
+  DependencyOutcome,
+  DependencyReport,
+  PersonaStorage,
+} from '@atlas/core';
 import type {
   ActionRequest,
   AtlasConfigOverride,
@@ -191,7 +196,9 @@ let dependencyManager = createDependencyManager();
  * Texto pinado do `console.warn` para `ATLAS_AUTO_START_OLLAMA` inválida
  * (SPEC-0060, Decisão D25, CA 22) — divergência deliberada da CLI, que
  * lança `CliUsageError` para o mesmo valor (D6): lançar aqui, dentro de
- * `app.whenReady()`, arriscaria a janela não abrir (ADR-0027(f)).
+ * `app.whenReady()`, arriscaria a janela não abrir (ADR-0027(f)). SPEC-0062/
+ * Restrição 11: sai **byte a byte** como está — só o caso *ausente* muda de
+ * polaridade (D4), o inválido continua desligado com este mesmo aviso.
  */
 export const INVALID_AUTO_START_OLLAMA_ENV_WARNING =
   'Atlas: valor inválido em ATLAS_AUTO_START_OLLAMA; auto-start do Ollama desligado.';
@@ -207,23 +214,79 @@ export const INVALID_SEARCH_CONTAINER_ENV_WARNING =
   'busca desligado.';
 
 /**
+ * ADR-0028(i): no desktop, o repouso do auto-start do Ollama é LIGADO —
+ * único literal que decide esse default no app (SPEC-0062, Escopo 2.1).
+ * `apps/cli` não é tocada: lá o default continua `false` (ADR-0028(i)/D19).
+ */
+export const DESKTOP_AUTO_START_OLLAMA_DEFAULT = true;
+
+/**
+ * Mensagem pinada de nome de container inválido no gesto de GUI (SPEC-0062,
+ * Escopo 4.1) — exportada para o teste comparar por igualdade.
+ */
+export const INVALID_SEARCH_CONTAINER_NAME_MESSAGE =
+  'Nome de container inválido — use apenas letras, números, "_", "." ou "-", começando por ' +
+  'letra ou número.';
+
+/**
+ * Estado de dependências desta sessão (SPEC-0062, Escopo 3): `undefined`
+ * para o Ollama significa "ainda não há desfecho nesta sessão"; o `Map`
+ * (ordem de inserção) guarda **um** desfecho por nome de container distinto
+ * — nunca substitui um nome por outro (D22). Nunca persistido (Artigo 11);
+ * `__resetBridgeStateForTests()` zera os dois.
+ */
+let ollamaDependencyStatus: DependencyOutcome | undefined;
+const searchContainerStatuses = new Map<string, DependencyOutcome>();
+
+/**
+ * Espelho GUI local ao app (SPEC-0062, Escopo 3.1) do estado de auto-start
+ * das duas dependências externas — nunca promovido a `@atlas/contracts`
+ * (regra de tipos locais do `apps/desktop/CLAUDE.md`).
+ */
+export interface DependencyStatusSnapshot {
+  readonly ollama: DependencyOutcome | undefined;
+  /**
+   * Um desfecho por container **distinto** tentado nesta sessão, na ordem
+   * da primeira tentativa de cada nome. Lista vazia = nenhuma tentativa
+   * ainda.
+   */
+  readonly searchContainers: readonly DependencyOutcome[];
+}
+
+/**
+ * Leitura síncrona do estado de dependências (SPEC-0062, Escopo 3.3) — nunca
+ * sobe o Core, nunca toca a porta, nunca marca operação em voo (mesma classe
+ * de `readTokenUsage`).
+ */
+export function readDependencyStatus(): DependencyStatusSnapshot {
+  return {
+    ollama: ollamaDependencyStatus,
+    searchContainers: [...searchContainerStatuses.values()],
+  };
+}
+
+/**
  * Dispara o auto-start do Ollama e do container de busca (SPEC-0060/
  * SPEC-0061, Escopo 5.1/6.1) — primeira leitura de `process.env` em
  * `core-bridge.ts` (até aqui o módulo só recebia `configOverride` por IPC);
  * `env` é injetável por parâmetro para manter a função testável sem
- * Electron. Env ausente/vazia ⇒ desligado (default do core); env inválida ⇒
- * desligado + `console.warn` pinado, **nunca lança** (D25/D6 da SPEC-0061) —
- * divergência deliberada da CLI (`CliUsageError`). As duas variáveis são
- * independentes: uma inválida não impede a outra de ser exercitada. Não é
- * rastreada pelo registro de operação em voo da SPEC-0051: não sobe Core,
- * não executa Tool.
+ * Electron. `ATLAS_AUTO_START_OLLAMA` ausente/vazia ⇒ ligado por padrão
+ * desde a SPEC-0062 (`DESKTOP_AUTO_START_OLLAMA_DEFAULT`, ADR-0028(i)); env
+ * inválida ⇒ desligado + `console.warn` pinado, **nunca lança** (D4/D25/D6) —
+ * divergência deliberada da CLI (`CliUsageError`).
+ * `ATLAS_AUTO_START_SEARCH_CONTAINER` sai **inalterada** (ADR-0027(g) segue
+ * em vigor para o container): ausente/vazia/inválida ⇒ desligado. As duas
+ * variáveis são independentes: uma inválida não impede a outra de ser
+ * exercitada. Não é rastreada pelo registro de operação em voo da SPEC-0051:
+ * não sobe Core, não executa Tool.
  */
 export async function ensureExternalDependencies(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<DependencyReport> {
   const parsedOllama = parseBooleanSetting(env['ATLAS_AUTO_START_OLLAMA']);
-  let autoStartOllama = false;
+  let autoStartOllama = DESKTOP_AUTO_START_OLLAMA_DEFAULT;
   if (parsedOllama.kind === 'invalid') {
+    autoStartOllama = false;
     console.warn(INVALID_AUTO_START_OLLAMA_ENV_WARNING);
   } else if (parsedOllama.kind === 'value') {
     autoStartOllama = parsedOllama.value;
@@ -240,7 +303,20 @@ export async function ensureExternalDependencies(
   const config = resolveDependencyConfig({
     dependencies: { autoStartOllama, autoStartSearchContainer },
   });
-  return dependencyManager.ensure(config);
+  const report = await dependencyManager.ensure(config);
+
+  const ollamaOutcome = report.outcomes.find((outcome) => outcome.dependency === 'ollama');
+  if (ollamaOutcome !== undefined) {
+    ollamaDependencyStatus = ollamaOutcome;
+  }
+  const containerOutcome = report.outcomes.find(
+    (outcome) => outcome.dependency === 'search-container',
+  );
+  if (containerOutcome !== undefined && containerOutcome.status !== 'disabled') {
+    searchContainerStatuses.set(containerOutcome.container, containerOutcome);
+  }
+
+  return report;
 }
 
 /**
@@ -252,11 +328,39 @@ export async function releaseExternalDependencies(): Promise<void> {
 }
 
 /**
+ * Gesto de GUI para ligar sob demanda um container de busca (SPEC-0062,
+ * Escopo 4.1) — fica **fora** do mutex de aplicação de política, fora de
+ * `hasInFlightOperation()` e da serialização de sessões (D6/D8): não sobe
+ * Core, não executa Tool, não altera `AtlasConfig`/política alguma.
+ *
+ * Ordem fail-closed: coerção pela origem única de entrada de borda
+ * (`parseContainerNameSetting`, D12 — o valor recebido pelo
+ * `DependencyManager` é assumido já normalizado); `'invalid'` rejeita sem
+ * tocar a porta; `'unset'` (vazio/só espaços) resolve `'disabled'` sem
+ * gravar estado novo; `'value'` delega a
+ * `dependencyManager.ensureSearchContainer` e grava o desfecho.
+ */
+export async function ensureSearchContainer(container: string): Promise<DependencyOutcome> {
+  const parsed = parseContainerNameSetting(container);
+  if (parsed.kind === 'invalid') {
+    throw new Error(INVALID_SEARCH_CONTAINER_NAME_MESSAGE);
+  }
+  if (parsed.kind === 'unset') {
+    return { dependency: 'search-container', status: 'disabled' };
+  }
+
+  const outcome = await dependencyManager.ensureSearchContainer(parsed.value);
+  searchContainerStatuses.set(parsed.value, outcome);
+  return outcome;
+}
+
+/**
  * Uso exclusivo dos testes — troca o `DependencyManager` de módulo por um
  * fake (`ProcessPort`/`sleep` injetados), para exercitar
- * `ensureExternalDependencies`/`releaseExternalDependencies` sem nunca
- * spawnar um processo real ou tocar rede (SPEC-0060, Estratégia de Testes).
- * `__resetBridgeStateForTests()` restaura a instância default.
+ * `ensureExternalDependencies`/`releaseExternalDependencies`/
+ * `ensureSearchContainer` sem nunca spawnar um processo real ou tocar rede
+ * (SPEC-0060, Estratégia de Testes). `__resetBridgeStateForTests()` restaura
+ * a instância default.
  */
 export function __setDependencyManagerForTests(manager: DependencyManager): void {
   dependencyManager = manager;
@@ -629,6 +733,9 @@ export function __resetBridgeStateForTests(): void {
   policyApplicationInProgress = false;
   operations.clear();
   tokenUsage.reset();
+  // SPEC-0062: zera o estado de dependências desta sessão.
+  ollamaDependencyStatus = undefined;
+  searchContainerStatuses.clear();
   // Restaura a instância default (SPEC-0060) — desfaz qualquer fake
   // instalado por `__setDependencyManagerForTests`.
   dependencyManager = createDependencyManager();

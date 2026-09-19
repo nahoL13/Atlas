@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { createDependencyManager } from '@atlas/core';
 import type {
@@ -37,16 +40,12 @@ function instantSleep(): (ms: number) => Promise<void> {
 }
 
 describe('ensureExternalDependencies (SPEC-0060, CA 22)', () => {
-  it('ATLAS_AUTO_START_OLLAMA ausente devolve "disabled" sem tocar a porta', async () => {
+  it('ATLAS_AUTO_START_OLLAMA ausente exercita o auto-start por padrão (SPEC-0062/CA 18 — mudança intencional em relação à SPEC-0060)', async () => {
     const calls: string[] = [];
     const process = fakeProcess({
       isOllamaRunning: async () => {
         calls.push('isOllamaRunning');
-        return false;
-      },
-      startOllama: async (): Promise<OllamaStartOutcome> => {
-        calls.push('startOllama');
-        return { started: true };
+        return true;
       },
     });
     const {
@@ -61,11 +60,11 @@ describe('ensureExternalDependencies (SPEC-0060, CA 22)', () => {
 
     expect(report).toEqual({
       outcomes: [
-        { dependency: 'ollama', status: 'disabled' },
+        { dependency: 'ollama', status: 'already-running' },
         { dependency: 'search-container', status: 'disabled' },
       ],
     });
-    expect(calls).toEqual([]);
+    expect(calls).toEqual(['isOllamaRunning']);
   });
 
   it('com "1", exercita o caminho de auto-start (já em execução)', async () => {
@@ -393,6 +392,327 @@ describe('releaseExternalDependencies — container de busca (SPEC-0061, CA 33)'
     __setDependencyManagerForTests(createDependencyManager({ process, sleep: instantSleep() }));
 
     await ensureExternalDependencies({ ATLAS_AUTO_START_SEARCH_CONTAINER: 'searxng' });
+    await releaseExternalDependencies();
+
+    expect(stopCalls).toBe(1);
+  });
+});
+
+describe('DESKTOP_AUTO_START_OLLAMA_DEFAULT (SPEC-0062, CA 17)', () => {
+  it('é exportada e vale true', async () => {
+    const { DESKTOP_AUTO_START_OLLAMA_DEFAULT } = await import('../src/core-bridge.js');
+    expect(DESKTOP_AUTO_START_OLLAMA_DEFAULT).toBe(true);
+  });
+});
+
+describe('tabela exaustiva de ATLAS_AUTO_START_OLLAMA no desktop (SPEC-0062, CA 19)', () => {
+  it.each([
+    ['true', true, false],
+    ['1', true, false],
+    ['on', true, false],
+    ['false', false, false],
+    ['0', false, false],
+    ['off', false, false],
+    [undefined, true, false],
+    ['talvez', false, true],
+  ])('%s ⇒ autoStartOllama=%s, warn=%s', async (raw, expectedEnabled, expectedWarn) => {
+    const process = fakeProcess({ isOllamaRunning: async () => true });
+    const {
+      ensureExternalDependencies,
+      __resetBridgeStateForTests,
+      __setDependencyManagerForTests,
+      INVALID_AUTO_START_OLLAMA_ENV_WARNING,
+    } = await import('../src/core-bridge.js');
+    __resetBridgeStateForTests();
+    __setDependencyManagerForTests(createDependencyManager({ process, sleep: instantSleep() }));
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const env: NodeJS.ProcessEnv = raw === undefined ? {} : { ATLAS_AUTO_START_OLLAMA: raw };
+      const report = await ensureExternalDependencies(env);
+
+      expect(report.outcomes[0]).toEqual({
+        dependency: 'ollama',
+        status: expectedEnabled ? 'already-running' : 'disabled',
+      });
+      if (expectedWarn) {
+        expect(warnSpy).toHaveBeenCalledTimes(1);
+        expect(warnSpy).toHaveBeenCalledWith(INVALID_AUTO_START_OLLAMA_ENV_WARNING);
+      } else {
+        expect(warnSpy).not.toHaveBeenCalled();
+      }
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+});
+
+describe('ensureExternalDependencies — nunca lança e não marca operação em voo (SPEC-0062, CA 22)', () => {
+  it('não marca operação em voo: selectPermissionRoots segue livre enquanto o auto-start do Ollama está em andamento', async () => {
+    let releaseSleep: () => void = () => {};
+    const sleepGate = new Promise<void>((resolve) => {
+      releaseSleep = resolve;
+    });
+    const process = fakeProcess({ isOllamaRunning: async () => false });
+    const {
+      ensureExternalDependencies,
+      selectPermissionRoots,
+      __resetBridgeStateForTests,
+      __setDependencyManagerForTests,
+    } = await import('../src/core-bridge.js');
+    __resetBridgeStateForTests();
+    __setDependencyManagerForTests(
+      createDependencyManager({ process, sleep: async () => sleepGate }),
+    );
+
+    const ensurePromise = ensureExternalDependencies({ ATLAS_AUTO_START_OLLAMA: '1' });
+    const tmp = mkdtempSync(join(tmpdir(), 'atlas-desktop-dep-'));
+    try {
+      const selection = await selectPermissionRoots({ readRoots: [tmp], writeRoots: [] });
+      expect(selection.readRoots).toEqual([tmp]);
+    } finally {
+      releaseSleep();
+      await expect(ensurePromise).resolves.toBeDefined();
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('readDependencyStatus (SPEC-0062, Escopo 3, CAs 24/25/28.1)', () => {
+  it('CA24: síncrona, começa vazia, reflete os desfechos após ensureExternalDependencies assentar; __resetBridgeStateForTests limpa', async () => {
+    const process = fakeProcess({
+      isOllamaRunning: async () => true,
+    });
+    const {
+      ensureExternalDependencies,
+      readDependencyStatus,
+      __resetBridgeStateForTests,
+      __setDependencyManagerForTests,
+    } = await import('../src/core-bridge.js');
+    __resetBridgeStateForTests();
+    __setDependencyManagerForTests(createDependencyManager({ process, sleep: instantSleep() }));
+
+    expect(readDependencyStatus()).toEqual({ ollama: undefined, searchContainers: [] });
+
+    await ensureExternalDependencies({ ATLAS_AUTO_START_OLLAMA: '1' });
+
+    expect(readDependencyStatus()).toEqual({
+      ollama: { dependency: 'ollama', status: 'already-running' },
+      searchContainers: [],
+    });
+
+    __resetBridgeStateForTests();
+    expect(readDependencyStatus()).toEqual({ ollama: undefined, searchContainers: [] });
+  });
+
+  it('CA24: ATLAS_AUTO_START_SEARCH_CONTAINER ausente mantém searchContainers vazia ("disabled" nunca entra)', async () => {
+    const process = fakeProcess();
+    const {
+      ensureExternalDependencies,
+      readDependencyStatus,
+      __resetBridgeStateForTests,
+      __setDependencyManagerForTests,
+    } = await import('../src/core-bridge.js');
+    __resetBridgeStateForTests();
+    __setDependencyManagerForTests(createDependencyManager({ process, sleep: instantSleep() }));
+
+    await ensureExternalDependencies({ ATLAS_AUTO_START_OLLAMA: 'false' });
+
+    expect(readDependencyStatus().searchContainers).toEqual([]);
+  });
+
+  it('CA25: readDependencyStatus não sobe o Core', async () => {
+    const spyModule = await import('@atlas/core');
+    const spy = vi.spyOn(spyModule, 'createAtlas');
+
+    const { readDependencyStatus, __resetBridgeStateForTests } =
+      await import('../src/core-bridge.js');
+    __resetBridgeStateForTests();
+
+    readDependencyStatus();
+
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+});
+
+describe('ensureSearchContainer — gesto de GUI (SPEC-0062, CAs 26-30, 28.1)', () => {
+  it('CA26: nome inválido rejeita com INVALID_SEARCH_CONTAINER_NAME_MESSAGE, zero chamadas à porta, searchContainers inalterada', async () => {
+    const process = fakeProcess({
+      inspectSearchContainer: async () => {
+        throw new Error('a porta não deveria ser tocada');
+      },
+    });
+    const {
+      ensureSearchContainer,
+      readDependencyStatus,
+      __resetBridgeStateForTests,
+      __setDependencyManagerForTests,
+      INVALID_SEARCH_CONTAINER_NAME_MESSAGE,
+    } = await import('../src/core-bridge.js');
+    __resetBridgeStateForTests();
+    __setDependencyManagerForTests(createDependencyManager({ process, sleep: instantSleep() }));
+
+    await expect(ensureSearchContainer('a b')).rejects.toThrow(
+      INVALID_SEARCH_CONTAINER_NAME_MESSAGE,
+    );
+    expect(readDependencyStatus().searchContainers).toEqual([]);
+  });
+
+  it('CA27: nome vazio/só espaços resolve "disabled" com zero chamadas à porta, sem entrar em searchContainers', async () => {
+    const process = fakeProcess({
+      inspectSearchContainer: async () => {
+        throw new Error('a porta não deveria ser tocada');
+      },
+    });
+    const {
+      ensureSearchContainer,
+      readDependencyStatus,
+      __resetBridgeStateForTests,
+      __setDependencyManagerForTests,
+    } = await import('../src/core-bridge.js');
+    __resetBridgeStateForTests();
+    __setDependencyManagerForTests(createDependencyManager({ process, sleep: instantSleep() }));
+
+    const outcome = await ensureSearchContainer('   ');
+
+    expect(outcome).toEqual({ dependency: 'search-container', status: 'disabled' });
+    expect(readDependencyStatus().searchContainers).toEqual([]);
+  });
+
+  it('CA28: normaliza espaços nas bordas — o fake recebe exatamente o nome trimado, e o desfecho entra em searchContainers', async () => {
+    const received: string[] = [];
+    const process = fakeProcess({
+      inspectSearchContainer: async (name: string) => {
+        received.push(name);
+        return 'running';
+      },
+    });
+    const {
+      ensureSearchContainer,
+      readDependencyStatus,
+      __resetBridgeStateForTests,
+      __setDependencyManagerForTests,
+    } = await import('../src/core-bridge.js');
+    __resetBridgeStateForTests();
+    __setDependencyManagerForTests(createDependencyManager({ process, sleep: instantSleep() }));
+
+    const outcome = await ensureSearchContainer('  searxng  ');
+
+    expect(received).toEqual(['searxng']);
+    expect(outcome).toEqual({
+      dependency: 'search-container',
+      status: 'already-running',
+      container: 'searxng',
+    });
+    expect(readDependencyStatus().searchContainers).toEqual([outcome]);
+  });
+
+  it('CA28.1: a lista acumula por nome — nomes novos são acrescentados, o mesmo nome substitui no lugar', async () => {
+    // 'a' começa "unknown" (falha, não memoizada — SPEC-0062/D10) e depois
+    // passa a existir ("running"): a 2ª tentativa para o MESMO nome
+    // substitui a entrada no lugar, sem mover a posição de 'b' na lista.
+    const state = new Map<string, SearchContainerState>([
+      ['a', 'unknown'],
+      ['b', 'running'],
+    ]);
+    const process = fakeProcess({
+      inspectSearchContainer: async (name: string) => state.get(name) ?? 'unknown',
+    });
+    const {
+      ensureSearchContainer,
+      readDependencyStatus,
+      __resetBridgeStateForTests,
+      __setDependencyManagerForTests,
+    } = await import('../src/core-bridge.js');
+    __resetBridgeStateForTests();
+    __setDependencyManagerForTests(createDependencyManager({ process, sleep: instantSleep() }));
+
+    await ensureSearchContainer('a');
+    await ensureSearchContainer('b');
+    expect(readDependencyStatus().searchContainers).toEqual([
+      {
+        dependency: 'search-container',
+        status: 'failed',
+        reason: 'container-unknown',
+        container: 'a',
+      },
+      { dependency: 'search-container', status: 'already-running', container: 'b' },
+    ]);
+
+    state.set('a', 'running');
+    await ensureSearchContainer('a');
+    expect(readDependencyStatus().searchContainers).toEqual([
+      { dependency: 'search-container', status: 'already-running', container: 'a' },
+      { dependency: 'search-container', status: 'already-running', container: 'b' },
+    ]);
+  });
+
+  it('CA28.1: um container ligado por ensureExternalDependencies e outro pelo gesto aparecem ambos', async () => {
+    const process = fakeProcess({
+      inspectSearchContainer: async () => 'running',
+    });
+    const {
+      ensureExternalDependencies,
+      ensureSearchContainer,
+      readDependencyStatus,
+      __resetBridgeStateForTests,
+      __setDependencyManagerForTests,
+    } = await import('../src/core-bridge.js');
+    __resetBridgeStateForTests();
+    __setDependencyManagerForTests(createDependencyManager({ process, sleep: instantSleep() }));
+
+    await ensureExternalDependencies({ ATLAS_AUTO_START_SEARCH_CONTAINER: 'bootstrap' });
+    await ensureSearchContainer('gesto');
+
+    expect(readDependencyStatus().searchContainers).toEqual([
+      { dependency: 'search-container', status: 'already-running', container: 'bootstrap' },
+      { dependency: 'search-container', status: 'already-running', container: 'gesto' },
+    ]);
+  });
+
+  it('CA29: não encerra sessões vivas, não altera seleções de rede/permissões, e roda mesmo com operação em voo', async () => {
+    const process = fakeProcess({ inspectSearchContainer: async () => 'running' });
+    const {
+      ensureSearchContainer,
+      selectedNetworkAccess,
+      selectedPermissionRoots,
+      __resetBridgeStateForTests,
+      __setDependencyManagerForTests,
+    } = await import('../src/core-bridge.js');
+    __resetBridgeStateForTests();
+    __setDependencyManagerForTests(createDependencyManager({ process, sleep: instantSleep() }));
+
+    const outcome = await ensureSearchContainer('searxng');
+
+    expect(outcome.status).toBe('already-running');
+    expect(selectedNetworkAccess()).toBeUndefined();
+    expect(selectedPermissionRoots()).toBeUndefined();
+  });
+
+  it('CA30: após um ensureSearchContainer "started", releaseExternalDependencies delega o stopSearchContainer correspondente 1x; sem posse é no-op', async () => {
+    let stopCalls = 0;
+    let pollCount = 0;
+    const process = fakeProcess({
+      inspectSearchContainer: async (): Promise<SearchContainerState> => {
+        pollCount += 1;
+        return pollCount === 1 ? 'stopped' : 'running';
+      },
+      startSearchContainer: async (): Promise<SearchContainerStartOutcome> => ({ started: true }),
+      stopSearchContainer: async () => {
+        stopCalls += 1;
+      },
+    });
+    const {
+      ensureSearchContainer,
+      releaseExternalDependencies,
+      __resetBridgeStateForTests,
+      __setDependencyManagerForTests,
+    } = await import('../src/core-bridge.js');
+    __resetBridgeStateForTests();
+    __setDependencyManagerForTests(createDependencyManager({ process, sleep: instantSleep() }));
+
+    await ensureSearchContainer('searxng');
     await releaseExternalDependencies();
 
     expect(stopCalls).toBe(1);

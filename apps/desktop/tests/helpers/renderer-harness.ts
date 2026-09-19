@@ -189,6 +189,11 @@ export interface AtlasDouble {
   tokens: {
     read(): Promise<RendererTokenUsageSnapshot>;
   };
+  /** SPEC-0062 — auto-start de dependências externas, espelho de `window.atlas.dependencies` em `src/preload.cjs`. */
+  dependencies: {
+    read(): Promise<RendererDependencyStatusSnapshot>;
+    startSearchContainer(container: string): Promise<RendererDependencyOutcome>;
+  };
 }
 
 /** Espelho de `{ available, reason? }` (canal `'atlas:vad:available'`, SPEC-0052). */
@@ -244,6 +249,40 @@ export interface RendererTokenUsageSnapshot {
   readonly unreportedTurns: number;
 }
 
+/** Espelho de `DependencyOutcome` (`@atlas/core`, SPEC-0060/0061/0062). */
+export type RendererDependencyOutcome =
+  | { readonly dependency: 'ollama'; readonly status: 'disabled' }
+  | { readonly dependency: 'ollama'; readonly status: 'already-running' }
+  | { readonly dependency: 'ollama'; readonly status: 'started' }
+  | {
+      readonly dependency: 'ollama';
+      readonly status: 'failed';
+      readonly reason: 'binary-missing' | 'spawn-failed' | 'timeout';
+    }
+  | { readonly dependency: 'search-container'; readonly status: 'disabled' }
+  | {
+      readonly dependency: 'search-container';
+      readonly status: 'already-running';
+      readonly container: string;
+    }
+  | {
+      readonly dependency: 'search-container';
+      readonly status: 'started';
+      readonly container: string;
+    }
+  | {
+      readonly dependency: 'search-container';
+      readonly status: 'failed';
+      readonly reason: 'docker-unavailable' | 'container-unknown' | 'start-failed' | 'timeout';
+      readonly container: string;
+    };
+
+/** Espelho de `DependencyStatusSnapshot` (`src/core-bridge.ts`, SPEC-0062). */
+export interface RendererDependencyStatusSnapshot {
+  readonly ollama: RendererDependencyOutcome | undefined;
+  readonly searchContainers: readonly RendererDependencyOutcome[];
+}
+
 type AtlasOverrides = {
   readonly [K in keyof AtlasDouble]?: AtlasDouble[K] extends (...args: never[]) => unknown
     ? AtlasDouble[K]
@@ -288,6 +327,9 @@ export interface RendererCalls {
   /** SPEC-0054 — painel `Sistema`: nº de invocações de cada canal IPC. */
   metricsReadCalls: number;
   tokensReadCalls: number;
+  /** SPEC-0062 — auto-start de dependências: nº de leituras e os nomes pedidos ao gesto de container. */
+  dependenciesReadCalls: number;
+  readonly searchContainerStartCalls: string[];
 }
 
 function createCalls(): RendererCalls {
@@ -312,6 +354,8 @@ function createCalls(): RendererCalls {
     vadResourcesCalls: 0,
     metricsReadCalls: 0,
     tokensReadCalls: 0,
+    dependenciesReadCalls: 0,
+    searchContainerStartCalls: [],
     permissionsSelect: [],
     networkSelect: [],
     ttsSpeak: [],
@@ -363,6 +407,12 @@ export interface RendererFixtureOptions {
   readonly metricsSnapshot?: RendererSystemMetricsSnapshot;
   /** SPEC-0054 — snapshot default devolvido por `window.atlas.tokens.read()`. */
   readonly tokensSnapshot?: RendererTokenUsageSnapshot;
+  /** SPEC-0062 — snapshot default devolvido por `window.atlas.dependencies.read()`. */
+  readonly dependenciesStatus?: RendererDependencyStatusSnapshot;
+  /** SPEC-0062 — desfecho default devolvido por `window.atlas.dependencies.startSearchContainer(container)`. */
+  readonly startSearchContainer?: (
+    container: string,
+  ) => RendererDependencyOutcome | Promise<RendererDependencyOutcome>;
   /** SPEC-0053 — `prefers-reduced-motion: reduce` inicial (default `false`). */
   readonly reducedMotion?: boolean;
   /** SPEC-0053 — `window.devicePixelRatio` dublado (default `1`). */
@@ -596,6 +646,25 @@ function buildAtlasDouble(options: RendererFixtureOptions, calls: RendererCalls)
         );
       },
     },
+    dependencies: {
+      read: () => {
+        calls.dependenciesReadCalls += 1;
+        return Promise.resolve(
+          options.dependenciesStatus ?? { ollama: undefined, searchContainers: [] },
+        );
+      },
+      startSearchContainer: (container: string) => {
+        calls.searchContainerStartCalls.push(container);
+        const resolver =
+          options.startSearchContainer ??
+          ((name: string): RendererDependencyOutcome => ({
+            dependency: 'search-container',
+            status: 'already-running',
+            container: name,
+          }));
+        return Promise.resolve(resolver(container));
+      },
+    },
   };
 
   const overrides = options.atlas;
@@ -616,6 +685,7 @@ function buildAtlasDouble(options: RendererFixtureOptions, calls: RendererCalls)
     vad: { ...base.vad, ...overrides.vad },
     metrics: { ...base.metrics, ...overrides.metrics },
     tokens: { ...base.tokens, ...overrides.tokens },
+    dependencies: { ...base.dependencies, ...overrides.dependencies },
   };
 }
 

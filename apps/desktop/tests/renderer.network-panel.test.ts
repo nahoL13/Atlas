@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { RendererFixture, RendererFixtureOptions } from './helpers/renderer-harness.js';
+import type {
+  RendererDependencyOutcome,
+  RendererFixture,
+  RendererFixtureOptions,
+} from './helpers/renderer-harness.js';
 import { loadRenderer } from './helpers/renderer-harness.js';
 
 // SPEC-0059: cobertura comportamental do painel de rede/busca (dentro de
@@ -358,5 +362,185 @@ describe('painel de rede/busca — camada de renderer do mutex (D16)', () => {
 
     expect(disabledOf(f, 'permissions-apply')).toBe(false);
     expect(disabledOf(f, 'network-apply')).toBe(false);
+  });
+});
+
+// SPEC-0062 (CAs 34-37): container Docker do provedor de busca — campo dentro
+// de #search-detail. Gesto PRÓPRIO (D6): não entra no rascunho de
+// rede/busca, não passa por `network.select`, e `#search-container-status`
+// é pintado exclusivamente por este gesto (D15) — nunca por `loadStatus()`/
+// `seedNetworkDraftFromStatus()`/`refreshPermissionsPanelState()`/apply de
+// rede. `#search-container-input` nunca é semeado (D16).
+
+function containerStatusText(f: RendererFixture): string {
+  return f.document.getElementById('search-container-status')?.textContent ?? '';
+}
+
+describe('container Docker do provedor de busca — gesto de GUI (SPEC-0062)', () => {
+  it('CA34: clique chama startSearchContainer com o valor cru do input, desabilita o botão em voo e reabilita em sucesso', async () => {
+    let resolve: ((value: RendererDependencyOutcome) => void) | undefined;
+    const gate = new Promise<RendererDependencyOutcome>((res) => {
+      resolve = res;
+    });
+    const f = await open({
+      startSearchContainer: () => gate,
+    });
+
+    setValue(f, 'search-container-input', '  searxng  ');
+    click(f, 'search-container-apply');
+
+    expect(f.calls.searchContainerStartCalls).toEqual(['  searxng  ']);
+    expect(disabledOf(f, 'search-container-apply')).toBe(true);
+
+    resolve?.({ dependency: 'search-container', status: 'started', container: 'searxng' });
+    await f.flush();
+
+    expect(disabledOf(f, 'search-container-apply')).toBe(false);
+  });
+
+  it('CA34: reabilita o botão também em rejeição', async () => {
+    const f = await open({
+      startSearchContainer: () => Promise.reject(new Error('boom')),
+    });
+
+    setValue(f, 'search-container-input', 'searxng');
+    click(f, 'search-container-apply');
+    expect(disabledOf(f, 'search-container-apply')).toBe(true);
+    await f.flush();
+
+    expect(disabledOf(f, 'search-container-apply')).toBe(false);
+  });
+
+  it.each([
+    [
+      { dependency: 'search-container', status: 'disabled' } as RendererDependencyOutcome,
+      'Nenhum nome informado.',
+    ],
+    [
+      {
+        dependency: 'search-container',
+        status: 'already-running',
+        container: 'searxng',
+      } as RendererDependencyOutcome,
+      'Container "searxng" já estava em execução.',
+    ],
+    [
+      {
+        dependency: 'search-container',
+        status: 'started',
+        container: 'searxng',
+      } as RendererDependencyOutcome,
+      'Container "searxng" iniciado com sucesso.',
+    ],
+    [
+      {
+        dependency: 'search-container',
+        status: 'failed',
+        reason: 'docker-unavailable',
+        container: 'searxng',
+      } as RendererDependencyOutcome,
+      'Não foi possível ligar "searxng": Docker indisponível.',
+    ],
+    [
+      {
+        dependency: 'search-container',
+        status: 'failed',
+        reason: 'container-unknown',
+        container: 'searxng',
+      } as RendererDependencyOutcome,
+      'Não foi possível ligar "searxng": o Atlas nunca cria containers — verifique o nome.',
+    ],
+    [
+      {
+        dependency: 'search-container',
+        status: 'failed',
+        reason: 'start-failed',
+        container: 'searxng',
+      } as RendererDependencyOutcome,
+      'Não foi possível ligar "searxng": falha ao iniciar o container.',
+    ],
+    [
+      {
+        dependency: 'search-container',
+        status: 'failed',
+        reason: 'timeout',
+        container: 'searxng',
+      } as RendererDependencyOutcome,
+      'Não foi possível ligar "searxng": tempo esgotado esperando o container ficar pronto.',
+    ],
+  ])('CA35: desfecho %j pinta "%s"', async (outcome, expected) => {
+    const f = await open({
+      startSearchContainer: () => Promise.resolve(outcome),
+    });
+
+    setValue(f, 'search-container-input', 'searxng');
+    click(f, 'search-container-apply');
+    await f.flush();
+
+    expect(containerStatusText(f)).toBe(expected);
+  });
+
+  it('CA35: rejeição pinta a mensagem do erro prefixada por ⚠️', async () => {
+    const f = await open({
+      startSearchContainer: () => Promise.reject(new Error('Docker não está instalado')),
+    });
+
+    setValue(f, 'search-container-input', 'searxng');
+    click(f, 'search-container-apply');
+    await f.flush();
+
+    expect(containerStatusText(f)).toBe('⚠️ Docker não está instalado');
+  });
+
+  it('CA36: #search-container-status não é tocado por loadStatus()/seedNetworkDraftFromStatus()/refreshPermissionsPanelState() nem pelo apply de rede', async () => {
+    const f = await open({
+      status: { netRoots: [], searchUrl: '' },
+      startSearchContainer: () =>
+        Promise.resolve({
+          dependency: 'search-container',
+          status: 'started',
+          container: 'searxng',
+        } as RendererDependencyOutcome),
+      atlas: {
+        network: {
+          select: (access) => {
+            fixture!.calls.networkSelect.push(access);
+            return Promise.resolve(access);
+          },
+        },
+      },
+    });
+
+    setValue(f, 'search-container-input', 'searxng');
+    click(f, 'search-container-apply');
+    await f.flush();
+    const painted = containerStatusText(f);
+    expect(painted).toBe('Container "searxng" iniciado com sucesso.');
+
+    // Aplicar rede/busca com sucesso (que chama loadStatus()/
+    // seedNetworkDraftFromStatus()/refreshPermissionsPanelState() por baixo)
+    // não deve repintar #search-container-status (D15).
+    await addHost(f, 'exemplo.com');
+    click(f, 'network-apply');
+    await f.flush();
+    expect(containerStatusText(f)).toBe(painted);
+  });
+
+  it('CA37: #search-container-input nunca é semeado — permanece vazio no arranque e após um network.select bem-sucedido', async () => {
+    const f = await open({
+      status: { netRoots: ['exemplo.com'], searchUrl: 'https://busca.exemplo.com/search' },
+      atlas: {
+        network: {
+          select: (access) => Promise.resolve(access),
+        },
+      },
+    });
+
+    expect(valueOf(f, 'search-container-input')).toBe('');
+
+    click(f, 'network-apply');
+    await f.flush();
+
+    expect(valueOf(f, 'search-container-input')).toBe('');
   });
 });

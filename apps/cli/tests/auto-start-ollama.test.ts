@@ -57,6 +57,13 @@ function createFakeDependencyManager(report: DependencyReport): {
     release: async () => {
       releaseCalls += 1;
     },
+    // SPEC-0062/D-A1: membro aditivo da interface pública de
+    // `DependencyManager` — `apps/cli/src` não ganha nenhum chamador novo,
+    // este fake só precisa satisfazer o typecheck do package.
+    ensureSearchContainer: async () => ({
+      dependency: 'search-container',
+      status: 'disabled',
+    }),
   };
   return { manager, ensureCalls: () => ensureCalls, releaseCalls: () => releaseCalls };
 }

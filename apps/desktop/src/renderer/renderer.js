@@ -2772,6 +2772,75 @@ document.getElementById('network-apply').addEventListener('click', () => {
 });
 
 // ============================================================================
+// Container Docker do provedor de busca — gesto de GUI (SPEC-0062, item 4).
+//
+// Fica FORA do mutex de política, de `hasInFlightOperation()` e da
+// serialização de gestos (D6/D8): não sobe Core, não executa Tool, não
+// altera política nenhuma — só liga sob demanda um container já nomeado.
+// `#search-container-status` é pintado EXCLUSIVAMENTE por este gesto (D15):
+// nenhuma outra função do renderer o toca. `#search-container-input` NUNCA é
+// semeado (D16) — nem pelo status, nem por nenhum outro caminho.
+//
+// Tabela exaustiva de textos pinados (D17), reutilizada pelo painel `Sistema`
+// abaixo — nenhum identificador cru de `reason` chega à interface.
+// ============================================================================
+
+const OLLAMA_FAILURE_REASON_TEXT = {
+  'binary-missing': 'binário do Ollama não encontrado',
+  'spawn-failed': 'falha ao iniciar o processo do Ollama',
+  timeout: 'tempo esgotado esperando o Ollama responder',
+};
+
+const SEARCH_CONTAINER_FAILURE_REASON_TEXT = {
+  'docker-unavailable': 'Docker indisponível',
+  'container-unknown': 'o Atlas nunca cria containers — verifique o nome',
+  'start-failed': 'falha ao iniciar o container',
+  timeout: 'tempo esgotado esperando o container ficar pronto',
+};
+
+/** Traduz a `reason` crua de um `DependencyOutcome` "failed" (D17) — nunca devolve o identificador cru. */
+function formatDependencyFailureReason(outcome) {
+  const table =
+    outcome.dependency === 'ollama'
+      ? OLLAMA_FAILURE_REASON_TEXT
+      : SEARCH_CONTAINER_FAILURE_REASON_TEXT;
+  return table[outcome.reason] ?? 'falha desconhecida';
+}
+
+/** Texto pinado exaustivo do desfecho de UM container, usado no gesto de clique (D17). */
+function formatSearchContainerGestureOutcome(outcome) {
+  if (outcome.status === 'disabled') {
+    return 'Nenhum nome informado.';
+  }
+  if (outcome.status === 'already-running') {
+    return `Container "${outcome.container}" já estava em execução.`;
+  }
+  if (outcome.status === 'started') {
+    return `Container "${outcome.container}" iniciado com sucesso.`;
+  }
+  return `Não foi possível ligar "${outcome.container}": ${formatDependencyFailureReason(outcome)}.`;
+}
+
+document.getElementById('search-container-apply').addEventListener('click', () => {
+  const input = document.getElementById('search-container-input');
+  const button = document.getElementById('search-container-apply');
+  const statusEl = document.getElementById('search-container-status');
+  const value = input.value;
+  button.disabled = true;
+  window.atlas.dependencies
+    .startSearchContainer(value)
+    .then((outcome) => {
+      statusEl.textContent = formatSearchContainerGestureOutcome(outcome);
+    })
+    .catch((error) => {
+      statusEl.textContent = `⚠️ ${error.message ?? error}`;
+    })
+    .finally(() => {
+      button.disabled = false;
+    });
+});
+
+// ============================================================================
 // Modo hands-free (conversa por voz contínua) — SPEC-0052, ADR-0023.
 //
 // Réplica deliberada de `apps/desktop/src/hands-free.ts` (D10, mesmo padrão
@@ -3671,6 +3740,69 @@ function renderSystemTokensUnavailable() {
     `Tokens desta sessão: ${SYSTEM_METRIC_UNAVAILABLE_TEXT['read-failed']}`;
 }
 
+/** Texto pinado exaustivo do desfecho do Ollama nesta sessão (SPEC-0062, D17). */
+function formatOllamaDependencyLine(outcome) {
+  if (outcome === undefined) {
+    return 'Ollama: ainda verificando…';
+  }
+  if (outcome.status === 'disabled') {
+    return 'Ollama: auto-start desligado.';
+  }
+  if (outcome.status === 'already-running') {
+    return 'Ollama: já estava em execução.';
+  }
+  if (outcome.status === 'started') {
+    return 'Ollama: iniciado automaticamente pelo Atlas.';
+  }
+  return `Ollama: não foi possível iniciar (${formatDependencyFailureReason(outcome)}).`;
+}
+
+/** Texto pinado exaustivo do desfecho de UM container de busca (SPEC-0062, D17). */
+function formatSearchContainerDependencyLine(outcome) {
+  if (outcome.status === 'already-running') {
+    return `Container de busca "${outcome.container}": já estava em execução.`;
+  }
+  if (outcome.status === 'started') {
+    return `Container de busca "${outcome.container}": iniciado automaticamente pelo Atlas.`;
+  }
+  return (
+    `Container de busca "${outcome.container}": não foi possível iniciar ` +
+    `(${formatDependencyFailureReason(outcome)}).`
+  );
+}
+
+/**
+ * Renderiza `#system-dependencies` (SPEC-0062, Escopo 5.5): uma linha para o
+ * Ollama mais uma linha por entrada de `searchContainers` (D22) — nenhum
+ * identificador cru de `reason` chega ao DOM (D17/Restrição 10).
+ */
+function renderSystemDependencies(status) {
+  const container = document.getElementById('system-dependencies');
+  const lines = [formatOllamaDependencyLine(status.ollama)];
+  if (status.searchContainers.length === 0) {
+    lines.push('Nenhum container de busca nesta sessão.');
+  } else {
+    for (const outcome of status.searchContainers) {
+      lines.push(formatSearchContainerDependencyLine(outcome));
+    }
+  }
+  container.innerHTML = '';
+  for (const line of lines) {
+    const p = document.createElement('p');
+    p.textContent = line;
+    container.appendChild(p);
+  }
+}
+
+/** Rejeição do `invoke` de dependências (CA40): célula própria, sem tocar `#global-alert`/`#presence-core`. */
+function renderSystemDependenciesUnavailable() {
+  const container = document.getElementById('system-dependencies');
+  container.innerHTML = '';
+  const p = document.createElement('p');
+  p.textContent = 'Falha ao ler o estado das dependências externas.';
+  container.appendChild(p);
+}
+
 function updateSystemClock() {
   const now = new Date(Date.now());
   document.getElementById('system-clock-date').textContent = formatSystemClockDate(now);
@@ -3696,12 +3828,17 @@ let systemPanelEpoch = 0;
 function readSystemPanelData(epoch) {
   if (systemPanelReadInFlight) return;
   systemPanelReadInFlight = true;
-  Promise.all([window.atlas.metrics.read(), window.atlas.tokens.read()])
-    .then(([metrics, tokens]) => {
+  Promise.all([
+    window.atlas.metrics.read(),
+    window.atlas.tokens.read(),
+    window.atlas.dependencies.read(),
+  ])
+    .then(([metrics, tokens, dependencies]) => {
       systemPanelReadInFlight = false;
       if (epoch !== systemPanelEpoch) return;
       renderSystemMetrics(metrics);
       renderSystemTokens(tokens);
+      renderSystemDependencies(dependencies);
       setSystemStatus(`Atualizado às ${formatSystemClockTime(new Date(Date.now()))}`);
     })
     .catch(() => {
@@ -3709,6 +3846,7 @@ function readSystemPanelData(epoch) {
       if (epoch !== systemPanelEpoch) return;
       renderSystemMetricsUnavailable();
       renderSystemTokensUnavailable();
+      renderSystemDependenciesUnavailable();
       setSystemStatus('Falha ao ler as métricas do sistema.');
     });
 }

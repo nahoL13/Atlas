@@ -182,17 +182,28 @@ const SPEC_0059_IDS = [
   'network-error',
 ];
 
+// SPEC-0062: campo de nome do container Docker na seção Busca (3 IDs) + a
+// linha de dependências no painel `Sistema` (1 ID).
+const SPEC_0062_IDS = [
+  'search-container-input',
+  'search-container-apply',
+  'search-container-status',
+  'system-dependencies',
+];
+
 describe('SPEC-0053 v3.0 — estrutura, manifesto e ausência dos artefatos v2', () => {
-  it('contém exatamente a união dos 99 IDs do manifesto (77 + 9 da SPEC-0054 + 13 da SPEC-0059), sem IDs estruturais extras', () => {
+  it('contém exatamente a união dos 103 IDs do manifesto (77 + 9 da SPEC-0054 + 13 da SPEC-0059 + 4 da SPEC-0062), sem IDs estruturais extras', () => {
     expect(ORIGINAL_47_IDS).toHaveLength(47);
     expect(V3_30_IDS).toHaveLength(30);
     expect(SPEC_0054_IDS).toHaveLength(9);
     expect(SPEC_0059_IDS).toHaveLength(13);
+    expect(SPEC_0062_IDS).toHaveLength(4);
     const expected = new Set([
       ...ORIGINAL_47_IDS,
       ...V3_30_IDS,
       ...SPEC_0054_IDS,
       ...SPEC_0059_IDS,
+      ...SPEC_0062_IDS,
     ]);
     const found = [...html.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1] as string);
     expect(new Set(found).size).toBe(found.length); // sem duplicatas
