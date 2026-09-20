@@ -16,9 +16,10 @@ import type {
 
 function fakeProcess(overrides: Partial<ProcessPort> = {}): ProcessPort {
   return {
-    isOllamaRunning: async () => true,
+    inspectOllama: async () => ({ running: true, models: [] }),
     startOllama: async (): Promise<OllamaStartOutcome> => ({ started: true }),
     stopOllama: async () => {},
+    pullOllamaModel: async ({ model }) => ({ status: 'installed', model }),
     inspectSearchContainer: async (): Promise<SearchContainerState> => 'unknown',
     startSearchContainer: async (): Promise<SearchContainerStartOutcome> => ({
       started: false,
@@ -85,9 +86,9 @@ describe('resolveDependencyConfig (SPEC-0060, CA 3)', () => {
     it('com provider remote, o ProcessPort fake só vê OLLAMA_DEFAULT_BASE_URL', async () => {
       const calls: string[] = [];
       const process: ProcessPort = fakeProcess({
-        isOllamaRunning: async (baseUrl) => {
+        inspectOllama: async (baseUrl) => {
           calls.push(baseUrl);
-          return true;
+          return { running: true, models: [] };
         },
       });
       const manager = createDependencyManager({ process });

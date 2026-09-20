@@ -194,6 +194,13 @@ export interface AtlasDouble {
     read(): Promise<RendererDependencyStatusSnapshot>;
     startSearchContainer(container: string): Promise<RendererDependencyOutcome>;
   };
+  /** SPEC-0063 — instalação assistida de modelo, espelho de `window.atlas.models` em `src/preload.cjs`. */
+  models: {
+    read(): Promise<RendererModelCatalogSnapshot>;
+    probe(): Promise<RendererModelCatalogSnapshot>;
+    install(model: string): Promise<RendererModelPullOutcome>;
+    cancel(): Promise<RendererModelCancelOutcome>;
+  };
 }
 
 /** Espelho de `{ available, reason? }` (canal `'atlas:vad:available'`, SPEC-0052). */
@@ -283,6 +290,60 @@ export interface RendererDependencyStatusSnapshot {
   readonly searchContainers: readonly RendererDependencyOutcome[];
 }
 
+/** Espelho de `ModelCatalogEntryView` (`src/core-bridge.ts`, SPEC-0063). */
+export interface RendererModelCatalogEntry {
+  readonly name: string;
+  readonly sizeLabel: string;
+  readonly description: string;
+  readonly recommended: boolean;
+  readonly installed: boolean;
+}
+
+/** Espelho de `InstalledModelsProbe` (SPEC-0063). */
+export type RendererInstalledModelsProbe =
+  | { readonly status: 'pending' }
+  | { readonly status: 'unknown' }
+  | { readonly status: 'known'; readonly models: readonly string[] };
+
+/** Espelho de `ModelInstallState` (SPEC-0063). */
+export type RendererModelInstallState =
+  | { readonly status: 'idle' }
+  | {
+      readonly status: 'running';
+      readonly model: string;
+      readonly completedBytes?: number;
+      readonly totalBytes?: number;
+    }
+  | { readonly status: 'installed'; readonly model: string }
+  | { readonly status: 'cancelled'; readonly model: string }
+  | {
+      readonly status: 'failed';
+      readonly model: string;
+      readonly reason: 'unreachable' | 'rejected' | 'stream-failed' | 'invalid-model' | 'busy';
+    };
+
+/** Espelho de `ModelCatalogSnapshot` (SPEC-0063). */
+export interface RendererModelCatalogSnapshot {
+  readonly catalog: readonly RendererModelCatalogEntry[];
+  readonly probe: RendererInstalledModelsProbe;
+  readonly install: RendererModelInstallState;
+}
+
+/** Espelho do desfecho de `window.atlas.models.install` (`ModelPullOutcome`, SPEC-0063). */
+export type RendererModelPullOutcome =
+  | { readonly status: 'installed'; readonly model: string }
+  | { readonly status: 'cancelled'; readonly model: string }
+  | {
+      readonly status: 'failed';
+      readonly model: string;
+      readonly reason: 'unreachable' | 'rejected' | 'stream-failed' | 'invalid-model' | 'busy';
+    };
+
+/** Espelho de `{ cancelled }` (`window.atlas.models.cancel`, SPEC-0063). */
+export interface RendererModelCancelOutcome {
+  readonly cancelled: boolean;
+}
+
 type AtlasOverrides = {
   readonly [K in keyof AtlasDouble]?: AtlasDouble[K] extends (...args: never[]) => unknown
     ? AtlasDouble[K]
@@ -330,6 +391,11 @@ export interface RendererCalls {
   /** SPEC-0062 — auto-start de dependências: nº de leituras e os nomes pedidos ao gesto de container. */
   dependenciesReadCalls: number;
   readonly searchContainerStartCalls: string[];
+  /** SPEC-0063 — instalação assistida de modelo: nº/args de cada canal IPC. */
+  modelsReadCalls: number;
+  modelsProbeCalls: number;
+  readonly modelInstallCalls: string[];
+  modelCancelCalls: number;
 }
 
 function createCalls(): RendererCalls {
@@ -356,6 +422,10 @@ function createCalls(): RendererCalls {
     tokensReadCalls: 0,
     dependenciesReadCalls: 0,
     searchContainerStartCalls: [],
+    modelsReadCalls: 0,
+    modelsProbeCalls: 0,
+    modelInstallCalls: [],
+    modelCancelCalls: 0,
     permissionsSelect: [],
     networkSelect: [],
     ttsSpeak: [],
@@ -413,6 +483,16 @@ export interface RendererFixtureOptions {
   readonly startSearchContainer?: (
     container: string,
   ) => RendererDependencyOutcome | Promise<RendererDependencyOutcome>;
+  /** SPEC-0063 — snapshot default devolvido por `window.atlas.models.read()`/`.probe()`. */
+  readonly modelCatalogSnapshot?: RendererModelCatalogSnapshot;
+  /** SPEC-0063 — snapshot default devolvido por `window.atlas.models.probe()` (cai em `modelCatalogSnapshot` se ausente). */
+  readonly modelProbeSnapshot?: RendererModelCatalogSnapshot;
+  /** SPEC-0063 — desfecho default devolvido por `window.atlas.models.install(model)`. */
+  readonly modelInstallOutcome?: (
+    model: string,
+  ) => RendererModelPullOutcome | Promise<RendererModelPullOutcome>;
+  /** SPEC-0063 — desfecho default devolvido por `window.atlas.models.cancel()`. */
+  readonly modelCancelOutcome?: RendererModelCancelOutcome;
   /** SPEC-0053 — `prefers-reduced-motion: reduce` inicial (default `false`). */
   readonly reducedMotion?: boolean;
   /** SPEC-0053 — `window.devicePixelRatio` dublado (default `1`). */
@@ -665,6 +745,40 @@ function buildAtlasDouble(options: RendererFixtureOptions, calls: RendererCalls)
         return Promise.resolve(resolver(container));
       },
     },
+    models: {
+      read: () => {
+        calls.modelsReadCalls += 1;
+        return Promise.resolve(
+          options.modelCatalogSnapshot ?? {
+            catalog: [],
+            probe: { status: 'unknown' },
+            install: { status: 'idle' },
+          },
+        );
+      },
+      probe: () => {
+        calls.modelsProbeCalls += 1;
+        return Promise.resolve(
+          options.modelProbeSnapshot ??
+            options.modelCatalogSnapshot ?? {
+              catalog: [],
+              probe: { status: 'unknown' },
+              install: { status: 'idle' },
+            },
+        );
+      },
+      install: (model: string) => {
+        calls.modelInstallCalls.push(model);
+        const resolver =
+          options.modelInstallOutcome ??
+          ((m: string): RendererModelPullOutcome => ({ status: 'installed', model: m }));
+        return Promise.resolve(resolver(model));
+      },
+      cancel: () => {
+        calls.modelCancelCalls += 1;
+        return Promise.resolve(options.modelCancelOutcome ?? { cancelled: false });
+      },
+    },
   };
 
   const overrides = options.atlas;
@@ -686,6 +800,7 @@ function buildAtlasDouble(options: RendererFixtureOptions, calls: RendererCalls)
     metrics: { ...base.metrics, ...overrides.metrics },
     tokens: { ...base.tokens, ...overrides.tokens },
     dependencies: { ...base.dependencies, ...overrides.dependencies },
+    models: { ...base.models, ...overrides.models },
   };
 }
 

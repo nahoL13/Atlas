@@ -64,6 +64,10 @@ function createFakeDependencyManager(report: DependencyReport): {
       dependency: 'search-container',
       status: 'disabled',
     }),
+    // SPEC-0063/D22: mesmo precedente D-A1 — dois membros aditivos novos de
+    // `DependencyManager`, sem nenhum chamador real em `apps/cli/src`.
+    pullOllamaModel: async ({ model }) => ({ status: 'installed', model }),
+    cancelOllamaModelPull: () => false,
   };
   return { manager, ensureCalls: () => ensureCalls, releaseCalls: () => releaseCalls };
 }

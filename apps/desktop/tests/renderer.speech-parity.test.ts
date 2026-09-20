@@ -20,6 +20,7 @@ import * as sttEngineModule from '../src/stt-engine.js';
 import * as handsFreeModule from '../src/hands-free.js';
 import * as systemMetricsModule from '../src/system-metrics.js';
 import * as tokenUsageModule from '../src/token-usage.js';
+import * as modelCatalogModule from '../src/model-catalog.js';
 import {
   CAPTURE_REARM_MS,
   FRAME_MS,
@@ -55,9 +56,15 @@ import { loadRenderer } from './helpers/renderer-harness.js';
 // reexportar) — o lado módulo desta entrada importa diretamente de
 // `piper-tts.js`.
 
-/** Módulos-fonte vigiados pelo gate (SPEC-0047/D1, generalizado a 4 pela SPEC-0052, a 6 pela SPEC-0054) — a FONTE da enumeração é o `import * as` em runtime, nunca uma lista escrita à mão dos nomes exportados. */
+/** Módulos-fonte vigiados pelo gate (SPEC-0047/D1, generalizado a 4 pela SPEC-0052, a 6 pela SPEC-0054, a 7 pela SPEC-0063) — a FONTE da enumeração é o `import * as` em runtime, nunca uma lista escrita à mão dos nomes exportados. */
 type WatchedModule =
-  'speech-output' | 'piper-tts' | 'stt-engine' | 'hands-free' | 'system-metrics' | 'token-usage';
+  | 'speech-output'
+  | 'piper-tts'
+  | 'stt-engine'
+  | 'hands-free'
+  | 'system-metrics'
+  | 'token-usage'
+  | 'model-catalog';
 
 const WATCHED_MODULES: Readonly<Record<WatchedModule, Record<string, unknown>>> = {
   'speech-output': speechOutputModule as unknown as Record<string, unknown>,
@@ -66,6 +73,7 @@ const WATCHED_MODULES: Readonly<Record<WatchedModule, Record<string, unknown>>> 
   'hands-free': handsFreeModule as unknown as Record<string, unknown>,
   'system-metrics': systemMetricsModule as unknown as Record<string, unknown>,
   'token-usage': tokenUsageModule as unknown as Record<string, unknown>,
+  'model-catalog': modelCatalogModule as unknown as Record<string, unknown>,
 };
 
 const LOCAL_1: VoiceInfo = { voiceURI: 'local-1', name: 'Local Um', localService: true };
@@ -327,6 +335,24 @@ const NOT_MIRRORED: readonly NotMirroredEntry[] = [
     symbol: 'createTokenUsageAccumulator',
     reason:
       'acumulador de estado de módulo — vive só no main process (src/core-bridge.ts), nunca no renderer; o renderer só formata o TokenUsageSnapshot recebido por IPC',
+  },
+  {
+    moduleSource: 'model-catalog',
+    symbol: 'MODEL_CATALOG',
+    reason:
+      'dado puro consumido só no main process (src/core-bridge.ts, readModelCatalog); o renderer recebe o catálogo já composto (com `installed` calculado, D24) por IPC, nunca a constante crua',
+  },
+  {
+    moduleSource: 'model-catalog',
+    symbol: 'findCatalogModel',
+    reason:
+      'usado só no main process (src/core-bridge.ts, installOllamaModel) para validar pertencimento ao catálogo antes de tocar a porta — o renderer nunca decide isso',
+  },
+  {
+    moduleSource: 'model-catalog',
+    symbol: 'isInstalledModel',
+    reason:
+      'normalização da tag implícita usada só no main process (src/core-bridge.ts, D24) — o renderer recebe `ModelCatalogEntryView.installed` já calculado, sem replicar a regra',
   },
 ];
 
@@ -935,8 +961,8 @@ describe('paridade: constantes pinadas de hands-free.ts', () => {
 // --- Frente 3 (SPEC-0045) / Frente 1 (SPEC-0047) / SPEC-0052: gate mecânico
 // da próxima réplica, generalizado à lista de módulos-fonte vigiados -------
 
-describe('gate mecânico da próxima réplica, generalizado a speech-output/piper-tts/stt-engine/hands-free/system-metrics/token-usage (SPEC-0052/SPEC-0054)', () => {
-  it('a lista de módulos vigiados contém exatamente speech-output, piper-tts, stt-engine, hands-free, system-metrics e token-usage', () => {
+describe('gate mecânico da próxima réplica, generalizado a speech-output/piper-tts/stt-engine/hands-free/system-metrics/token-usage/model-catalog (SPEC-0052/SPEC-0054/SPEC-0063)', () => {
+  it('a lista de módulos vigiados contém exatamente speech-output, piper-tts, stt-engine, hands-free, system-metrics, token-usage e model-catalog', () => {
     expect(Object.keys(WATCHED_MODULES).sort()).toEqual(
       [
         'speech-output',
@@ -945,6 +971,7 @@ describe('gate mecânico da próxima réplica, generalizado a speech-output/pipe
         'hands-free',
         'system-metrics',
         'token-usage',
+        'model-catalog',
       ].sort(),
     );
   });

@@ -3,11 +3,14 @@ import { describe, expect, it } from 'vitest';
 import { createDependencyManager } from '../src/dependencies/dependency-manager.js';
 import type { DependencyConfig } from '../src/config/dependency-config.js';
 import type {
+  ModelPullRequest,
+  OllamaInspection,
   OllamaStartOutcome,
   ProcessPort,
   SearchContainerStartOutcome,
   SearchContainerState,
 } from '../src/dependencies/process-port.js';
+import type { ModelPullOutcome } from '../src/dependencies/dependency-manager.js';
 
 const CONTAINER_NAME = 'searxng';
 
@@ -52,9 +55,10 @@ function createRecorder(): Recorder {
 
 interface RecordingProcess extends ProcessPort {
   readonly counts: {
-    isOllamaRunning: number;
+    inspectOllama: number;
     startOllama: number;
     stopOllama: number;
+    pullOllamaModel: number;
     inspectSearchContainer: number;
     startSearchContainer: number;
     stopSearchContainer: number;
@@ -66,19 +70,29 @@ function createFakeProcess(
   overrides: Partial<ProcessPort> = {},
 ): RecordingProcess {
   const counts = {
-    isOllamaRunning: 0,
+    inspectOllama: 0,
     startOllama: 0,
     stopOllama: 0,
+    pullOllamaModel: 0,
     inspectSearchContainer: 0,
     startSearchContainer: 0,
     stopSearchContainer: 0,
   };
   return {
     counts,
-    isOllamaRunning: async (baseUrl: string) => {
-      recorder.calls.push('isOllamaRunning');
-      counts.isOllamaRunning += 1;
-      return overrides.isOllamaRunning !== undefined ? overrides.isOllamaRunning(baseUrl) : false;
+    inspectOllama: async (baseUrl: string) => {
+      recorder.calls.push('inspectOllama');
+      counts.inspectOllama += 1;
+      return overrides.inspectOllama !== undefined
+        ? overrides.inspectOllama(baseUrl)
+        : { running: false };
+    },
+    pullOllamaModel: async (request: ModelPullRequest) => {
+      recorder.calls.push('pullOllamaModel');
+      counts.pullOllamaModel += 1;
+      return overrides.pullOllamaModel !== undefined
+        ? overrides.pullOllamaModel(request)
+        : ({ status: 'installed', model: request.model } as ModelPullOutcome);
     },
     startOllama: async () => {
       recorder.calls.push('startOllama');
@@ -130,13 +144,15 @@ describe('createDependencyManager — Ollama (SPEC-0060, não-regressão da Rest
       { dependency: 'ollama', status: 'disabled' },
       { dependency: 'search-container', status: 'disabled' },
     ]);
-    expect(process.counts.isOllamaRunning).toBe(0);
+    expect(process.counts.inspectOllama).toBe(0);
     expect(process.counts.startOllama).toBe(0);
   });
 
   it('dependência já de pé devolve "already-running" sem spawn', async () => {
     const recorder = createRecorder();
-    const process = createFakeProcess(recorder, { isOllamaRunning: async () => true });
+    const process = createFakeProcess(recorder, {
+      inspectOllama: async () => ({ running: true, models: undefined }),
+    });
     const manager = createDependencyManager({ process, sleep: recorder.sleep });
 
     const report = await manager.ensure(enabledOllamaConfig());
@@ -149,9 +165,9 @@ describe('createDependencyManager — Ollama (SPEC-0060, não-regressão da Rest
     const recorder = createRecorder();
     let pollCount = 0;
     const process = createFakeProcess(recorder, {
-      isOllamaRunning: async () => {
+      inspectOllama: async () => {
         pollCount += 1;
-        return pollCount > 1;
+        return pollCount > 1 ? { running: true, models: undefined } : { running: false };
       },
     });
     const manager = createDependencyManager({ process, sleep: recorder.sleep });
@@ -160,12 +176,14 @@ describe('createDependencyManager — Ollama (SPEC-0060, não-regressão da Rest
 
     expect(report.outcomes[0]).toEqual({ dependency: 'ollama', status: 'started' });
     expect(recorder.calls.filter((c) => c === 'sleep')).toEqual(['sleep']);
-    expect(process.counts.isOllamaRunning).toBe(2);
+    expect(process.counts.inspectOllama).toBe(2);
   });
 
   it('40 tentativas sem sucesso produzem "failed"/"timeout" com 40 sleeps e 40 polls', async () => {
     const recorder = createRecorder();
-    const process = createFakeProcess(recorder, { isOllamaRunning: async () => false });
+    const process = createFakeProcess(recorder, {
+      inspectOllama: async () => ({ running: false }),
+    });
     const manager = createDependencyManager({ process, sleep: recorder.sleep });
 
     const report = await manager.ensure(enabledOllamaConfig());
@@ -176,7 +194,7 @@ describe('createDependencyManager — Ollama (SPEC-0060, não-regressão da Rest
       reason: 'timeout',
     });
     expect(recorder.calls.filter((c) => c === 'sleep')).toHaveLength(40);
-    expect(process.counts.isOllamaRunning).toBe(41);
+    expect(process.counts.inspectOllama).toBe(41);
   });
 
   it('startOllama "binary-missing" produz "failed" com a mesma reason, sem polling', async () => {
@@ -199,10 +217,10 @@ describe('createDependencyManager — Ollama (SPEC-0060, não-regressão da Rest
     expect(recorder.calls.filter((c) => c === 'sleep')).toEqual([]);
   });
 
-  it('porta que rejeita em isOllamaRunning não faz ensure lançar', async () => {
+  it('porta que rejeita em inspectOllama não faz ensure lançar', async () => {
     const recorder = createRecorder();
     const process = createFakeProcess(recorder, {
-      isOllamaRunning: async () => {
+      inspectOllama: async () => {
         throw new Error('boom');
       },
     });
@@ -219,7 +237,9 @@ describe('createDependencyManager — Ollama (SPEC-0060, não-regressão da Rest
 
   it('ensure() chamado duas vezes não repete health-check nem spawn', async () => {
     const recorder = createRecorder();
-    const process = createFakeProcess(recorder, { isOllamaRunning: async () => true });
+    const process = createFakeProcess(recorder, {
+      inspectOllama: async () => ({ running: true, models: undefined }),
+    });
     const manager = createDependencyManager({ process, sleep: recorder.sleep });
 
     const first = await manager.ensure(enabledOllamaConfig());
@@ -234,9 +254,9 @@ describe('createDependencyManager — Ollama (SPEC-0060, não-regressão da Rest
     const recorder = createRecorder();
     let pollCount = 0;
     const process = createFakeProcess(recorder, {
-      isOllamaRunning: async () => {
+      inspectOllama: async () => {
         pollCount += 1;
-        return pollCount > 1;
+        return pollCount > 1 ? { running: true, models: undefined } : { running: false };
       },
     });
     const manager = createDependencyManager({ process, sleep: recorder.sleep });
@@ -249,7 +269,9 @@ describe('createDependencyManager — Ollama (SPEC-0060, não-regressão da Rest
 
   it('release() chama stopOllama 1x quando o desfecho foi "failed"/"timeout"', async () => {
     const recorder = createRecorder();
-    const process = createFakeProcess(recorder, { isOllamaRunning: async () => false });
+    const process = createFakeProcess(recorder, {
+      inspectOllama: async () => ({ running: false }),
+    });
     const manager = createDependencyManager({ process, sleep: recorder.sleep });
 
     const report = await manager.ensure(enabledOllamaConfig());
@@ -288,9 +310,9 @@ describe('createDependencyManager — Ollama (SPEC-0060, não-regressão da Rest
     const recorder = createRecorder();
     let pollCount = 0;
     const process = createFakeProcess(recorder, {
-      isOllamaRunning: async () => {
+      inspectOllama: async () => {
         pollCount += 1;
-        return pollCount > 1;
+        return pollCount > 1 ? { running: true, models: undefined } : { running: false };
       },
     });
     const manager = createDependencyManager({ process, sleep: recorder.sleep });
@@ -317,6 +339,103 @@ describe('createDependencyManager — Ollama (SPEC-0060, não-regressão da Rest
   });
 });
 
+describe('createDependencyManager — models no desfecho do Ollama (SPEC-0063, CAs 5-8)', () => {
+  it('CA5: DependencyReport sai sem campo novo (só "outcomes"); "disabled" com zero chamadas à porta', async () => {
+    const recorder = createRecorder();
+    const process = createFakeProcess(recorder);
+    const manager = createDependencyManager({ process, sleep: recorder.sleep });
+
+    const report = await manager.ensure(disabledConfig());
+
+    expect(Object.keys(report)).toEqual(['outcomes']);
+    expect(process.counts.inspectOllama).toBe(0);
+
+    const disabledOutcome = report.outcomes[0];
+    expect(disabledOutcome).toEqual({ dependency: 'ollama', status: 'disabled' });
+    if (disabledOutcome?.status === 'disabled') {
+      // @ts-expect-error — 'models' não existe estruturalmente na variante 'disabled' (CA5).
+      void disabledOutcome.models;
+    }
+
+    const failedConfig = enabledOllamaConfig();
+    const failedProcess = createFakeProcess(recorder, {
+      inspectOllama: async () => ({ running: false }),
+    });
+    const failedManager = createDependencyManager({
+      process: failedProcess,
+      sleep: recorder.sleep,
+    });
+    const failedReport = await failedManager.ensure(failedConfig);
+    const failedOutcome = failedReport.outcomes[0];
+    expect(failedOutcome?.status).toBe('failed');
+    if (failedOutcome?.status === 'failed') {
+      // @ts-expect-error — 'models' não existe estruturalmente na variante 'failed' (CA5).
+      void failedOutcome.models;
+    }
+  });
+
+  it('CA6: Ollama já de pé com dois modelos devolve already-running + models', async () => {
+    const recorder = createRecorder();
+    const process = createFakeProcess(recorder, {
+      inspectOllama: async () => ({ running: true, models: ['a:latest', 'b:latest'] }),
+    });
+    const manager = createDependencyManager({ process, sleep: recorder.sleep });
+
+    const report = await manager.ensure(enabledOllamaConfig());
+
+    expect(report.outcomes[0]).toEqual({
+      dependency: 'ollama',
+      status: 'already-running',
+      models: ['a:latest', 'b:latest'],
+    });
+  });
+
+  it('CA7: ensure que sobe o Ollama e confirma por polling devolve "started" com models da inspeção que ENCERROU o polling', async () => {
+    const recorder = createRecorder();
+    let pollCount = 0;
+    const process = createFakeProcess(recorder, {
+      inspectOllama: async () => {
+        pollCount += 1;
+        return pollCount > 2 ? { running: true, models: ['final:latest'] } : { running: false };
+      },
+    });
+    const manager = createDependencyManager({ process, sleep: recorder.sleep });
+
+    const report = await manager.ensure(enabledOllamaConfig());
+
+    expect(report.outcomes[0]).toEqual({
+      dependency: 'ollama',
+      status: 'started',
+      models: ['final:latest'],
+    });
+  });
+
+  it('CA8: "failed" (qualquer razão, inclusive timeout) sai sem models; corpo ilegível com Ollama de pé sai "already-running" sem a chave', async () => {
+    const recorder = createRecorder();
+    const process = createFakeProcess(recorder, {
+      inspectOllama: async () => ({ running: false }),
+    });
+    const manager = createDependencyManager({ process, sleep: recorder.sleep });
+
+    const report = await manager.ensure(enabledOllamaConfig());
+    expect(report.outcomes[0]).toEqual({
+      dependency: 'ollama',
+      status: 'failed',
+      reason: 'timeout',
+    });
+    expect('models' in (report.outcomes[0] as object)).toBe(false);
+
+    const recorder2 = createRecorder();
+    const illegibleProcess = createFakeProcess(recorder2, {
+      inspectOllama: async () => ({ running: true, models: undefined }),
+    });
+    const manager2 = createDependencyManager({ process: illegibleProcess, sleep: recorder2.sleep });
+    const report2 = await manager2.ensure(enabledOllamaConfig());
+    expect(report2.outcomes[0]).toEqual({ dependency: 'ollama', status: 'already-running' });
+    expect('models' in (report2.outcomes[0] as object)).toBe(false);
+  });
+});
+
 describe('createDependencyManager — container de busca (SPEC-0061)', () => {
   it('CA7: outcomes sempre com dois elementos, ordem pinada, em todas as combinações de opt-in', async () => {
     const combos: ReadonlyArray<readonly [boolean, string]> = [
@@ -328,7 +447,9 @@ describe('createDependencyManager — container de busca (SPEC-0061)', () => {
 
     for (const [autoStartOllama, autoStartSearchContainer] of combos) {
       const recorder = createRecorder();
-      const process = createFakeProcess(recorder, { isOllamaRunning: async () => true });
+      const process = createFakeProcess(recorder, {
+        inspectOllama: async () => ({ running: true, models: undefined }),
+      });
       const manager = createDependencyManager({ process, sleep: recorder.sleep });
 
       const report = await manager.ensure({
@@ -478,7 +599,7 @@ describe('createDependencyManager — container de busca (SPEC-0061)', () => {
     it('rejeição no inspect inicial produz failed/start-failed sem afetar o Ollama', async () => {
       const recorder = createRecorder();
       const process = createFakeProcess(recorder, {
-        isOllamaRunning: async () => true,
+        inspectOllama: async () => ({ running: true, models: undefined }),
         inspectSearchContainer: async () => {
           throw new Error('boom');
         },
@@ -499,7 +620,7 @@ describe('createDependencyManager — container de busca (SPEC-0061)', () => {
     it('rejeição no start produz failed/start-failed sem afetar o Ollama', async () => {
       const recorder = createRecorder();
       const process = createFakeProcess(recorder, {
-        isOllamaRunning: async () => true,
+        inspectOllama: async () => ({ running: true, models: undefined }),
         inspectSearchContainer: async () => 'stopped',
         startSearchContainer: async () => {
           throw new Error('boom');
@@ -522,7 +643,7 @@ describe('createDependencyManager — container de busca (SPEC-0061)', () => {
       const recorder = createRecorder();
       let calls = 0;
       const process = createFakeProcess(recorder, {
-        isOllamaRunning: async () => true,
+        inspectOllama: async () => ({ running: true, models: undefined }),
         inspectSearchContainer: async () => {
           calls += 1;
           if (calls === 1) {
@@ -580,13 +701,13 @@ describe('createDependencyManager — container de busca (SPEC-0061)', () => {
       ],
       [
         'timeout',
-        { isOllamaRunning: async () => false },
+        { inspectOllama: async (): Promise<OllamaInspection> => ({ running: false }) },
         { dependency: 'ollama' as const, status: 'failed' as const, reason: 'timeout' as const },
       ],
       [
         'porta rejeita',
         {
-          isOllamaRunning: async () => {
+          inspectOllama: async () => {
             throw new Error('boom');
           },
         },
@@ -728,9 +849,9 @@ describe('createDependencyManager — container de busca (SPEC-0061)', () => {
     let ollamaPoll = 0;
     let containerPoll = 0;
     const process = createFakeProcess(recorder, {
-      isOllamaRunning: async () => {
+      inspectOllama: async () => {
         ollamaPoll += 1;
-        return ollamaPoll > 1;
+        return ollamaPoll > 1 ? { running: true, models: undefined } : { running: false };
       },
       inspectSearchContainer: async () => {
         containerPoll += 1;
@@ -754,9 +875,9 @@ describe('createDependencyManager — container de busca (SPEC-0061)', () => {
     let ollamaPoll = 0;
     let containerPoll = 0;
     const process = createFakeProcess(recorder, {
-      isOllamaRunning: async () => {
+      inspectOllama: async () => {
         ollamaPoll += 1;
-        return ollamaPoll > 1;
+        return ollamaPoll > 1 ? { running: true, models: undefined } : { running: false };
       },
       inspectSearchContainer: async () => {
         containerPoll += 1;
@@ -778,7 +899,7 @@ describe('createDependencyManager — container de busca (SPEC-0061)', () => {
   it('CA17: ensure() chamado duas vezes não repete inspect/start das duas dependências', async () => {
     const recorder = createRecorder();
     const process = createFakeProcess(recorder, {
-      isOllamaRunning: async () => true,
+      inspectOllama: async () => ({ running: true, models: undefined }),
       inspectSearchContainer: async () => 'running',
     });
     const manager = createDependencyManager({ process, sleep: recorder.sleep });
@@ -942,7 +1063,7 @@ describe('createDependencyManager — ensureSearchContainer sob demanda (SPEC-00
 
     await manager.ensureSearchContainer(CONTAINER_NAME);
 
-    expect(process.counts.isOllamaRunning).toBe(0);
+    expect(process.counts.inspectOllama).toBe(0);
     expect(process.counts.startOllama).toBe(0);
     expect(process.counts.stopOllama).toBe(0);
   });

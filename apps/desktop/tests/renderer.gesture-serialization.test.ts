@@ -4,6 +4,7 @@ import type {
   RendererDependencyOutcome,
   RendererFixture,
   RendererFixtureOptions,
+  RendererModelPullOutcome,
   RendererTurnSnapshot,
 } from './helpers/renderer-harness.js';
 import { loadRenderer } from './helpers/renderer-harness.js';
@@ -724,5 +725,120 @@ describe('gesto do container Docker (SPEC-0062) — fora da serialização (CA38
 
     resolve?.({ dependency: 'search-container', status: 'started', container: 'searxng' });
     await f.flush();
+  });
+});
+
+// SPEC-0063 (CA39, D18): o gesto de cancelar um download de modelo fica FORA
+// da serialização de gestos — não sobe Core, não executa Tool, não altera
+// política. Nem `chatTurnInFlight`/`askInFlight`/`micBusy()`/
+// `policyApplicationInFlight` o desabilitam, e ele próprio não entra na
+// lista de controles serializados (fonte única é `modelInstallInFlight`,
+// B3/D27 da SPEC).
+describe('gesto de cancelar instalação de modelo (SPEC-0063) — fora da serialização (CA39)', () => {
+  function openSystemModelsSnapshot() {
+    return {
+      catalog: [
+        {
+          name: 'llama3.2',
+          sizeLabel: '≈ 2 GB',
+          description: 'Modelo geral leve.',
+          recommended: true,
+          installed: false,
+        },
+      ],
+      probe: { status: 'unknown' as const },
+      install: { status: 'idle' as const },
+    };
+  }
+
+  async function openSystemPanelAndStartInstall(f: RendererFixture): Promise<HTMLButtonElement> {
+    (f.document.getElementById('menu-toggle') as HTMLButtonElement).click();
+    const systemControl = [
+      ...f.document.querySelectorAll('#drawer-navigation [data-drawer-nav]'),
+    ].find((el) => el.getAttribute('aria-controls') === 'panel-system') as HTMLButtonElement;
+    systemControl.click();
+    await f.flush();
+
+    (f.document.querySelector('button[data-model="llama3.2"]') as HTMLButtonElement).click();
+    await f.flush();
+
+    return f.document.getElementById('model-install-cancel') as HTMLButtonElement;
+  }
+
+  it('#model-install-cancel chama window.atlas.models.cancel() e não é desabilitado por um turno de chat em voo', async () => {
+    let resolveInstall: ((value: RendererModelPullOutcome) => void) | undefined;
+    const installPromise = new Promise<RendererModelPullOutcome>((resolve) => {
+      resolveInstall = resolve;
+    });
+    let resolveSend: ((value: RendererTurnSnapshot) => void) | undefined;
+    const sendPromise = new Promise<RendererTurnSnapshot>((resolve) => {
+      resolveSend = resolve;
+    });
+    const f = await open({
+      chatSend: () => sendPromise,
+      modelCatalogSnapshot: openSystemModelsSnapshot(),
+      modelInstallOutcome: () => installPromise,
+    });
+
+    const cancelButton = await openSystemPanelAndStartInstall(f);
+    expect(cancelButton.hidden).toBe(false);
+    expect(cancelButton.disabled).toBe(false);
+
+    await submitChat(f, 'olá');
+    expectAllDisabled(collectSerializedControls(f), true);
+    expect(cancelButton.hidden).toBe(false);
+    expect(cancelButton.disabled).toBe(false);
+
+    cancelButton.click();
+    await f.flush();
+    expect(f.calls.modelCancelCalls).toBe(1);
+
+    resolveInstall?.({ status: 'cancelled', model: 'llama3.2' });
+    resolveSend?.({ reply: 'oi', steps: [], learned: [] });
+    await f.flush();
+  });
+
+  it('#model-install-cancel não é desabilitado por um ask em voo', async () => {
+    let resolveInstall: ((value: RendererModelPullOutcome) => void) | undefined;
+    const installPromise = new Promise<RendererModelPullOutcome>((resolve) => {
+      resolveInstall = resolve;
+    });
+    let resolveAsk: ((value: RendererAskSnapshot) => void) | undefined;
+    const askPromise = new Promise<RendererAskSnapshot>((resolve) => {
+      resolveAsk = resolve;
+    });
+    const f = await open({
+      atlas: { ask: () => askPromise },
+      modelCatalogSnapshot: openSystemModelsSnapshot(),
+      modelInstallOutcome: () => installPromise,
+    });
+
+    const cancelButton = await openSystemPanelAndStartInstall(f);
+    submitAsk(f, 'faça algo');
+
+    expect(cancelButton.hidden).toBe(false);
+    expect(cancelButton.disabled).toBe(false);
+
+    resolveAsk?.({ text: 'pronto', steps: [], learned: [] });
+    resolveInstall?.({ status: 'cancelled', model: 'llama3.2' });
+    await f.flush();
+  });
+
+  it('o gesto não desabilita nenhum controle da lista serializada (chat/ask seguem livres)', async () => {
+    let resolveInstall: ((value: RendererModelPullOutcome) => void) | undefined;
+    const installPromise = new Promise<RendererModelPullOutcome>((resolve) => {
+      resolveInstall = resolve;
+    });
+    const f = await open({
+      modelCatalogSnapshot: openSystemModelsSnapshot(),
+      modelInstallOutcome: () => installPromise,
+    });
+
+    const cancelButton = await openSystemPanelAndStartInstall(f);
+    expectAllDisabled(collectSerializedControls(f), false);
+
+    resolveInstall?.({ status: 'cancelled', model: 'llama3.2' });
+    await f.flush();
+    void cancelButton;
   });
 });

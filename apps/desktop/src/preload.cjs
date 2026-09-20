@@ -56,4 +56,10 @@ contextBridge.exposeInMainWorld('atlas', {
     startSearchContainer: (container) =>
       ipcRenderer.invoke('atlas:dependencies:search-container', container),
   },
+  models: {
+    read: () => ipcRenderer.invoke('atlas:models:read'),
+    probe: () => ipcRenderer.invoke('atlas:models:probe'),
+    install: (model) => ipcRenderer.invoke('atlas:models:install', model),
+    cancel: () => ipcRenderer.invoke('atlas:models:cancel'),
+  },
 });

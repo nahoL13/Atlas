@@ -228,6 +228,7 @@ Inclui:
 - inicialização;
 - verificação de dependências;
 - ativação de componentes;
+- provisionamento assistido de dependências locais, sob gesto humano explícito (ADR-0029(a));
 - desligamento seguro;
 - encerramento de tarefas quando apropriado.
 

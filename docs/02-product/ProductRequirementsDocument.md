@@ -176,6 +176,14 @@ Essas informações são métricas de recurso e de contexto temporal, não detal
 
 ---
 
+## Provisionamento de Ambiente Local
+
+O sistema deve auxiliar o usuário a preparar os componentes locais necessários para funcionar, incluindo a instalação assistida de modelos de IA locais, quando esses componentes não estiverem disponíveis.
+
+Essa assistência deve ser opcional e nunca automática sem uma ação explícita do usuário — instalar um componente local é diferente de apenas iniciá-lo.
+
+---
+
 # Requisitos Não Funcionais
 
 O sistema deverá apresentar arquitetura modular.

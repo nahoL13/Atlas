@@ -2,7 +2,7 @@
 
 > **Project Atlas — Contexto de Retomada para a Próxima Sessão**
 
-Atualizado em: 2026-09-19 (SPEC-0062)
+Atualizado em: 2026-09-20 (SPEC-0063)
 
 Este documento responde a uma pergunta só: **o que fazer agora**. Ele é lido no arranque de toda sessão e de todo subagent, então é mantido curto por design — teto de ~8 KB.
 
@@ -17,15 +17,15 @@ Este documento responde a uma pergunta só: **o que fazer agora**. Ele é lido n
 
 # Estado Imediato
 
-**Fase 2 (`apps/desktop`) em andamento; Fase 1 fechada por inteiro, mas com candidatos ainda sendo entregues em paralelo** (item 1.4, resta só execução de comandos sob o Permission Service, `ADR primeiro`). Itens 2.1, 2.2 (1ª linha), 2.3 e 2.4 fechados; wake word (2.3, "candidato, não comprometido") segue em aberto. *Observabilidade do Ambiente* — exceção consciente sem item de Roadmap — foi entregue por inteiro pela SPEC-0054. O [ADR-0027](../06-adr/ADR-0027-external-process-lifecycle-management.md) (auto-gerência de processo externo) segue **inteiramente consumido** (SPECs 0059/0060/0061); o [ADR-0028](../06-adr/ADR-0028-desktop-dependency-autostart-default.md) (supersessão parcial do ADR-0027(g), só `apps/desktop`/só Ollama) foi implementado por inteiro pela SPEC-0062.
+**Fase 2 (`apps/desktop`) em andamento; Fase 1 fechada por inteiro, mas com candidatos ainda sendo entregues em paralelo** (item 1.4, resta só execução de comandos sob o Permission Service, `ADR primeiro`). Itens 2.1, 2.2 (1ª linha), 2.3 e 2.4 fechados; wake word (2.3, "candidato, não comprometido") segue em aberto. *Observabilidade do Ambiente* — exceção consciente sem item de Roadmap — foi entregue por inteiro pela SPEC-0054. O [ADR-0027](../06-adr/ADR-0027-external-process-lifecycle-management.md) (auto-gerência de processo externo) segue **inteiramente consumido** (SPECs 0059/0060/0061); o [ADR-0028](../06-adr/ADR-0028-desktop-dependency-autostart-default.md) (supersessão parcial do ADR-0027(g), só `apps/desktop`/só Ollama) foi implementado por inteiro pela SPEC-0062. O [ADR-0029](../06-adr/ADR-0029-desktop-model-provisioning-assistant.md) (instalação assistida de modelo Ollama, segunda metade do mesmo pedido de usuário) foi implementado por inteiro pela SPEC-0063.
 
 Últimas três fatias (detalhe completo em `PLATFORM_STATE.md` e na SPEC de cada uma):
 
+- **SPEC-0063** `Done` (2026-09-20) — implementa o ADR-0029: detecção de "nenhum modelo de IA instalado" na abertura do desktop e instalação assistida por um catálogo curado e fixo de cinco modelos (`apps/desktop/src/model-catalog.ts`, `llama3.2` recomendado). `ProcessPort.isOllamaRunning` substituída por `inspectOllama` (mesma requisição, corpo lido); `DependencyManager` ganha `pullOllamaModel`/`cancelOllamaModelPull` (`POST /api/pull`, stream NDJSON, nenhum texto do provedor cruza a porta). Progresso por polling no mesmo tick do painel `Sistema`; probe de três estados (`pending`/`unknown`/`known`) corrige uma corrida de arranque real pega pelo `architecture-reviewer` (sem ela o gatilho proativo nunca abria a tela no cenário-alvo). Manifesto de IDs 103→109. Não fecha o item 1.4. Residual: modelo instalado pode divergir do configurado em `AtlasConfig.model.model`. Detalhe: `packages/core/CLAUDE.md`, `apps/desktop/CLAUDE.md`.
 - **SPEC-0062** `Done` (2026-09-19) — implementa o ADR-0028: no desktop, o auto-start do Ollama vira **repouso** (`DESKTOP_AUTO_START_OLLAMA_DEFAULT = true`; `ATLAS_AUTO_START_OLLAMA=false` desliga explicitamente; `@atlas/core`/`apps/cli` seguem `false`). Container de busca segue fail-closed (ADR-0027(g) intacta), com uma 2ª porta de entrada: campo no painel de rede/busca aciona `DependencyManager.ensureSearchContainer` (método aditivo, posse vira `Set<string>`, `release()` drena trabalho em voo antes de desligar). Painel `Sistema` audita a tentativa (`#system-dependencies`). Manifesto de IDs 99→103. Não fecha o item 1.4. Origem incomum: pedido original ("sempre automático, sem flag") contradizia o ADR-0027(g), motivando o ADR-0028 antes da SPEC. Detalhe: `packages/core/CLAUDE.md`, `apps/desktop/CLAUDE.md`.
 - **SPEC-0061** `Done` (2026-09-13) — 3ª e última SPEC do ADR-0027: auto-start do container Docker do provedor de busca. Extensão aditiva de `ProcessPort`/`createDependencyManager` (`@atlas/core`): `inspectSearchContainer`/`startSearchContainer`/`stopSearchContainer`; `AtlasConfig.dependencies.autoStartSearchContainer: string` (nominal, `''` = desligado); CLI/env no desktop (GUI só depois, SPEC-0062). `DependencyReport.outcomes` sempre dois elementos. Ligar o container **não** concede `netRoots`. Detalhe: `packages/core/CLAUDE.md`.
-- **SPEC-0060** `Done` (2026-09-12) — 1º consumidor real do ADR-0027: auto-start do Ollama sob opt-in explícito, `createDependencyManager`/`ProcessPort`, uma vez por processo (CLI) e por sessão de app (desktop; default invertido depois pela SPEC-0062). Posse pela autoria do `spawn`, não pela prontidão. Detalhe: `packages/core/CLAUDE.md`.
 
-Suíte atual: **2039 testes / 102 arquivos**. `lint`/`typecheck`/`test`/`format:check` verdes.
+Suíte atual: **2158 testes / 105 arquivos**. `lint`/`typecheck`/`test`/`format:check` verdes.
 
 ---
 
@@ -36,7 +36,8 @@ Suíte atual: **2039 testes / 102 arquivos**. `lint`/`typecheck`/`test`/`format:
 ## Candidatos abertos
 
 - **Execução de comandos sob o Permission Service** (`ADR primeiro`, novo `access`) — único item restante da Fase 1/1.4; todas as demais fatias do item (git, estrutura de projeto, internet, as três SPECs do ADR-0027) estão `Done`. **Exige ADR novo, brainstorming primeiro.**
-- **Watchdog de teto de tempo para os `spawn` de Docker/Ollama** (`@atlas/core`) — achado não-bloqueante do `architecture-reviewer` na SPEC-0061, fora do escopo daquela fatia.
+- **Watchdog de teto de tempo para os `spawn` de Docker/Ollama e para o stream de `pullOllamaModel`** (`@atlas/core`) — achado não-bloqueante do `architecture-reviewer` desde a SPEC-0061, estendido pela SPEC-0063 (download de modelo é a mesma classe de operação de processo sem orçamento), fora do escopo de ambas as fatias.
+- **Seleção de modelo em runtime** (`apps/desktop`) — residual da SPEC-0063: instalar um modelo diferente do default (`AtlasConfig.model.model`) não atualiza a config, então a conversa pode continuar falhando por modelo ausente. **Exige ADR** (configuração em runtime).
 - **Canal de push (`webContents.send`)** avisando o renderer quando o trabalho abandonado assenta — sem ele, painéis reabilitam cedo demais (SPEC-0051) e a quarentena desliga o modo hands-free a cada tentativa (SPEC-0052).
 - **Barge-in** — interromper a fala do assistente falando por cima; nomeado pelo ADR-0023, exige microfone aberto durante o TTS + cancelamento de eco.
 - **Fallback de limiar de energia** para o VAD (D8 da SPEC-0052) — só cogitável se o Silero se mostrar insuficiente em uso real.

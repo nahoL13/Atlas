@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { createDependencyManager } from '@atlas/core';
 import type {
+  ModelPullOutcome,
   OllamaStartOutcome,
   ProcessPort,
   SearchContainerStartOutcome,
@@ -19,7 +20,7 @@ import type {
 
 function fakeProcess(overrides: Partial<ProcessPort> = {}): ProcessPort {
   return {
-    isOllamaRunning: overrides.isOllamaRunning ?? (async () => false),
+    inspectOllama: overrides.inspectOllama ?? (async () => ({ running: false })),
     startOllama:
       overrides.startOllama ?? (async (): Promise<OllamaStartOutcome> => ({ started: true })),
     stopOllama: overrides.stopOllama ?? (async () => {}),
@@ -31,6 +32,9 @@ function fakeProcess(overrides: Partial<ProcessPort> = {}): ProcessPort {
         started: false,
         reason: 'container-unknown',
       })),
+    pullOllamaModel:
+      overrides.pullOllamaModel ??
+      (async ({ model }): Promise<ModelPullOutcome> => ({ status: 'installed', model })),
     stopSearchContainer: overrides.stopSearchContainer ?? (async () => {}),
   };
 }
@@ -43,9 +47,9 @@ describe('ensureExternalDependencies (SPEC-0060, CA 22)', () => {
   it('ATLAS_AUTO_START_OLLAMA ausente exercita o auto-start por padrão (SPEC-0062/CA 18 — mudança intencional em relação à SPEC-0060)', async () => {
     const calls: string[] = [];
     const process = fakeProcess({
-      isOllamaRunning: async () => {
-        calls.push('isOllamaRunning');
-        return true;
+      inspectOllama: async () => {
+        calls.push('inspectOllama');
+        return { running: true, models: undefined };
       },
     });
     const {
@@ -64,11 +68,13 @@ describe('ensureExternalDependencies (SPEC-0060, CA 22)', () => {
         { dependency: 'search-container', status: 'disabled' },
       ],
     });
-    expect(calls).toEqual(['isOllamaRunning']);
+    expect(calls).toEqual(['inspectOllama']);
   });
 
   it('com "1", exercita o caminho de auto-start (já em execução)', async () => {
-    const process = fakeProcess({ isOllamaRunning: async () => true });
+    const process = fakeProcess({
+      inspectOllama: async () => ({ running: true, models: undefined }),
+    });
     const {
       ensureExternalDependencies,
       __resetBridgeStateForTests,
@@ -84,7 +90,7 @@ describe('ensureExternalDependencies (SPEC-0060, CA 22)', () => {
 
   it('com "1" e não rodando, sobe via startOllama e reporta "started"', async () => {
     const process = fakeProcess({
-      isOllamaRunning: async () => false,
+      inspectOllama: async () => ({ running: false }),
       startOllama: async (): Promise<OllamaStartOutcome> => ({ started: true }),
     });
     const {
@@ -167,7 +173,7 @@ describe('releaseExternalDependencies (SPEC-0060, CA 23)', () => {
   it('após um ensure com "started", delega o stopOllama 1x', async () => {
     let stopCalls = 0;
     const process = fakeProcess({
-      isOllamaRunning: async () => false,
+      inspectOllama: async () => ({ running: false }),
       startOllama: async (): Promise<OllamaStartOutcome> => ({ started: true }),
       stopOllama: async () => {
         stopCalls += 1;
@@ -193,9 +199,9 @@ describe('instância única de módulo (SPEC-0060, CA 24)', () => {
   it('uma 2ª chamada de ensureExternalDependencies na mesma sessão não repete health-check/spawn', async () => {
     const calls: string[] = [];
     const process = fakeProcess({
-      isOllamaRunning: async () => {
-        calls.push('isOllamaRunning');
-        return true;
+      inspectOllama: async () => {
+        calls.push('inspectOllama');
+        return { running: true, models: undefined };
       },
       startOllama: async (): Promise<OllamaStartOutcome> => {
         calls.push('startOllama');
@@ -323,7 +329,9 @@ describe('ensureExternalDependencies — container de busca (SPEC-0061, CA 31/32
   });
 
   it('as duas variáveis são independentes: SEARCH_CONTAINER inválida + OLLAMA válida', async () => {
-    const process = fakeProcess({ isOllamaRunning: async () => true });
+    const process = fakeProcess({
+      inspectOllama: async () => ({ running: true, models: undefined }),
+    });
     const {
       ensureExternalDependencies,
       __resetBridgeStateForTests,
@@ -416,7 +424,9 @@ describe('tabela exaustiva de ATLAS_AUTO_START_OLLAMA no desktop (SPEC-0062, CA 
     [undefined, true, false],
     ['talvez', false, true],
   ])('%s ⇒ autoStartOllama=%s, warn=%s', async (raw, expectedEnabled, expectedWarn) => {
-    const process = fakeProcess({ isOllamaRunning: async () => true });
+    const process = fakeProcess({
+      inspectOllama: async () => ({ running: true, models: undefined }),
+    });
     const {
       ensureExternalDependencies,
       __resetBridgeStateForTests,
@@ -453,7 +463,7 @@ describe('ensureExternalDependencies — nunca lança e não marca operação em
     const sleepGate = new Promise<void>((resolve) => {
       releaseSleep = resolve;
     });
-    const process = fakeProcess({ isOllamaRunning: async () => false });
+    const process = fakeProcess({ inspectOllama: async () => ({ running: false }) });
     const {
       ensureExternalDependencies,
       selectPermissionRoots,
@@ -481,7 +491,7 @@ describe('ensureExternalDependencies — nunca lança e não marca operação em
 describe('readDependencyStatus (SPEC-0062, Escopo 3, CAs 24/25/28.1)', () => {
   it('CA24: síncrona, começa vazia, reflete os desfechos após ensureExternalDependencies assentar; __resetBridgeStateForTests limpa', async () => {
     const process = fakeProcess({
-      isOllamaRunning: async () => true,
+      inspectOllama: async () => ({ running: true, models: undefined }),
     });
     const {
       ensureExternalDependencies,

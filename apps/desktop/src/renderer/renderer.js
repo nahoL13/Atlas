@@ -3832,13 +3832,15 @@ function readSystemPanelData(epoch) {
     window.atlas.metrics.read(),
     window.atlas.tokens.read(),
     window.atlas.dependencies.read(),
+    window.atlas.models.read(),
   ])
-    .then(([metrics, tokens, dependencies]) => {
+    .then(([metrics, tokens, dependencies, models]) => {
       systemPanelReadInFlight = false;
       if (epoch !== systemPanelEpoch) return;
       renderSystemMetrics(metrics);
       renderSystemTokens(tokens);
       renderSystemDependencies(dependencies);
+      applyModelCatalogSnapshot(models);
       setSystemStatus(`Atualizado às ${formatSystemClockTime(new Date(Date.now()))}`);
     })
     .catch(() => {
@@ -3847,6 +3849,7 @@ function readSystemPanelData(epoch) {
       renderSystemMetricsUnavailable();
       renderSystemTokensUnavailable();
       renderSystemDependenciesUnavailable();
+      renderModelCatalogReadFailure();
       setSystemStatus('Falha ao ler as métricas do sistema.');
     });
 }
@@ -3890,3 +3893,219 @@ function startSystemPanelTimer() {
 window.addEventListener('beforeunload', () => {
   stopSystemPanelTimer();
 });
+
+// ---------------------------------------------------------------------------
+// SPEC-0063 — instalação assistida de modelo Ollama: seção "Modelos de IA"
+// dentro do painel `Sistema`. Nenhum timer novo (4º `invoke` do MESMO tick de
+// `readSystemPanelData`, acima); nenhum canal de push; nenhum diálogo de
+// consentimento (o clique com o tamanho já visível É o consentimento,
+// ADR-0029(f)).
+
+const MODEL_INSTALL_REJECTION_PREFIX = '⚠️ ';
+
+/** Tabela exaustiva de textos pinados (item 7.6) — nenhuma `reason` crua chega ao DOM. */
+const MODEL_PULL_FAILURE_TEXT = {
+  unreachable: (model) =>
+    `Não foi possível falar com o Ollama para baixar ${model}. Verifique se ele está em execução e tente de novo.`,
+  rejected: (model) =>
+    `O Ollama recusou o download de ${model} — o modelo pode não estar mais disponível no provedor.`,
+  'stream-failed': (model) =>
+    `O download de ${model} foi interrompido antes de terminar. Tente de novo.`,
+  'invalid-model': () =>
+    'Nome de modelo inválido — a instalação foi recusada antes de qualquer download.',
+  busy: () =>
+    'Já existe um download em andamento. Aguarde ele terminar ou cancele antes de iniciar outro.',
+};
+
+function formatModelPullFailureText(model, reason) {
+  const formatter = MODEL_PULL_FAILURE_TEXT[reason];
+  return formatter ? formatter(model) : `Não foi possível instalar ${model}.`;
+}
+
+/** `#model-installed-state` (item 7.6) — quatro desfechos exaustivos sobre `probe`. */
+function formatModelInstalledStateText(probe) {
+  if (probe.status === 'pending') {
+    return 'Ainda verificando os modelos instalados…';
+  }
+  if (probe.status === 'unknown') {
+    return 'Não foi possível verificar os modelos instalados nesta sessão.';
+  }
+  const count = probe.models.length;
+  if (count === 0) {
+    return 'Nenhum modelo de IA instalado — escolha um da lista abaixo para instalar.';
+  }
+  if (count === 1) {
+    return '1 modelo de IA instalado.';
+  }
+  return `${count} modelos de IA instalados.`;
+}
+
+/** `#model-install-progress` (item 7.6) — pintado SÓ pela leitura periódica (D20). */
+function formatModelInstallProgressText(install) {
+  if (install.status === 'idle') {
+    return '';
+  }
+  if (install.status === 'running') {
+    const hasBytes =
+      typeof install.completedBytes === 'number' && typeof install.totalBytes === 'number';
+    if (!hasBytes) {
+      return `Preparando o download de ${install.model}…`;
+    }
+    const percent =
+      install.totalBytes > 0 ? Math.trunc((install.completedBytes / install.totalBytes) * 100) : 0;
+    return (
+      `Baixando ${install.model}: ${formatSystemBytes(install.completedBytes)} de ` +
+      `${formatSystemBytes(install.totalBytes)} (${percent}%)`
+    );
+  }
+  if (install.status === 'installed') {
+    return `Modelo ${install.model} instalado.`;
+  }
+  if (install.status === 'cancelled') {
+    return `Download de ${install.model} cancelado.`;
+  }
+  // 'failed' — 'busy' nunca chega aqui (B2): nunca é gravado em modelInstallState.
+  return formatModelPullFailureText(install.model, install.reason);
+}
+
+/** `#model-install-status` (item 7.6) — pintado SÓ pelo desfecho do gesto (e sua rejeição). */
+function formatModelOutcomeStatusText(outcome) {
+  if (outcome.status === 'installed') {
+    return `Modelo ${outcome.model} instalado.`;
+  }
+  if (outcome.status === 'cancelled') {
+    return `Download de ${outcome.model} cancelado.`;
+  }
+  return formatModelPullFailureText(outcome.model, outcome.reason);
+}
+
+/**
+ * Fonte única do estado dos controles (correção B3/D27): SÓ esta função
+ * escreve `disabled`/`hidden` em botões de instalar e em
+ * `#model-install-cancel` — decidido inteiramente por `modelInstallInFlight`,
+ * NUNCA pelo `install.status` lido no tick periódico.
+ */
+let modelInstallInFlight = false;
+
+function refreshModelControls() {
+  const buttons = document.querySelectorAll('#model-catalog-list button[data-model]');
+  for (const button of buttons) {
+    button.disabled = modelInstallInFlight;
+  }
+  const cancelButton = document.getElementById('model-install-cancel');
+  cancelButton.hidden = !modelInstallInFlight;
+  cancelButton.disabled = !modelInstallInFlight;
+}
+
+/** Renderiza `#model-catalog-list` a partir de `ModelCatalogSnapshot.catalog` (item 7.3). */
+function renderModelCatalogList(catalog) {
+  const container = document.getElementById('model-catalog-list');
+  container.innerHTML = '';
+  for (const entry of catalog) {
+    const line = document.createElement('p');
+    const recommendedSuffix = entry.recommended
+      ? ' (recomendado — é o modelo que o Atlas usa por padrão)'
+      : '';
+    line.textContent = `${entry.name} — ${entry.sizeLabel} — ${entry.description}${recommendedSuffix} `;
+    if (entry.installed) {
+      const label = document.createElement('span');
+      label.textContent = 'Instalado';
+      line.appendChild(label);
+    } else {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.model = entry.name;
+      button.textContent = 'Instalar';
+      button.addEventListener('click', () => handleInstallModelClick(entry.name));
+      line.appendChild(button);
+    }
+    container.appendChild(line);
+  }
+  // Fonte única (B3/D27): mesmo após reconstruir a lista, quem decide
+  // `disabled` dos botões novos é sempre `refreshModelControls()`.
+  refreshModelControls();
+}
+
+function renderModelInstalledState(probe) {
+  document.getElementById('model-installed-state').textContent =
+    formatModelInstalledStateText(probe);
+}
+
+function renderModelInstallProgress(install) {
+  document.getElementById('model-install-progress').textContent =
+    formatModelInstallProgressText(install);
+}
+
+/** Aplica um `ModelCatalogSnapshot` inteiro (leitura inicial ou tick periódico). */
+function applyModelCatalogSnapshot(snapshot) {
+  renderModelInstalledState(snapshot.probe);
+  renderModelCatalogList(snapshot.catalog);
+  renderModelInstallProgress(snapshot.install);
+}
+
+/** Rejeição de `models.read()` (CA44) — célula própria, nunca `#global-alert`/`#presence-core`. */
+function renderModelCatalogReadFailure() {
+  document.getElementById('model-installed-state').textContent =
+    'Não foi possível ler o catálogo de modelos.';
+}
+
+/**
+ * Gesto de instalar (item 7.3): a flag `modelInstallInFlight` é a ÚNICA
+ * origem de `disabled`/`hidden` dos controles — marcada antes do `invoke` e
+ * limpa no `.finally`, nunca pelo tick periódico.
+ */
+function handleInstallModelClick(model) {
+  modelInstallInFlight = true;
+  refreshModelControls();
+  window.atlas.models
+    .install(model)
+    .then((outcome) => {
+      document.getElementById('model-install-status').textContent =
+        formatModelOutcomeStatusText(outcome);
+    })
+    .catch((error) => {
+      document.getElementById('model-install-status').textContent =
+        `${MODEL_INSTALL_REJECTION_PREFIX}${error?.message ?? error}`;
+    })
+    .finally(() => {
+      modelInstallInFlight = false;
+      refreshModelControls();
+    });
+}
+
+document.getElementById('model-install-cancel').addEventListener('click', () => {
+  window.atlas.models.cancel().catch(() => {});
+});
+
+// Gatilho proativo (item 7.5, ADR-0029(j)) — no máximo uma vez por sessão da
+// app; espera o bootstrap de dependências assentar (D26): nenhum timer,
+// nenhum canal de push, nenhuma requisição nova além do `models.probe()`
+// disparado abaixo.
+let modelProactiveTriggerDone = false;
+
+function maybeOpenModelCatalogOnBoot(snapshot) {
+  if (modelProactiveTriggerDone) return;
+  modelProactiveTriggerDone = true;
+  if (snapshot.probe.status !== 'known' || snapshot.probe.models.length !== 0) {
+    return;
+  }
+  const control = drawer.controls.find(
+    (candidate) => candidate.getAttribute('aria-controls') === 'panel-system',
+  );
+  if (control === undefined) return;
+  // Reusa os MESMOS mecanismos já existentes — `openDrawer()` (o que
+  // `#menu-toggle` já chama) e o `click()` do controle de navegação —,
+  // nenhum caminho paralelo de abertura de painel (D15).
+  drawer.openDrawer();
+  control.click();
+  document.getElementById('model-catalog')?.focus();
+}
+
+window.atlas.models
+  .probe()
+  .then((snapshot) => {
+    maybeOpenModelCatalogOnBoot(snapshot);
+  })
+  .catch(() => {
+    // Silenciosa (item 7.5): fail-closed, nenhum aviso.
+  });

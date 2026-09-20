@@ -22,34 +22,330 @@ function fakeChildProcess(): ChildProcess & { stdout: EventEmitter } {
 }
 
 describe('nodeProcessPort (SPEC-0060, CA 13/14)', () => {
-  it('isOllamaRunning devolve true para response.ok true', async () => {
-    const fetchStub = (async () => jsonResponse(200)) as unknown as typeof fetch;
-    const port = nodeProcessPort({ fetch: fetchStub });
+  describe('inspectOllama (SPEC-0063, CA 2/3) — substitui isOllamaRunning', () => {
+    it('response.ok false ⇒ { running: false }', async () => {
+      const fetchStub = (async () => jsonResponse(500)) as unknown as typeof fetch;
+      const port = nodeProcessPort({ fetch: fetchStub });
 
-    await expect(port.isOllamaRunning('http://x:1')).resolves.toBe(true);
+      await expect(port.inspectOllama('http://x:1')).resolves.toEqual({ running: false });
+    });
+
+    it('fetch rejeita ⇒ { running: false }, nunca lança', async () => {
+      const fetchStub = (() => Promise.reject(new Error('boom'))) as unknown as typeof fetch;
+      const port = nodeProcessPort({ fetch: fetchStub });
+
+      await expect(port.inspectOllama('http://x:1')).resolves.toEqual({ running: false });
+    });
+
+    it('fetch síncrono lançando ⇒ { running: false }, nunca lança', async () => {
+      const fetchStub = (() => {
+        throw new Error('boom síncrono');
+      }) as unknown as typeof fetch;
+      const port = nodeProcessPort({ fetch: fetchStub });
+
+      await expect(port.inspectOllama('http://x:1')).resolves.toEqual({ running: false });
+    });
+
+    it('corpo {"models":[{"name":"a:latest"}]} ⇒ { running: true, models: ["a:latest"] }', async () => {
+      const fetchStub = (async () =>
+        new Response(JSON.stringify({ models: [{ name: 'a:latest' }] }), {
+          status: 200,
+        })) as unknown as typeof fetch;
+      const port = nodeProcessPort({ fetch: fetchStub });
+
+      await expect(port.inspectOllama('http://x:1')).resolves.toEqual({
+        running: true,
+        models: ['a:latest'],
+      });
+    });
+
+    it('corpo {"models":[]} ⇒ { running: true, models: [] }', async () => {
+      const fetchStub = (async () =>
+        new Response(JSON.stringify({ models: [] }), { status: 200 })) as unknown as typeof fetch;
+      const port = nodeProcessPort({ fetch: fetchStub });
+
+      await expect(port.inspectOllama('http://x:1')).resolves.toEqual({
+        running: true,
+        models: [],
+      });
+    });
+
+    it('corpo não-JSON ⇒ { running: true, models: undefined }', async () => {
+      const fetchStub = (async () =>
+        new Response('não é json', { status: 200 })) as unknown as typeof fetch;
+      const port = nodeProcessPort({ fetch: fetchStub });
+
+      await expect(port.inspectOllama('http://x:1')).resolves.toEqual({
+        running: true,
+        models: undefined,
+      });
+    });
+
+    it('"models" ausente ⇒ { running: true, models: undefined }', async () => {
+      const fetchStub = (async () =>
+        new Response(JSON.stringify({}), { status: 200 })) as unknown as typeof fetch;
+      const port = nodeProcessPort({ fetch: fetchStub });
+
+      await expect(port.inspectOllama('http://x:1')).resolves.toEqual({
+        running: true,
+        models: undefined,
+      });
+    });
+
+    it('"models" não-array ⇒ { running: true, models: undefined }', async () => {
+      const fetchStub = (async () =>
+        new Response(JSON.stringify({ models: 'x' }), { status: 200 })) as unknown as typeof fetch;
+      const port = nodeProcessPort({ fetch: fetchStub });
+
+      await expect(port.inspectOllama('http://x:1')).resolves.toEqual({
+        running: true,
+        models: undefined,
+      });
+    });
+
+    it('entradas malformadas são descartadas e os nomes válidos preservados na ordem (CA3)', async () => {
+      const fetchStub = (async () =>
+        new Response(
+          JSON.stringify({
+            models: [
+              { name: 'a:latest' },
+              { no_name: true },
+              { name: '' },
+              { name: 42 },
+              { name: 'b:latest' },
+            ],
+          }),
+          { status: 200 },
+        )) as unknown as typeof fetch;
+      const port = nodeProcessPort({ fetch: fetchStub });
+
+      await expect(port.inspectOllama('http://x:1')).resolves.toEqual({
+        running: true,
+        models: ['a:latest', 'b:latest'],
+      });
+    });
+
+    it('faz exatamente uma requisição, com timeout de 2000ms', async () => {
+      const fetchStub = vi.fn(async (_url: string, init?: RequestInit) => {
+        expect(init?.signal).toBeInstanceOf(AbortSignal);
+        return jsonResponse(200);
+      }) as unknown as typeof fetch;
+      const port = nodeProcessPort({ fetch: fetchStub });
+
+      await port.inspectOllama('http://x:1');
+
+      expect(fetchStub).toHaveBeenCalledTimes(1);
+      expect(fetchStub).toHaveBeenCalledWith('http://x:1/api/tags', expect.anything());
+    });
   });
 
-  it('isOllamaRunning devolve false para response.ok false', async () => {
-    const fetchStub = (async () => jsonResponse(500)) as unknown as typeof fetch;
-    const port = nodeProcessPort({ fetch: fetchStub });
+  describe('pullOllamaModel (SPEC-0063, CA 12–15)', () => {
+    function streamResponse(lines: readonly string[], status = 200): Response {
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (const line of lines) {
+            controller.enqueue(encoder.encode(`${line}\n`));
+          }
+          controller.close();
+        },
+      });
+      return new Response(stream, { status });
+    }
 
-    await expect(port.isOllamaRunning('http://x:1')).resolves.toBe(false);
-  });
+    function noopProgress(): void {}
 
-  it('isOllamaRunning devolve false quando fetch rejeita, e nunca lança', async () => {
-    const fetchStub = (() => Promise.reject(new Error('boom'))) as unknown as typeof fetch;
-    const port = nodeProcessPort({ fetch: fetchStub });
+    it('faz um POST /api/pull com { name, stream: true } e repassa o signal (CA12)', async () => {
+      const mockFetch = vi.fn(async (_url: string, init?: RequestInit) => {
+        expect(init?.method).toBe('POST');
+        expect(init?.headers).toEqual({ 'content-type': 'application/json' });
+        expect(init?.body).toBe(JSON.stringify({ name: 'llama3.2', stream: true }));
+        return streamResponse(['{"status":"success"}']);
+      });
+      const port = nodeProcessPort({ fetch: mockFetch as unknown as typeof fetch });
+      const controller = new AbortController();
 
-    await expect(port.isOllamaRunning('http://x:1')).resolves.toBe(false);
-  });
+      const outcome = await port.pullOllamaModel({
+        baseUrl: 'http://x:1',
+        model: 'llama3.2',
+        signal: controller.signal,
+        onProgress: noopProgress,
+      });
 
-  it('isOllamaRunning nunca lança mesmo com fetch síncrono lançando', async () => {
-    const fetchStub = (() => {
-      throw new Error('boom síncrono');
-    }) as unknown as typeof fetch;
-    const port = nodeProcessPort({ fetch: fetchStub });
+      expect(outcome).toEqual({ status: 'installed', model: 'llama3.2' });
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      const [url, init] = mockFetch.mock.calls[0]!;
+      expect(url).toBe('http://x:1/api/pull');
+      expect((init as RequestInit).signal).toBe(controller.signal);
+    });
 
-    await expect(port.isOllamaRunning('http://x:1')).resolves.toBe(false);
+    it('response.ok false ⇒ failed/rejected, sem ler o corpo (CA12)', async () => {
+      let bodyTouched = false;
+      const response = {
+        ok: false,
+        get body(): never {
+          bodyTouched = true;
+          throw new Error('body não deveria ser lido com response.ok === false');
+        },
+      } as unknown as Response;
+      const fetchStub = (async () => response) as unknown as typeof fetch;
+      const port = nodeProcessPort({ fetch: fetchStub });
+
+      const outcome = await port.pullOllamaModel({
+        baseUrl: 'http://x:1',
+        model: 'llama3.2',
+        signal: new AbortController().signal,
+        onProgress: noopProgress,
+      });
+
+      expect(outcome).toEqual({ status: 'failed', model: 'llama3.2', reason: 'rejected' });
+      expect(bodyTouched).toBe(false);
+    });
+
+    it('NDJSON com pulling/downloading/success ⇒ installed com exatamente um onProgress (CA13)', async () => {
+      const fetchStub = (async () =>
+        streamResponse([
+          '{"status":"pulling"}',
+          '{"status":"downloading","completed":10,"total":100}',
+          '{"status":"success"}',
+        ])) as unknown as typeof fetch;
+      const port = nodeProcessPort({ fetch: fetchStub });
+      const progress: unknown[] = [];
+
+      const outcome = await port.pullOllamaModel({
+        baseUrl: 'http://x:1',
+        model: 'llama3.2',
+        signal: new AbortController().signal,
+        onProgress: (p) => progress.push(p),
+      });
+
+      expect(outcome).toEqual({ status: 'installed', model: 'llama3.2' });
+      expect(progress).toEqual([{ model: 'llama3.2', completedBytes: 10, totalBytes: 100 }]);
+    });
+
+    it('completed/total não finitos ou negativos são ignorados (CA13)', async () => {
+      const fetchStub = (async () =>
+        streamResponse([
+          '{"status":"downloading","completed":"dez","total":-5}',
+          '{"status":"downloading","completed":NaN}',
+          '{"status":"success"}',
+        ])) as unknown as typeof fetch;
+      const port = nodeProcessPort({ fetch: fetchStub });
+      const progress: unknown[] = [];
+
+      const outcome = await port.pullOllamaModel({
+        baseUrl: 'http://x:1',
+        model: 'llama3.2',
+        signal: new AbortController().signal,
+        onProgress: (p) => progress.push(p),
+      });
+
+      expect(outcome).toEqual({ status: 'installed', model: 'llama3.2' });
+      expect(progress).toEqual([]);
+    });
+
+    it('linha ilegível é ignorada, o download conclui normalmente (CA14)', async () => {
+      const fetchStub = (async () =>
+        streamResponse(['isto não é json', '{"status":"success"}'])) as unknown as typeof fetch;
+      const port = nodeProcessPort({ fetch: fetchStub });
+
+      const outcome = await port.pullOllamaModel({
+        baseUrl: 'http://x:1',
+        model: 'llama3.2',
+        signal: new AbortController().signal,
+        onProgress: noopProgress,
+      });
+
+      expect(outcome).toEqual({ status: 'installed', model: 'llama3.2' });
+    });
+
+    it('linha com campo error ⇒ failed/stream-failed (CA14)', async () => {
+      const fetchStub = (async () =>
+        streamResponse([
+          '{"status":"pulling"}',
+          '{"error":"modelo não encontrado no registro"}',
+        ])) as unknown as typeof fetch;
+      const port = nodeProcessPort({ fetch: fetchStub });
+
+      const outcome = await port.pullOllamaModel({
+        baseUrl: 'http://x:1',
+        model: 'llama3.2',
+        signal: new AbortController().signal,
+        onProgress: noopProgress,
+      });
+
+      expect(outcome).toEqual({ status: 'failed', model: 'llama3.2', reason: 'stream-failed' });
+    });
+
+    it('fim do stream sem linha de sucesso ⇒ failed/stream-failed (CA14)', async () => {
+      const fetchStub = (async () =>
+        streamResponse(['{"status":"pulling"}'])) as unknown as typeof fetch;
+      const port = nodeProcessPort({ fetch: fetchStub });
+
+      const outcome = await port.pullOllamaModel({
+        baseUrl: 'http://x:1',
+        model: 'llama3.2',
+        signal: new AbortController().signal,
+        onProgress: noopProgress,
+      });
+
+      expect(outcome).toEqual({ status: 'failed', model: 'llama3.2', reason: 'stream-failed' });
+    });
+
+    it('rejeição do fetch (signal não abortado) ⇒ failed/unreachable (CA14)', async () => {
+      const fetchStub = (() => Promise.reject(new Error('boom'))) as unknown as typeof fetch;
+      const port = nodeProcessPort({ fetch: fetchStub });
+
+      const outcome = await port.pullOllamaModel({
+        baseUrl: 'http://x:1',
+        model: 'llama3.2',
+        signal: new AbortController().signal,
+        onProgress: noopProgress,
+      });
+
+      expect(outcome).toEqual({ status: 'failed', model: 'llama3.2', reason: 'unreachable' });
+    });
+
+    it('signal já abortado quando o fetch rejeita ⇒ cancelled, nunca failed', async () => {
+      const controller = new AbortController();
+      const fetchStub = (() => {
+        controller.abort();
+        return Promise.reject(new Error('aborted'));
+      }) as unknown as typeof fetch;
+      const port = nodeProcessPort({ fetch: fetchStub });
+
+      const outcome = await port.pullOllamaModel({
+        baseUrl: 'http://x:1',
+        model: 'llama3.2',
+        signal: controller.signal,
+        onProgress: noopProgress,
+      });
+
+      expect(outcome).toEqual({ status: 'cancelled', model: 'llama3.2' });
+    });
+
+    it('nenhum texto do provedor escapa da porta (CA15): status/error/digest arbitrários nunca aparecem no desfecho/progresso', async () => {
+      const secretText = 'TEXTO-SECRETO-DO-PROVEDOR-NAO-PODE-VAZAR';
+      const fetchStub = (async () =>
+        streamResponse([
+          `{"status":"${secretText}","digest":"${secretText}","completed":1,"total":2}`,
+          `{"error":"${secretText}"}`,
+        ])) as unknown as typeof fetch;
+      const port = nodeProcessPort({ fetch: fetchStub });
+      const progress: unknown[] = [];
+
+      const outcome = await port.pullOllamaModel({
+        baseUrl: 'http://x:1',
+        model: 'llama3.2',
+        signal: new AbortController().signal,
+        onProgress: (p) => progress.push(p),
+      });
+
+      expect(JSON.stringify(outcome)).not.toContain(secretText);
+      expect(JSON.stringify(progress)).not.toContain(secretText);
+      expect(outcome).toEqual({ status: 'failed', model: 'llama3.2', reason: 'stream-failed' });
+      expect(progress).toEqual([{ model: 'llama3.2', completedBytes: 1, totalBytes: 2 }]);
+    });
   });
 
   it('stopOllama sem startOllama prévio (sem filho registrado) é no-op e não lança (CA 11b)', async () => {

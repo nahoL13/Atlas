@@ -395,3 +395,32 @@ segue **inteiramente consumido**, tal como a SPEC-0061 o deixou.
   o mesmo opt-in explícito, nunca um novo default.
 - Zero linha em `@atlas/permissions`/`@atlas/runtime`/`@atlas/tools`/
   `@atlas/model-gateway`/`apps/cli/src`; `@atlas/contracts` intocado.
+
+---
+
+# Atualização ([SPEC-0063](../implementation/specs/SPEC-0063-desktop-model-provisioning.md))
+
+A SPEC-0063 estendeu a `ProcessPort` de forma **aditiva**, com uma operação
+**nomeada e fixa** a mais (`pullOllamaModel`), sem abrir nenhuma cláusula
+nova nem nomear nenhuma SPEC candidata — o estado "inteiramente consumido"
+do ADR (alcançado pela SPEC-0061) não muda.
+
+- **(b) confirmada**: `pullOllamaModel(request: ModelPullRequest):
+  Promise<ModelPullOutcome>` é mais uma operação nomeada e fixa sobre o
+  `ProcessPort` — nenhum `run(command, args)` genérico é introduzido; a
+  divergência de **forma** em relação ao esboço posicional do ADR-0029(b)
+  (um objeto com `signal`/`onProgress`, não parâmetros posicionais) é
+  decisão explícita da SPEC, registrada na sua própria nota de atualização.
+- **(h) permanece intacta**: nenhuma operação Docker nova é introduzida por
+  esta fatia — o download de modelo é uma categoria de recurso distinta
+  (arquivo do modelo servido pelo próprio Ollama, não um container), e a
+  proibição de `pull`/`create`/`run` de container Docker segue exatamente
+  onde estava.
+- **(e) estendida**: `release()` passa a abortar (`AbortController`) um
+  download de modelo em voo **antes** de drenar o trabalho pendente das
+  duas dependências já existentes — sem isso, o `before-quit` esperaria um
+  download de vários GB. Não há posse a desfazer sobre um modelo baixado
+  (ele é do usuário, não da sessão), então a extensão é só a ordem do
+  abort, não uma terceira categoria de posse.
+- Zero linha em `@atlas/permissions`/`@atlas/runtime`/`@atlas/tools`/
+  `@atlas/model-gateway`/`apps/cli/src`; `@atlas/contracts` intocado.

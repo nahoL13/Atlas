@@ -1,13 +1,22 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import type {
   RendererDependencyOutcome,
   RendererDependencyStatusSnapshot,
   RendererFixture,
   RendererFixtureOptions,
+  RendererModelCatalogEntry,
+  RendererModelCatalogSnapshot,
+  RendererModelPullOutcome,
   RendererSystemMetricsSnapshot,
   RendererTokenUsageSnapshot,
 } from './helpers/renderer-harness.js';
 import { loadRenderer } from './helpers/renderer-harness.js';
+
+const rendererDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'renderer');
+const source = readFileSync(join(rendererDir, 'renderer.js'), 'utf8');
 
 // SPEC-0054 — painel `Sistema`: ciclo de atualização (timer único, guarda de
 // reentrância, descarte pós-fechamento, cinco gatilhos de cancelamento) e
@@ -627,6 +636,42 @@ describe('dependências externas — 3º invoke no mesmo tick, sem timer novo (C
   });
 });
 
+describe('#system-dependencies — indiferente ao campo "models" do desfecho (CA51, N1)', () => {
+  it('os textos pinados são os MESMOS com e sem "models" presente no desfecho do Ollama', async () => {
+    const withoutModels = await open({
+      metricsSnapshot: ALL_UNSUPPORTED,
+      tokensSnapshot: ZERO_TOKENS,
+      dependenciesStatus: {
+        ollama: { dependency: 'ollama', status: 'already-running' } as RendererDependencyOutcome,
+        searchContainers: [],
+      },
+    });
+    await openSystemPanel(withoutModels);
+    const textWithout = text(withoutModels, 'system-dependencies');
+    withoutModels.close();
+    fixture = undefined;
+
+    const withModels = await open({
+      metricsSnapshot: ALL_UNSUPPORTED,
+      tokensSnapshot: ZERO_TOKENS,
+      dependenciesStatus: {
+        ollama: {
+          dependency: 'ollama',
+          status: 'already-running',
+          models: ['llama3.2:latest', 'gemma2:2b'],
+        } as unknown as RendererDependencyOutcome,
+        searchContainers: [],
+      },
+    });
+    await openSystemPanel(withModels);
+    const textWith = text(withModels, 'system-dependencies');
+
+    expect(textWith).toBe(textWithout);
+    expect(textWith).toContain('Ollama: já estava em execução.');
+    expect(textWith).not.toMatch(/llama3\.2|gemma2/);
+  });
+});
+
 describe('#system-dependencies — linhas exaustivas por dependência (CA40)', () => {
   it('mostra o texto de "ainda verificando" enquanto ollama é undefined, e a linha pinada de lista vazia', async () => {
     const f = await open({
@@ -782,5 +827,453 @@ describe('#system-dependencies — nenhuma reason crua na interface (CA41)', () 
       f.close();
       fixture = undefined;
     }
+  });
+});
+
+// SPEC-0063 (CAs 37-42, 44, 53): seção "Modelos de IA" dentro do painel
+// `Sistema` — mesmo idioma de leitura periódica (4º invoke, sem timer novo),
+// fonte única do estado dos controles (`modelInstallInFlight`, B3/D27) e
+// tabela exaustiva de textos pinados (D21).
+
+const MODEL_LLAMA: RendererModelCatalogEntry = {
+  name: 'llama3.2',
+  sizeLabel: '≈ 2 GB',
+  description: 'Modelo geral leve — é o modelo que o Atlas usa por padrão.',
+  recommended: true,
+  installed: false,
+};
+
+const MODEL_GEMMA: RendererModelCatalogEntry = {
+  name: 'gemma2:2b',
+  sizeLabel: '≈ 1,6 GB',
+  description: 'A menor opção — para máquinas com pouca memória.',
+  recommended: false,
+  installed: false,
+};
+
+function catalogSnapshot(
+  overrides: Partial<RendererModelCatalogSnapshot> = {},
+): RendererModelCatalogSnapshot {
+  return {
+    catalog: [MODEL_LLAMA, MODEL_GEMMA],
+    probe: { status: 'unknown' },
+    install: { status: 'idle' },
+    ...overrides,
+  };
+}
+
+describe('catálogo de modelos — renderização (CA37)', () => {
+  it('uma linha por entrada com nome/tamanho/descrição; recomendada mostra o sufixo; instalada mostra "Instalado" sem botão', async () => {
+    const f = await open({
+      metricsSnapshot: ALL_UNSUPPORTED,
+      tokensSnapshot: ZERO_TOKENS,
+      modelCatalogSnapshot: catalogSnapshot({
+        catalog: [MODEL_LLAMA, { ...MODEL_GEMMA, installed: true }],
+      }),
+    });
+    await openSystemPanel(f);
+
+    const lines = [...f.document.querySelectorAll('#model-catalog-list p')];
+    expect(lines).toHaveLength(2);
+
+    expect(lines[0]?.textContent).toContain('llama3.2');
+    expect(lines[0]?.textContent).toContain('≈ 2 GB');
+    expect(lines[0]?.textContent).toContain('Modelo geral leve');
+    expect(lines[0]?.textContent).toContain(
+      '(recomendado — é o modelo que o Atlas usa por padrão)',
+    );
+    expect(lines[0]?.querySelector('button[data-model="llama3.2"]')).not.toBeNull();
+
+    expect(lines[1]?.textContent).toContain('Instalado');
+    expect(lines[1]?.querySelector('button')).toBeNull();
+  });
+});
+
+describe('gesto de instalar — fonte única dos controles (CA38, B3/D27)', () => {
+  it('clique chama install com o data-model; desabilita todos os botões de instalar e mostra o cancelar durante o voo; ao assentar, volta ao normal', async () => {
+    const gate = deferred<RendererModelPullOutcome>();
+    const f = await open({
+      metricsSnapshot: ALL_UNSUPPORTED,
+      tokensSnapshot: ZERO_TOKENS,
+      modelCatalogSnapshot: catalogSnapshot(),
+      modelInstallOutcome: () => gate.promise,
+    });
+    await openSystemPanel(f);
+
+    expect((f.document.getElementById('model-install-cancel') as HTMLButtonElement).hidden).toBe(
+      true,
+    );
+
+    (f.document.querySelector('button[data-model="llama3.2"]') as HTMLButtonElement).click();
+    await f.flush();
+
+    expect(f.calls.modelInstallCalls).toEqual(['llama3.2']);
+    expect(
+      (f.document.querySelector('button[data-model="llama3.2"]') as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      (f.document.querySelector('button[data-model="gemma2:2b"]') as HTMLButtonElement).disabled,
+    ).toBe(true);
+    const cancelButton = f.document.getElementById('model-install-cancel') as HTMLButtonElement;
+    expect(cancelButton.hidden).toBe(false);
+    expect(cancelButton.disabled).toBe(false);
+
+    gate.resolve({ status: 'installed', model: 'llama3.2' });
+    await f.flush();
+
+    expect(
+      (f.document.querySelector('button[data-model="llama3.2"]') as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect((f.document.getElementById('model-install-cancel') as HTMLButtonElement).hidden).toBe(
+      true,
+    );
+  });
+
+  it('fonte única (B3/D27): um tick de leitura no meio do download, e outro logo após o desfecho, não mudam disabled/hidden dos controles', async () => {
+    const gate = deferred<RendererModelPullOutcome>();
+    const f = await open({
+      metricsSnapshot: ALL_UNSUPPORTED,
+      tokensSnapshot: ZERO_TOKENS,
+      modelCatalogSnapshot: catalogSnapshot(),
+      modelInstallOutcome: () => gate.promise,
+    });
+    await openSystemPanel(f);
+
+    (f.document.querySelector('button[data-model="llama3.2"]') as HTMLButtonElement).click();
+    await f.flush();
+
+    // Tick de leitura periódica NO MEIO do download — não deve alterar
+    // disabled/hidden (só `refreshModelControls()` os escreve).
+    f.clock.advance(2000);
+    await f.flush();
+    expect(
+      (f.document.querySelector('button[data-model="llama3.2"]') as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect((f.document.getElementById('model-install-cancel') as HTMLButtonElement).hidden).toBe(
+      false,
+    );
+
+    gate.resolve({ status: 'installed', model: 'llama3.2' });
+    await f.flush();
+
+    // Tick LOGO APÓS o desfecho, antes do próximo tick natural — idem.
+    f.clock.advance(2000);
+    await f.flush();
+    expect(
+      (f.document.querySelector('button[data-model="llama3.2"]') as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect((f.document.getElementById('model-install-cancel') as HTMLButtonElement).hidden).toBe(
+      true,
+    );
+  });
+
+  it('grep: nenhuma outra atribuição a .disabled/.hidden dos controles de modelo em renderer.js', () => {
+    const modelSection = source.slice(source.indexOf('// SPEC-0063'), source.length);
+    const assignments = [...modelSection.matchAll(/\.(disabled|hidden)\s*=/g)].map((m) => m[0]);
+    // As únicas atribuições autorizadas moram dentro de `refreshModelControls`.
+    const refreshBody = modelSection.slice(
+      modelSection.indexOf('function refreshModelControls'),
+      modelSection.indexOf('function refreshModelControls') + 400,
+    );
+    const insideRefresh = [...refreshBody.matchAll(/\.(disabled|hidden)\s*=/g)].length;
+    expect(assignments.length).toBe(insideRefresh);
+  });
+});
+
+describe('cancelar o download (CA39, D18)', () => {
+  it('#model-install-cancel chama window.atlas.models.cancel()', async () => {
+    const gate = deferred<RendererModelPullOutcome>();
+    const f = await open({
+      metricsSnapshot: ALL_UNSUPPORTED,
+      tokensSnapshot: ZERO_TOKENS,
+      modelCatalogSnapshot: catalogSnapshot(),
+      modelInstallOutcome: () => gate.promise,
+    });
+    await openSystemPanel(f);
+
+    (f.document.querySelector('button[data-model="llama3.2"]') as HTMLButtonElement).click();
+    await f.flush();
+
+    (f.document.getElementById('model-install-cancel') as HTMLButtonElement).click();
+    await f.flush();
+
+    expect(f.calls.modelCancelCalls).toBe(1);
+
+    gate.resolve({ status: 'cancelled', model: 'llama3.2' });
+    await f.flush();
+  });
+});
+
+describe('tabela exaustiva de textos pinados (CA40, D21)', () => {
+  it.each([
+    [{ status: 'pending' } as const, 'Ainda verificando os modelos instalados…'],
+    [
+      { status: 'unknown' } as const,
+      'Não foi possível verificar os modelos instalados nesta sessão.',
+    ],
+    [
+      { status: 'known', models: [] } as const,
+      'Nenhum modelo de IA instalado — escolha um da lista abaixo para instalar.',
+    ],
+    [{ status: 'known', models: ['a:latest'] } as const, '1 modelo de IA instalado.'],
+    [{ status: 'known', models: ['a:latest', 'b:latest'] } as const, '2 modelos de IA instalados.'],
+  ])('#model-installed-state para probe %j', async (probe, expected) => {
+    const f = await open({
+      metricsSnapshot: ALL_UNSUPPORTED,
+      tokensSnapshot: ZERO_TOKENS,
+      modelCatalogSnapshot: catalogSnapshot({ probe }),
+    });
+    await openSystemPanel(f);
+
+    expect(text(f, 'model-installed-state')).toBe(expected);
+  });
+
+  it('"pending" e "unknown" produzem textos diferentes, e o de "pending" não afirma falha (B4)', async () => {
+    const pending = await open({
+      metricsSnapshot: ALL_UNSUPPORTED,
+      tokensSnapshot: ZERO_TOKENS,
+      modelCatalogSnapshot: catalogSnapshot({ probe: { status: 'pending' } }),
+    });
+    await openSystemPanel(pending);
+    const pendingText = text(pending, 'model-installed-state');
+    pending.close();
+    fixture = undefined;
+
+    const unknown = await open({
+      metricsSnapshot: ALL_UNSUPPORTED,
+      tokensSnapshot: ZERO_TOKENS,
+      modelCatalogSnapshot: catalogSnapshot({ probe: { status: 'unknown' } }),
+    });
+    await openSystemPanel(unknown);
+    const unknownText = text(unknown, 'model-installed-state');
+
+    expect(pendingText).not.toBe(unknownText);
+    expect(pendingText).not.toMatch(/não foi possível|falha/i);
+  });
+
+  it.each([
+    [{ status: 'idle' } as const, ''],
+    [{ status: 'running', model: 'llama3.2' } as const, 'Preparando o download de llama3.2…'],
+    [
+      { status: 'running', model: 'llama3.2', completedBytes: 500, totalBytes: 1000 } as const,
+      'Baixando llama3.2: 500 B de 1,0 kB (50%)',
+    ],
+    [{ status: 'installed', model: 'llama3.2' } as const, 'Modelo llama3.2 instalado.'],
+    [{ status: 'cancelled', model: 'llama3.2' } as const, 'Download de llama3.2 cancelado.'],
+    [
+      { status: 'failed', model: 'llama3.2', reason: 'unreachable' } as const,
+      'Não foi possível falar com o Ollama para baixar llama3.2. Verifique se ele está em execução e tente de novo.',
+    ],
+    [
+      { status: 'failed', model: 'llama3.2', reason: 'rejected' } as const,
+      'O Ollama recusou o download de llama3.2 — o modelo pode não estar mais disponível no provedor.',
+    ],
+    [
+      { status: 'failed', model: 'llama3.2', reason: 'stream-failed' } as const,
+      'O download de llama3.2 foi interrompido antes de terminar. Tente de novo.',
+    ],
+    [
+      { status: 'failed', model: 'llama3.2', reason: 'invalid-model' } as const,
+      'Nome de modelo inválido — a instalação foi recusada antes de qualquer download.',
+    ],
+  ])('#model-install-progress para install %j', async (install, expected) => {
+    const f = await open({
+      metricsSnapshot: ALL_UNSUPPORTED,
+      tokensSnapshot: ZERO_TOKENS,
+      modelCatalogSnapshot: catalogSnapshot({ install }),
+    });
+    await openSystemPanel(f);
+
+    expect(text(f, 'model-install-progress')).toBe(expected);
+  });
+
+  it('nenhuma reason crua chega ao DOM', async () => {
+    const rawReasons = ['unreachable', 'rejected', 'stream-failed', 'invalid-model', 'busy'];
+    for (const reason of rawReasons as readonly (
+      'unreachable' | 'rejected' | 'stream-failed' | 'invalid-model' | 'busy'
+    )[]) {
+      const f = await open({
+        metricsSnapshot: ALL_UNSUPPORTED,
+        tokensSnapshot: ZERO_TOKENS,
+        modelCatalogSnapshot: catalogSnapshot({
+          install: { status: 'failed', model: 'llama3.2', reason },
+        }),
+      });
+      await openSystemPanel(f);
+
+      expect(text(f, 'model-install-progress')).not.toContain(reason);
+      f.close();
+      fixture = undefined;
+    }
+  });
+
+  it('desfecho "busy" pinta o texto pinado em #model-install-status, nunca em #model-install-progress (CA40/CA53)', async () => {
+    const f = await open({
+      metricsSnapshot: ALL_UNSUPPORTED,
+      tokensSnapshot: ZERO_TOKENS,
+      // #model-install-progress reflete um download REAL em curso (outro
+      // modelo) — o "busy" não pode tocar essa célula (B2/D9).
+      modelCatalogSnapshot: catalogSnapshot({
+        install: { status: 'running', model: 'gemma2:2b', completedBytes: 3, totalBytes: 9 },
+      }),
+      // Simula o que o bridge devolve para uma 2ª chamada concorrente —
+      // não é preciso reproduzir o duplo clique (já provado impossível
+      // pela UI, ver describe "CA53" acima).
+      modelInstallOutcome: () => ({ status: 'failed', model: 'llama3.2', reason: 'busy' }),
+    });
+    await openSystemPanel(f);
+    expect(text(f, 'model-install-progress')).toContain('Baixando gemma2:2b');
+
+    (f.document.querySelector('button[data-model="llama3.2"]') as HTMLButtonElement).click();
+    await f.flush();
+
+    expect(text(f, 'model-install-status')).toBe(
+      'Já existe um download em andamento. Aguarde ele terminar ou cancele antes de iniciar outro.',
+    );
+    // #model-install-progress é pintado SÓ pela leitura periódica (D20) e
+    // continua refletindo o snapshot estático do double — nunca o "busy".
+    expect(text(f, 'model-install-progress')).toContain('Baixando gemma2:2b');
+    expect(text(f, 'model-install-progress')).not.toContain('busy');
+    expect(text(f, 'model-install-progress')).not.toContain('llama3.2');
+  });
+
+  it('rejeição do invoke de install é pintada em #model-install-status prefixada por ⚠️ ', async () => {
+    const f = await open({
+      metricsSnapshot: ALL_UNSUPPORTED,
+      tokensSnapshot: ZERO_TOKENS,
+      modelCatalogSnapshot: catalogSnapshot(),
+      atlas: { models: { install: () => Promise.reject(new Error('Modelo fora do catálogo.')) } },
+    });
+    await openSystemPanel(f);
+
+    (f.document.querySelector('button[data-model="llama3.2"]') as HTMLButtonElement).click();
+    await f.flush();
+
+    expect(text(f, 'model-install-status')).toBe('⚠️ Modelo fora do catálogo.');
+  });
+});
+
+describe('separação de pintores — #model-install-status × #model-install-progress (CA41, D20)', () => {
+  it('um tick de leitura não altera #model-install-status; o desfecho do gesto não altera #model-install-progress fora do tick', async () => {
+    const gate = deferred<RendererModelPullOutcome>();
+    const f = await open({
+      metricsSnapshot: ALL_UNSUPPORTED,
+      tokensSnapshot: ZERO_TOKENS,
+      modelCatalogSnapshot: catalogSnapshot(),
+      modelInstallOutcome: () => gate.promise,
+    });
+    await openSystemPanel(f);
+    expect(text(f, 'model-install-status')).toBe('');
+
+    (f.document.querySelector('button[data-model="llama3.2"]') as HTMLButtonElement).click();
+    await f.flush();
+
+    // Um tick de leitura periódica não pinta #model-install-status.
+    f.clock.advance(2000);
+    await f.flush();
+    expect(text(f, 'model-install-status')).toBe('');
+
+    gate.resolve({ status: 'installed', model: 'llama3.2' });
+    await f.flush();
+
+    // O desfecho do gesto pinta #model-install-status; #model-install-progress
+    // só muda no PRÓXIMO tick (ainda reflete o snapshot estático do double).
+    expect(text(f, 'model-install-status')).toBe('Modelo llama3.2 instalado.');
+  });
+});
+
+describe('4º invoke no mesmo tick, sem timer novo (CA42)', () => {
+  it('leitura imediata inclui models.read(); o tick de 2000ms dispara os quatro invokes juntos', async () => {
+    const f = await open({
+      metricsSnapshot: ALL_UNSUPPORTED,
+      tokensSnapshot: ZERO_TOKENS,
+      dependenciesStatus: NO_DEPENDENCIES,
+      modelCatalogSnapshot: catalogSnapshot(),
+    });
+    await openSystemPanel(f);
+    expect(f.calls.modelsReadCalls).toBe(1);
+
+    f.clock.advance(1000);
+    await f.flush();
+    expect(f.calls.modelsReadCalls).toBe(1);
+
+    f.clock.advance(1000);
+    await f.flush();
+    expect(f.calls.modelsReadCalls).toBe(2);
+    expect(f.calls.metricsReadCalls).toBe(2);
+    expect(f.calls.tokensReadCalls).toBe(2);
+    expect(f.calls.dependenciesReadCalls).toBe(2);
+  });
+
+  it('fechar o painel cancela o timer único; uma resposta de models.read() tardia é descartada', async () => {
+    const gate = deferred<RendererModelCatalogSnapshot>();
+    const f = await open({
+      metricsSnapshot: ALL_UNSUPPORTED,
+      tokensSnapshot: ZERO_TOKENS,
+      atlas: { models: { read: () => gate.promise } },
+    });
+    await openSystemPanel(f);
+    expect(text(f, 'model-installed-state')).toBe('');
+
+    systemNavControl(f).click(); // fecha o painel ANTES de a leitura assentar
+
+    gate.resolve(catalogSnapshot({ probe: { status: 'known', models: [] } }));
+    await f.flush();
+
+    expect(text(f, 'model-installed-state')).toBe('');
+  });
+});
+
+describe('rejeição de models.read() (CA44)', () => {
+  it('pinta o texto pinado de falha em #model-installed-state, sem tocar #global-alert/#presence-core', async () => {
+    const f = await open({
+      metricsSnapshot: ALL_UNSUPPORTED,
+      tokensSnapshot: ZERO_TOKENS,
+      atlas: { models: { read: () => Promise.reject(new Error('boom')) } },
+    });
+    await openSystemPanel(f);
+
+    expect(text(f, 'model-installed-state')).toBe('Não foi possível ler o catálogo de modelos.');
+    expect((f.document.getElementById('global-alert') as HTMLElement).hidden).toBe(true);
+    expect((f.document.getElementById('presence-core') as HTMLElement).dataset.state).not.toBe(
+      'error',
+    );
+  });
+});
+
+describe('CA53 — um segundo clique é estruturalmente impossível pela UI durante um download', () => {
+  it('com um download em voo, o botão do 2º modelo fica desabilitado (não clicável) e o progresso do 1º modelo persiste', async () => {
+    const gate = deferred<RendererModelPullOutcome>();
+    const f = await open({
+      metricsSnapshot: ALL_UNSUPPORTED,
+      tokensSnapshot: ZERO_TOKENS,
+      modelCatalogSnapshot: catalogSnapshot({
+        install: { status: 'running', model: 'llama3.2', completedBytes: 3, totalBytes: 9 },
+      }),
+      modelInstallOutcome: () => gate.promise,
+    });
+    await openSystemPanel(f);
+    expect(text(f, 'model-install-progress')).toContain('Baixando llama3.2');
+
+    (f.document.querySelector('button[data-model="llama3.2"]') as HTMLButtonElement).click();
+    await f.flush();
+
+    const buttonGemma = f.document.querySelector(
+      'button[data-model="gemma2:2b"]',
+    ) as HTMLButtonElement;
+    expect(buttonGemma.disabled).toBe(true);
+    buttonGemma.click(); // no-op: botão desabilitado, jsdom não dispara o handler
+    await f.flush();
+
+    expect(f.calls.modelInstallCalls).toEqual(['llama3.2']);
+    // O progresso do download original segue visível (tick ainda não rodou
+    // com um novo snapshot — o double devolve o mesmo estático).
+    expect(text(f, 'model-install-progress')).toContain('Baixando llama3.2');
+    expect((f.document.getElementById('model-install-cancel') as HTMLButtonElement).hidden).toBe(
+      false,
+    );
+
+    gate.resolve({ status: 'installed', model: 'llama3.2' });
+    await f.flush();
   });
 });

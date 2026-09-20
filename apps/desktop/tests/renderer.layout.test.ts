@@ -191,23 +191,48 @@ const SPEC_0062_IDS = [
   'system-dependencies',
 ];
 
+// SPEC-0063: seção "Modelos de IA" dentro do painel `Sistema` (6 IDs),
+// abaixo de `#system-dependencies` e acima de `#system-status`.
+const SPEC_0063_IDS = [
+  'model-catalog',
+  'model-installed-state',
+  'model-catalog-list',
+  'model-install-progress',
+  'model-install-cancel',
+  'model-install-status',
+];
+
 describe('SPEC-0053 v3.0 — estrutura, manifesto e ausência dos artefatos v2', () => {
-  it('contém exatamente a união dos 103 IDs do manifesto (77 + 9 da SPEC-0054 + 13 da SPEC-0059 + 4 da SPEC-0062), sem IDs estruturais extras', () => {
+  it('contém exatamente a união dos 109 IDs do manifesto (77 + 9 da SPEC-0054 + 13 da SPEC-0059 + 4 da SPEC-0062 + 6 da SPEC-0063), sem IDs estruturais extras', () => {
     expect(ORIGINAL_47_IDS).toHaveLength(47);
     expect(V3_30_IDS).toHaveLength(30);
     expect(SPEC_0054_IDS).toHaveLength(9);
     expect(SPEC_0059_IDS).toHaveLength(13);
     expect(SPEC_0062_IDS).toHaveLength(4);
+    expect(SPEC_0063_IDS).toHaveLength(6);
     const expected = new Set([
       ...ORIGINAL_47_IDS,
       ...V3_30_IDS,
       ...SPEC_0054_IDS,
       ...SPEC_0059_IDS,
       ...SPEC_0062_IDS,
+      ...SPEC_0063_IDS,
     ]);
     const found = [...html.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1] as string);
     expect(new Set(found).size).toBe(found.length); // sem duplicatas
     expect(new Set(found)).toEqual(expected);
+  });
+
+  it('#model-catalog fica entre #system-dependencies e #system-status, dentro de #panel-system', () => {
+    const panelMatch = html.match(/<section id="panel-system"[\s\S]*?<\/section>\s*<\/div>/);
+    expect(panelMatch).not.toBeNull();
+    const panel = panelMatch![0];
+    const depIndex = panel.indexOf('id="system-dependencies"');
+    const catalogIndex = panel.indexOf('id="model-catalog"');
+    const statusIndex = panel.indexOf('id="system-status"');
+    expect(depIndex).toBeGreaterThan(-1);
+    expect(catalogIndex).toBeGreaterThan(depIndex);
+    expect(statusIndex).toBeGreaterThan(catalogIndex);
   });
 
   it('mantém CSP byte a byte, uma única folha local e nenhum CSS/estilo inline', () => {

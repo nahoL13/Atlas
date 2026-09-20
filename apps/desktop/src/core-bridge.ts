@@ -13,9 +13,13 @@ import {
   resolveDataDir,
 } from '@atlas/core';
 import type {
+  DependencyConfig,
   DependencyManager,
   DependencyOutcome,
   DependencyReport,
+  ModelPullFailureReason,
+  ModelPullOutcome,
+  ModelPullProgress,
   PersonaStorage,
 } from '@atlas/core';
 import type {
@@ -35,6 +39,7 @@ import type { NetworkGrantConfirmPort } from './network-grant-dialog.js';
 import { createTokenUsageAccumulator } from './token-usage.js';
 import type { TokenUsageSnapshot } from './token-usage.js';
 import { InvalidConfigError } from '@atlas/contracts';
+import { MODEL_CATALOG, findCatalogModel, isInstalledModel } from './model-catalog.js';
 
 export interface PersonaOption {
   readonly id: string;
@@ -283,40 +288,71 @@ export function readDependencyStatus(): DependencyStatusSnapshot {
 export async function ensureExternalDependencies(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<DependencyReport> {
-  const parsedOllama = parseBooleanSetting(env['ATLAS_AUTO_START_OLLAMA']);
-  let autoStartOllama = DESKTOP_AUTO_START_OLLAMA_DEFAULT;
-  if (parsedOllama.kind === 'invalid') {
-    autoStartOllama = false;
-    console.warn(INVALID_AUTO_START_OLLAMA_ENV_WARNING);
-  } else if (parsedOllama.kind === 'value') {
-    autoStartOllama = parsedOllama.value;
-  }
-
-  const parsedContainer = parseContainerNameSetting(env['ATLAS_AUTO_START_SEARCH_CONTAINER']);
-  let autoStartSearchContainer = '';
-  if (parsedContainer.kind === 'invalid') {
-    console.warn(INVALID_SEARCH_CONTAINER_ENV_WARNING);
-  } else if (parsedContainer.kind === 'value') {
-    autoStartSearchContainer = parsedContainer.value;
-  }
-
-  const config = resolveDependencyConfig({
-    dependencies: { autoStartOllama, autoStartSearchContainer },
+  // SPEC-0063, item 5.6 (correção B1) — o probe de modelos passa a 'pending'
+  // e o deferred de bootstrap é criado ANTES do primeiro `await`, para que
+  // `readModelCatalog()`/`whenModelProbeSettled()` vejam "ainda verificando"
+  // desde o primeiro instante em que uma janela existe.
+  installedProbe = { status: 'pending' };
+  let resolveBootstrapProbeSettled: (() => void) | undefined;
+  bootstrapProbeSettled = new Promise<void>((resolve) => {
+    resolveBootstrapProbeSettled = resolve;
   });
-  const report = await dependencyManager.ensure(config);
 
-  const ollamaOutcome = report.outcomes.find((outcome) => outcome.dependency === 'ollama');
-  if (ollamaOutcome !== undefined) {
-    ollamaDependencyStatus = ollamaOutcome;
-  }
-  const containerOutcome = report.outcomes.find(
-    (outcome) => outcome.dependency === 'search-container',
-  );
-  if (containerOutcome !== undefined && containerOutcome.status !== 'disabled') {
-    searchContainerStatuses.set(containerOutcome.container, containerOutcome);
-  }
+  try {
+    const parsedOllama = parseBooleanSetting(env['ATLAS_AUTO_START_OLLAMA']);
+    let autoStartOllama = DESKTOP_AUTO_START_OLLAMA_DEFAULT;
+    if (parsedOllama.kind === 'invalid') {
+      autoStartOllama = false;
+      console.warn(INVALID_AUTO_START_OLLAMA_ENV_WARNING);
+    } else if (parsedOllama.kind === 'value') {
+      autoStartOllama = parsedOllama.value;
+    }
 
-  return report;
+    const parsedContainer = parseContainerNameSetting(env['ATLAS_AUTO_START_SEARCH_CONTAINER']);
+    let autoStartSearchContainer = '';
+    if (parsedContainer.kind === 'invalid') {
+      console.warn(INVALID_SEARCH_CONTAINER_ENV_WARNING);
+    } else if (parsedContainer.kind === 'value') {
+      autoStartSearchContainer = parsedContainer.value;
+    }
+
+    // SPEC-0063, item 5.7 (N2): única chamada de `resolveDependencyConfig`
+    // deste arquivo (via `appDependencyConfig`), gravada para que o gesto de
+    // instalar (item 5.5) fale com o MESMO Ollama que este bootstrap usou.
+    const config = appDependencyConfig({ autoStartOllama, autoStartSearchContainer });
+    resolvedDependencyConfig = config;
+    const report = await dependencyManager.ensure(config);
+
+    const ollamaOutcome = report.outcomes.find((outcome) => outcome.dependency === 'ollama');
+    if (ollamaOutcome !== undefined) {
+      ollamaDependencyStatus = ollamaOutcome;
+    }
+    const containerOutcome = report.outcomes.find(
+      (outcome) => outcome.dependency === 'search-container',
+    );
+    if (containerOutcome !== undefined && containerOutcome.status !== 'disabled') {
+      searchContainerStatuses.set(containerOutcome.container, containerOutcome);
+    }
+
+    // SPEC-0063, item 5.6 — o probe assenta a partir do MESMO desfecho do
+    // Ollama que acabou de ser lido: nenhuma segunda inspeção (ADR-0029(d)).
+    // Correção de residual (2ª rodada): só grava se o probe AINDA estiver
+    // `'pending'` — um `installOllamaModel` que já promoveu o probe a
+    // `'known'` por prova própria (item 5.2) enquanto este `ensure` ainda
+    // estava em voo não pode ser rebaixado por um bootstrap mais lento.
+    if (installedProbe.status === 'pending') {
+      installedProbe =
+        ollamaOutcome !== undefined &&
+        (ollamaOutcome.status === 'already-running' || ollamaOutcome.status === 'started') &&
+        ollamaOutcome.models !== undefined
+          ? { status: 'known', models: ollamaOutcome.models }
+          : { status: 'unknown' };
+    }
+
+    return report;
+  } finally {
+    resolveBootstrapProbeSettled?.();
+  }
 }
 
 /**
@@ -352,6 +388,209 @@ export async function ensureSearchContainer(container: string): Promise<Dependen
   const outcome = await dependencyManager.ensureSearchContainer(parsed.value);
   searchContainerStatuses.set(parsed.value, outcome);
   return outcome;
+}
+
+// ---------------------------------------------------------------------------
+// SPEC-0063 — instalação assistida de modelo Ollama: estado, leitura síncrona,
+// gesto de instalar/cancelar e o gatilho proativo consumido pelo renderer.
+
+/**
+ * Mensagem pinada e exportada (item 5.5.1) — o nome não pertence ao catálogo
+ * curado (ADR-0029(e)); a Tool nunca é tocada.
+ */
+export const MODEL_NOT_IN_CATALOG_MESSAGE = 'Modelo fora do catálogo curado do Atlas.';
+
+/**
+ * Três estados, não dois (D26, correção B1/B4): "ainda não sei porque o
+ * bootstrap não assentou" é um fato diferente de "não deu para saber".
+ */
+export type InstalledModelsProbe =
+  | { readonly status: 'pending' }
+  | { readonly status: 'unknown' }
+  | { readonly status: 'known'; readonly models: readonly string[] };
+
+export type ModelInstallState =
+  | { readonly status: 'idle' }
+  | {
+      readonly status: 'running';
+      readonly model: string;
+      readonly completedBytes?: number;
+      readonly totalBytes?: number;
+    }
+  | { readonly status: 'installed'; readonly model: string }
+  | { readonly status: 'cancelled'; readonly model: string }
+  | {
+      readonly status: 'failed';
+      readonly model: string;
+      readonly reason: ModelPullFailureReason;
+    };
+
+export interface ModelCatalogEntryView {
+  readonly name: string;
+  readonly sizeLabel: string;
+  readonly description: string;
+  readonly recommended: boolean;
+  /** Calculado no main (D24): o renderer não replica nenhuma regra de nome. */
+  readonly installed: boolean;
+}
+
+export interface ModelCatalogSnapshot {
+  readonly catalog: readonly ModelCatalogEntryView[];
+  readonly probe: InstalledModelsProbe;
+  readonly install: ModelInstallState;
+}
+
+/**
+ * Estado de módulo (item 5.2, nunca persistido — Artigo 11): `installedProbe`
+ * inicial `'unknown'` (nenhum bootstrap disparado ainda nesta sessão de
+ * testes/módulo); vira `'pending'` na primeira linha de
+ * `ensureExternalDependencies`, antes do primeiro `await`.
+ */
+let installedProbe: InstalledModelsProbe = { status: 'unknown' };
+
+/**
+ * *Deferred* de bootstrap (item 5.2) — criado junto com a transição para
+ * `'pending'`, resolvido no `finally` do mesmo `ensureExternalDependencies`
+ * (inclusive se ele falhar). `whenModelProbeSettled()` aguarda esta promessa.
+ */
+let bootstrapProbeSettled: Promise<void> | undefined;
+
+/** Estado do gesto de instalar (item 5.2). */
+let modelInstallState: ModelInstallState = { status: 'idle' };
+
+/**
+ * Posse do gesto (item 5.2/B2/D9) — o nome cujo download ESTA sessão está de
+ * fato conduzindo, distinto do estado de apresentação (`modelInstallState`).
+ */
+let currentInstallModel: string | undefined;
+
+/**
+ * A config que o bootstrap de fato usou (item 5.2/5.7, N2) — gravada por
+ * `ensureExternalDependencies`, lida por `currentOllamaBaseUrl()`.
+ */
+let resolvedDependencyConfig: DependencyConfig | undefined;
+
+/**
+ * Origem única da montagem de `DependencyConfig` (item 5.7, resposta a N2) —
+ * único lugar deste arquivo que chama `resolveDependencyConfig` (CA31).
+ */
+function appDependencyConfig(
+  overrides: { autoStartOllama?: boolean; autoStartSearchContainer?: string } = {},
+): DependencyConfig {
+  return resolveDependencyConfig({ dependencies: overrides });
+}
+
+/**
+ * `baseUrl` do gesto de instalar (item 5.7) — exatamente o valor que o
+ * bootstrap usou; só cai em `appDependencyConfig().ollamaBaseUrl` quando
+ * nenhum bootstrap rodou nesta sessão (inalcançável em produção). Não lê
+ * `process.env` e não emite `console.warn` — avisos de env continuam
+ * exclusivos do caminho de bootstrap.
+ */
+function currentOllamaBaseUrl(): string {
+  return resolvedDependencyConfig?.ollamaBaseUrl ?? appDependencyConfig().ollamaBaseUrl;
+}
+
+/**
+ * Compõe o catálogo curado com o estado desta sessão — síncrona (item 5.3):
+ * nunca sobe o Core, nunca toca a porta, nunca marca operação em voo, nunca
+ * espera. Uma entrada só vem `installed: true` com `probe.status === 'known'`.
+ */
+export function readModelCatalog(): ModelCatalogSnapshot {
+  const installedNames = installedProbe.status === 'known' ? installedProbe.models : [];
+  return {
+    catalog: MODEL_CATALOG.map((entry) => ({
+      ...entry,
+      installed: isInstalledModel(entry.name, installedNames),
+    })),
+    probe: installedProbe,
+    install: modelInstallState,
+  };
+}
+
+/**
+ * Único caminho assíncrono de leitura (item 5.4, correção B1) — consumido
+ * uma vez por sessão pelo gatilho proativo do renderer. Nunca rejeita, nunca
+ * dispara requisição nova: é espera sobre trabalho JÁ em curso.
+ */
+export async function whenModelProbeSettled(): Promise<ModelCatalogSnapshot> {
+  if (installedProbe.status !== 'pending') {
+    return readModelCatalog();
+  }
+  if (bootstrapProbeSettled !== undefined) {
+    await bootstrapProbeSettled;
+  }
+  return readModelCatalog();
+}
+
+/**
+ * Gesto de instalar (item 5.5) — ordem normativa e fail-closed:
+ * 1. fora do catálogo ⇒ rejeita, sem tocar a porta nem alterar estado;
+ * 2. posse já tomada ⇒ devolve `'busy'` sem tocar a porta, sem alterar
+ *    `modelInstallState` (o download real segue intacto, B2/D9);
+ * 3. assume a posse e grava `'running'`, ambos antes do 1º `await`;
+ * 4. delega ao manager com o `baseUrl` de origem única (item 5.7);
+ * 5. grava o desfecho final e libera a posse — exceto um `'busy'` defensivo
+ *    vindo do manager, devolvido sem ser gravado (passo 2 já o torna
+ *    inalcançável pela GUI).
+ */
+export async function installOllamaModel(model: string): Promise<ModelPullOutcome> {
+  if (findCatalogModel(model) === undefined) {
+    throw new Error(MODEL_NOT_IN_CATALOG_MESSAGE);
+  }
+  if (currentInstallModel !== undefined) {
+    return { status: 'failed', model, reason: 'busy' };
+  }
+
+  currentInstallModel = model;
+  modelInstallState = { status: 'running', model };
+
+  const baseUrl = currentOllamaBaseUrl();
+  const onProgress = (progress: ModelPullProgress): void => {
+    if (currentInstallModel !== model) {
+      return;
+    }
+    modelInstallState = {
+      status: 'running',
+      model,
+      ...(progress.completedBytes !== undefined ? { completedBytes: progress.completedBytes } : {}),
+      ...(progress.totalBytes !== undefined ? { totalBytes: progress.totalBytes } : {}),
+    };
+  };
+
+  const outcome = await dependencyManager.pullOllamaModel({ baseUrl, model, onProgress });
+
+  if (outcome.status === 'failed' && outcome.reason === 'busy') {
+    // Caminho defensivo (item 5.5.6): a guarda acima já torna isto
+    // inalcançável pela GUI — devolvido sem gravar nem liberar posse alguma.
+    return outcome;
+  }
+
+  if (currentInstallModel === model) {
+    modelInstallState = outcome;
+    currentInstallModel = undefined;
+    if (outcome.status === 'installed') {
+      installedProbe =
+        installedProbe.status === 'known'
+          ? {
+              status: 'known',
+              models: isInstalledModel(outcome.model, installedProbe.models)
+                ? installedProbe.models
+                : [...installedProbe.models, outcome.model],
+            }
+          : { status: 'known', models: [outcome.model] };
+    }
+  }
+
+  return outcome;
+}
+
+/**
+ * Cancelamento síncrono (item 5.8, molde de `cancelInFlightOperation`) —
+ * delega ao manager; quem grava `'cancelled'` é o desfecho do gesto acima.
+ */
+export function cancelModelInstall(): { readonly cancelled: boolean } {
+  return { cancelled: dependencyManager.cancelOllamaModelPull() };
 }
 
 /**
@@ -736,6 +975,12 @@ export function __resetBridgeStateForTests(): void {
   // SPEC-0062: zera o estado de dependências desta sessão.
   ollamaDependencyStatus = undefined;
   searchContainerStatuses.clear();
+  // SPEC-0063: zera o estado de provisionamento de modelo desta sessão.
+  installedProbe = { status: 'unknown' };
+  bootstrapProbeSettled = undefined;
+  modelInstallState = { status: 'idle' };
+  currentInstallModel = undefined;
+  resolvedDependencyConfig = undefined;
   // Restaura a instância default (SPEC-0060) — desfaz qualquer fake
   // instalado por `__setDependencyManagerForTests`.
   dependencyManager = createDependencyManager();

@@ -10,6 +10,7 @@ import { app, BrowserWindow, dialog, ipcMain, session } from 'electron';
 import * as si from 'systeminformation';
 import {
   cancelInFlightOperation,
+  cancelModelInstall,
   closeChatSession,
   createPersona,
   deletePersona,
@@ -17,9 +18,11 @@ import {
   ensureExternalDependencies,
   ensureSearchContainer,
   forgetFact,
+  installOllamaModel,
   listPersonas,
   openChatSession,
   readDependencyStatus,
+  readModelCatalog,
   readTokenUsage,
   releaseExternalDependencies,
   resolveAskSnapshot,
@@ -30,6 +33,7 @@ import {
   selectPersona,
   sendChatTurn,
   updatePersona,
+  whenModelProbeSettled,
 } from './core-bridge.js';
 import type { SessionId, PersonaInput } from '@atlas/contracts';
 import type { NetworkAccess, PermissionRoots } from './core-bridge.js';
@@ -452,6 +456,14 @@ ipcMain.handle('atlas:dependencies:search-container', (_event, container: string
   ensureSearchContainer(container),
 );
 
+// Instalação assistida de modelo Ollama (SPEC-0063, item 6.1): quatro canais,
+// um por gesto — leitura síncrona (tick do painel), o único caminho
+// assíncrono de leitura (arranque do renderer), instalar e cancelar.
+ipcMain.handle('atlas:models:read', () => readModelCatalog());
+ipcMain.handle('atlas:models:probe', () => whenModelProbeSettled());
+ipcMain.handle('atlas:models:install', (_event, model: string) => installOllamaModel(model));
+ipcMain.handle('atlas:models:cancel', () => cancelModelInstall());
+
 // Gesto de escape (SPEC-0051): canal síncrono na semântica de `handle`
 // (nunca sobe/desliga um Core) — só marca como abandonada toda operação
 // cancelável (`ask`/turno de chat) ainda ativa.
@@ -514,21 +526,21 @@ async function closeAllChatSessions(): Promise<void> {
 }
 
 void app.whenReady().then(() => {
-  registerMediaPermissionHandlers();
-  createWindow();
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    }
-  });
-
   // Auto-start do Ollama e do container de busca (SPEC-0060/SPEC-0061,
   // Escopo 5.2/6.2): uma vez por sessão de app, sem `await` — nunca
   // atrasa/bloqueia a abertura da janela (ADR-0027(f)). Superfície de
   // transparência desta fatia no desktop: linha de log no main process
   // (D15/D14/item 6.3). Narrowing por `outcome.dependency` (SPEC-0061):
   // sem isso, um desfecho do container seria logado com o texto do Ollama.
+  //
+  // SPEC-0063, item 6.1 (correção B1): esta chamada precisa vir ANTES da
+  // criação da janela, no MESMO tique síncrono — `installedProbe` precisa
+  // estar em `'pending'` antes de existir uma janela capaz de emitir IPC,
+  // senão o gatilho proativo do renderer leria `'unknown'` e, corretamente
+  // fail-closed, não faria nada. A inversão não atrasa a abertura da janela:
+  // a chamada segue disparada e descartada no mesmo tique síncrono, e a
+  // transição para `'pending'` ocorre antes do primeiro `await` de
+  // `ensureExternalDependencies` (`core-bridge.ts`).
   void ensureExternalDependencies().then((report) => {
     for (const outcome of report.outcomes) {
       if (outcome.dependency === 'ollama') {
@@ -549,6 +561,15 @@ void app.whenReady().then(() => {
             `(${outcome.reason}).`,
         );
       }
+    }
+  });
+
+  registerMediaPermissionHandlers();
+  createWindow();
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
     }
   });
 });

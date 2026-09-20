@@ -177,6 +177,9 @@ export type {
 export { nodeProcessPort } from './dependencies/node-process-port.js';
 export type {
   ProcessPort,
+  OllamaInspection,
+  ModelPullProgress,
+  ModelPullRequest,
   OllamaStartOutcome,
   SearchContainerState,
   SearchContainerStartOutcome,
@@ -188,6 +191,8 @@ export type {
   DependencyOutcome,
   OllamaFailureReason,
   SearchContainerFailureReason,
+  ModelPullOutcome,
+  ModelPullFailureReason,
 } from './dependencies/dependency-manager.js';
 
 // Re-export de catálogo (SPEC-0037, Decisão D4; alargado pela SPEC-0039,
