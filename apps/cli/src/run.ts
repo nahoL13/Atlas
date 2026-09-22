@@ -188,8 +188,9 @@ function formatSearchContainerWarning(
   }
   if (outcome.reason === 'docker-unavailable') {
     return (
-      `Não foi possível iniciar o container de busca "${outcome.container}": binário "docker" ` +
-      'não encontrado ou não executável. Seguindo sem auto-start.\n'
+      `Não foi possível iniciar o container de busca "${outcome.container}": o Docker não ` +
+      'respondeu — binário "docker" não encontrado, não executável, ou daemon sem resposta ' +
+      'dentro do tempo limite. Seguindo sem auto-start.\n'
     );
   }
   if (outcome.reason === 'container-unknown') {

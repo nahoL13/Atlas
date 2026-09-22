@@ -2,7 +2,7 @@
 
 > **Project Atlas — Log de Custo de Token por SPEC**
 
-Atualizado em: 2026-09-20 (regenerado por `python3 scripts/agent-usage-report.py --executor all`)
+Atualizado em: 2026-09-21 (regenerado por `python3 scripts/agent-usage-report.py --executor all`)
 
 As métricas são separadas por executor. Tokens efetivos Claude usam os pesos históricos; Codex fica `N/D` até existir uma métrica comparável documentada. Snapshots de Codex são cumulativos e só o último total de cada transcript é lido.
 
@@ -74,7 +74,8 @@ As métricas são separadas por executor. Tokens efetivos Claude usam os pesos h
 | SPEC-0060 | Claude | Auto-start do Ollama sob opt-in explícito: `createDependencyManager` + `ProcessPort` em `@atlas/core`, disparado uma vez por processo em `apps/cli` e uma vez por sessão de app em `apps/desktop`, degradando sem nunca bloquear o boot. | Draft | 9 | 2026-09-13 | 102.595.413 | 14.827.826 | complete |
 | SPEC-0061 | Claude | Auto-start do container Docker do provedor de busca sob opt-in explícito e nominal: `ProcessPort`/`createDependencyManager` (`@atlas/core`) estendidos de forma aditiva com três operações Docker nomeadas — só `start` de um container **já existente**, nunca `run`/`create`/`pull` —, disparados uma vez por processo em `apps/cli` e uma vez por sessão de app em `apps/desktop`. | Draft | 5 | 2026-09-13 | 43.402.496 | 7.957.334 | complete |
 | SPEC-0062 | Claude | Auto-start do Ollama ligado **por padrão** no `apps/desktop` (env explícita como via de desligamento) e campo de nome do container Docker do provedor de busca no painel de rede/busca, com a tentativa automática auditável no painel `Sistema`. | Draft | 12 | 2026-09-19 | 160.440.469 | 24.832.683 | complete |
-| SPEC-0063 | Claude | Detecção de "nenhum modelo de IA instalado" na abertura do `apps/desktop` e instalação assistida, a partir de um catálogo curado e fixo, com tamanho visível antes do download, progresso por polling e cancelamento. | Draft | 9 | 2026-09-20 | 308.549.310 | 42.766.525 | complete |
+| SPEC-0063 | Claude | Detecção de "nenhum modelo de IA instalado" na abertura do `apps/desktop` e instalação assistida, a partir de um catálogo curado e fixo, com tamanho visível antes do download, progresso por polling e cancelamento. | Draft | 11 | 2026-09-21 | 338.576.110 | 47.856.099 | complete |
+| SPEC-0064 | Claude | Orçamento de tempo (watchdog) para cada operação de processo/stream do adaptador real `nodeProcessPort()` — `spawn` do Ollama, as três invocações Docker do container de busca e o stream NDJSON de `pullOllamaModel` —, de forma que nenhuma chamada da `ProcessPort` possa ficar pendurada indefinidamente. | Draft | 6 | 2026-09-21 | 34.475.800 | 6.048.828 | complete |
 
 ## Detalhamento por fase
 
@@ -144,7 +145,8 @@ Valores em tokens efetivos. Codex não é somado nem comparado a Claude enquanto
 | SPEC-0060 | Claude | 1.075.749 | 1.875.355 | 2.706.818 | 9.103.530 | 66.374 | 0 | 0 |
 | SPEC-0061 | Claude | 728.579 | 1.856.617 | 0 | 1.843.822 | 1.155.908 | 3.081.205 | 0 |
 | SPEC-0062 | Claude | 5.827.354 | 2.639.871 | 1.524.014 | 10.068.741 | 1.214.887 | 3.557.816 | 0 |
-| SPEC-0063 | Claude | 2.944.281 | 2.096.974 | 2.372.091 | 32.936.486 | 2.378.928 | 37.765 | 0 |
+| SPEC-0063 | Claude | 3.622.090 | 3.050.145 | 2.372.091 | 32.936.486 | 2.378.928 | 3.496.359 | 0 |
+| SPEC-0064 | Claude | 1.055.407 | 1.085.230 | 1.288.306 | 2.581.801 | 0 | 38.084 | 0 |
 
 ## Eficiência de processo (overhead ÷ implementação)
 
@@ -201,7 +203,8 @@ Calculada separadamente por executor, apenas quando tokens efetivos comparáveis
 | SPEC-0060 | Claude | 9.103.530 | 5.724.296 | 0.6× |
 | SPEC-0061 | Claude | 1.843.822 | 6.822.309 | 3.7× |
 | SPEC-0062 | Claude | 10.068.741 | 14.763.942 | 1.5× |
-| SPEC-0063 | Claude | 32.936.486 | 9.830.039 | 0.3× |
+| SPEC-0063 | Claude | 32.936.486 | 14.919.613 | 0.5× |
+| SPEC-0064 | Claude | 2.581.801 | 3.467.027 | 1.3× |
 
 ## Como estimar antes de começar uma SPEC nova
 

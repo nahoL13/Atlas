@@ -424,3 +424,43 @@ do ADR (alcançado pela SPEC-0061) não muda.
   abort, não uma terceira categoria de posse.
 - Zero linha em `@atlas/permissions`/`@atlas/runtime`/`@atlas/tools`/
   `@atlas/model-gateway`/`apps/cli/src`; `@atlas/contracts` intocado.
+
+---
+
+# Atualização ([SPEC-0064](../implementation/specs/SPEC-0064-process-operation-time-budgets.md))
+
+A SPEC-0064 (Perfil micro) tornou a cláusula **(f)** exequível no eixo
+temporal — nenhuma operação de `ProcessPort` implementada por
+`nodeProcessPort()` podia ficar pendurada indefinidamente, achado
+não-bloqueante do `architecture-reviewer` desde a SPEC-0061, carregado
+adiante pelas SPECs 0062/0063. Nenhuma cláusula (a)–(h) é reaberta e o
+estado "inteiramente consumido" do ADR (alcançado pela SPEC-0061) não muda
+— esta fatia é hardening, não uma nova SPEC candidata.
+
+- **(b) confirmada**: nenhuma operação nova é introduzida — as quatro
+  operações já nomeadas e fixas (`startOllama`, `inspectSearchContainer`,
+  `startSearchContainer`, `stopSearchContainer`) ganham um orçamento de
+  tempo por chamada; `pullOllamaModel` (ADR-0029(b)) ganha um teto de
+  **inatividade** do stream, não de duração total.
+- **(c) estendida no eixo temporal, não na forma**: a porta injetável segue
+  fazendo todo o IO; o adaptador real (`nodeProcessPort()`) passa a ser
+  também o único dono do **tempo** de cada chamada (um helper privado de
+  watchdog, nunca exposto na interface `ProcessPort`) — generaliza os dois
+  orçamentos que já existiam desde a SPEC-0060 (`HEALTH_CHECK_TIMEOUT_MS`/
+  `STOP_GRACE_PERIOD_MS`) às operações que ainda não tinham um.
+- **(e) preservada**: o desligamento simétrico não muda de forma — um
+  `stopSearchContainer`/`stopOllama` que estoura passa a **resolver** dentro
+  do próprio orçamento em vez de nunca assentar, o que só reforça a garantia
+  de que `release()` termina.
+- **(f) exequível**: "falha degrada, nunca bloqueia" agora vale também no
+  eixo temporal — um daemon Docker inerte ou um `spawn` mudo não seguram
+  mais `ensure()`/`release()` por tempo indefinido, só pelo orçamento pinado
+  como dado desta SPEC (produto finito, registrado como residual — teto de
+  parede único para `ensure()` segue candidato futuro, não desta fatia).
+- **(h) permanece intacta**: nenhuma operação Docker nova; o estouro de
+  `startSearchContainer` mata só o **cliente** `docker start`, nunca o
+  container.
+- Zero linha em `dependency-manager.ts`, `@atlas/contracts`,
+  `@atlas/permissions`/`@atlas/runtime`/`@atlas/tools`/`@atlas/model-gateway`,
+  `apps/desktop`; `apps/cli/src` ganha só um literal de aviso ampliado
+  (nenhuma lógica nova).

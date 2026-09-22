@@ -51,7 +51,10 @@ export type OllamaStartOutcome =
 export type SearchContainerState =
   | 'running' // `docker inspect` saiu 0 e o container está em execução
   | 'stopped' // `docker inspect` saiu 0 e o container existe, parado
-  | 'unavailable' // o binário `docker` não pôde ser executado (ENOENT/falha de spawn)
+  // Docker inutilizável NESTA tentativa: o binário não pôde ser executado
+  // (ENOENT/falha de spawn) OU o daemon não respondeu dentro do orçamento
+  // da porta (SPEC-0064, item 3.1) — nunca "container inexistente".
+  | 'unavailable'
   | 'unknown'; // `docker` executou e saiu != 0 — container inexistente OU daemon inacessível
 
 export type SearchContainerStartOutcome =
@@ -74,8 +77,11 @@ export interface ProcessPort {
    * ADR-0029(b)) — nenhuma outra porta de execução genérica. Nunca lança.
    */
   pullOllamaModel(request: ModelPullRequest): Promise<ModelPullOutcome>;
-  // Container de busca Docker (SPEC-0061), aditivas — nunca lançam;
-  // `'timeout'` não é desfecho da porta, é decisão temporal do manager.
+  // Container de busca Docker (SPEC-0061), aditivas — nunca lançam. Dois
+  // eixos temporais distintos (SPEC-0064, item 3.2): a PORTA tem um
+  // orçamento de IO por chamada (o teto de uma única invocação, item 1);
+  // `'timeout'` continua sendo decisão temporal do MANAGER, sobre
+  // PRONTIDÃO (o polling das SPECs 0060/0061) — não é desfecho da porta.
   /** `docker inspect --type container --format '{{.State.Running}}' <nome>`. Nunca lança. */
   inspectSearchContainer(containerName: string): Promise<SearchContainerState>;
   /** `docker start <nome>` — nunca `run`/`create`/`pull` (ADR-0027(h)). Nunca lança. */

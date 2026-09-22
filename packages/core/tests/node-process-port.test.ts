@@ -1,23 +1,49 @@
 import { EventEmitter } from 'node:events';
 import type { ChildProcess } from 'node:child_process';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { nodeProcessPort } from '../src/dependencies/node-process-port.js';
 
 function jsonResponse(status: number): Response {
   return new Response('{}', { status });
 }
 
+type FakeStdout = EventEmitter & { destroy: () => void; destroyed: boolean };
+type FakeChildProcess = ChildProcess & {
+  stdout: FakeStdout;
+  killCalls: number;
+  unrefCalls: number;
+};
+
 /**
  * Fake mínimo de `ChildProcess` (SPEC-0061, CA 20/21) — `EventEmitter` com um
  * `stdout` também `EventEmitter`, o suficiente para exercitar
  * `once('error'|'close'|'exit'|'spawn')` e `stdout.on('data', …)` sem
- * spawnar processo real.
+ * spawnar processo real. Desde a SPEC-0064 (item 5.7/CA 27-30), registra
+ * `kill()`/`unref()` (contadores) e o `stdout` ganha `destroy()` — o
+ * suficiente para provar a higiene de *handle* do watchdog sem depender de
+ * mocks externos. `unrefThrows` simula um `unref()` que lança (CA 30).
  */
-function fakeChildProcess(): ChildProcess & { stdout: EventEmitter } {
-  const child = new EventEmitter() as unknown as ChildProcess & { stdout: EventEmitter };
-  (child as unknown as { stdout: EventEmitter }).stdout = new EventEmitter();
-  (child as unknown as { unref: () => void }).unref = () => {};
-  (child as unknown as { kill: () => boolean }).kill = () => true;
+function fakeChildProcess(opts: { unrefThrows?: boolean } = {}): FakeChildProcess {
+  const child = new EventEmitter() as unknown as FakeChildProcess;
+  const stdout = new EventEmitter() as unknown as FakeStdout;
+  stdout.destroyed = false;
+  stdout.destroy = () => {
+    stdout.destroyed = true;
+  };
+  (child as unknown as { stdout: FakeStdout }).stdout = stdout;
+  child.killCalls = 0;
+  child.unrefCalls = 0;
+  (child as unknown as { kill: () => boolean }).kill = () => {
+    child.killCalls += 1;
+    return true;
+  };
+  (child as unknown as { unref: () => ChildProcess }).unref = () => {
+    child.unrefCalls += 1;
+    if (opts.unrefThrows === true) {
+      throw new Error('unref falhou (fake, CA 30)');
+    }
+    return child;
+  };
   return child;
 }
 
@@ -155,7 +181,7 @@ describe('nodeProcessPort (SPEC-0060, CA 13/14)', () => {
 
     function noopProgress(): void {}
 
-    it('faz um POST /api/pull com { name, stream: true } e repassa o signal (CA12)', async () => {
+    it('faz um POST /api/pull com { name, stream: true } e encaminha um AbortSignal interno (CA12, SPEC-0064/D9)', async () => {
       const mockFetch = vi.fn(async (_url: string, init?: RequestInit) => {
         expect(init?.method).toBe('POST');
         expect(init?.headers).toEqual({ 'content-type': 'application/json' });
@@ -176,7 +202,13 @@ describe('nodeProcessPort (SPEC-0060, CA 13/14)', () => {
       expect(mockFetch).toHaveBeenCalledTimes(1);
       const [url, init] = mockFetch.mock.calls[0]!;
       expect(url).toBe('http://x:1/api/pull');
-      expect((init as RequestInit).signal).toBe(controller.signal);
+      // SPEC-0064/D9: o adaptador encaminha manualmente, nunca repassa o
+      // signal externo direto ao fetch — é um AbortSignal distinto, não
+      // abortado, que reflete o externo por encaminhamento de evento.
+      const forwardedSignal = (init as RequestInit).signal;
+      expect(forwardedSignal).toBeInstanceOf(AbortSignal);
+      expect(forwardedSignal).not.toBe(controller.signal);
+      expect(forwardedSignal?.aborted).toBe(false);
     });
 
     it('response.ok false ⇒ failed/rejected, sem ler o corpo (CA12)', async () => {
@@ -538,6 +570,442 @@ describe('nodeProcessPort (SPEC-0060, CA 13/14)', () => {
       child.emit('error', Object.assign(new Error('nope'), { code: 'ENOENT' }));
 
       await expect(promise).resolves.toBeUndefined();
+    });
+  });
+});
+
+/** Valores pinados como dado normativo da SPEC-0064, item 1 (D4: não configuráveis). */
+const SPAWN_HANDSHAKE_TIMEOUT_MS = 5_000;
+const DOCKER_PROBE_TIMEOUT_MS = 5_000;
+const DOCKER_COMMAND_TIMEOUT_MS = 30_000;
+const MODEL_PULL_STALL_TIMEOUT_MS = 120_000;
+
+/**
+ * Verifica se `promise` ainda não assentou, sem travar o teste: uma promessa
+ * já resolvida (`Promise.resolve(token)`) sempre vence a corrida contra uma
+ * que segue pendente, porque só ela já está na fila de microtarefas.
+ */
+async function isPending(promise: Promise<unknown>): Promise<boolean> {
+  const token = Symbol('pending');
+  const winner = await Promise.race([promise, Promise.resolve(token)]);
+  return winner === token;
+}
+
+function neverSettlingFetch(): typeof fetch {
+  return (async (_url: string, init?: RequestInit) => {
+    return new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => {
+        reject(Object.assign(new Error('esta operação foi abortada'), { name: 'AbortError' }));
+      });
+    });
+  }) as unknown as typeof fetch;
+}
+
+/** Corpo cuja leitura nunca produz bytes/`done`, até o `signal` abortar (SPEC-0064, CA17/19). */
+function hangingStreamResponse(signal: AbortSignal, status = 200): Response {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      signal.addEventListener(
+        'abort',
+        () => {
+          controller.error(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+        },
+        { once: true },
+      );
+    },
+  });
+  return new Response(stream, { status });
+}
+
+/**
+ * Corpo que entrega `chunks` espaçados por `delayMs` (SPEC-0064, CA18) — prova
+ * de que o orçamento é de inatividade: cada `pull()` demora, mas nunca mais
+ * que o orçamento entre dois deles.
+ */
+function timedStreamResponse(
+  chunks: readonly { delayMs: number; text: string }[],
+  signal: AbortSignal,
+  status = 200,
+): Response {
+  const encoder = new TextEncoder();
+  let index = 0;
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      signal.addEventListener(
+        'abort',
+        () => {
+          controller.error(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+        },
+        { once: true },
+      );
+    },
+    async pull(controller) {
+      if (index >= chunks.length) {
+        controller.close();
+        return;
+      }
+      const { delayMs, text } = chunks[index++]!;
+      await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+      controller.enqueue(encoder.encode(`${text}\n`));
+    },
+  });
+  return new Response(stream, { status });
+}
+
+function noop(): void {}
+
+describe('Orçamentos de tempo — SPEC-0064 (watchdog do adaptador)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  describe('startOllama — SPAWN_HANDSHAKE_TIMEOUT_MS (CA 7-10, 27, 29, 30)', () => {
+    it('nunca emite spawn/error ⇒ spawn-failed no orçamento exato, kill+unref uma vez (CA7/CA8/CA27)', async () => {
+      vi.useFakeTimers();
+      const child = fakeChildProcess();
+      const spawnStub = vi.fn(() => child) as unknown as typeof import('node:child_process').spawn;
+      const port = nodeProcessPort({ spawn: spawnStub });
+
+      const promise = port.startOllama();
+      await vi.advanceTimersByTimeAsync(SPAWN_HANDSHAKE_TIMEOUT_MS - 1);
+      expect(await isPending(promise)).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(promise).resolves.toEqual({ started: false, reason: 'spawn-failed' });
+      expect(child.killCalls).toBe(1);
+      expect(child.unrefCalls).toBe(1);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('spawn tardio após o estouro não altera o desfecho, não atribui posse, e não lança (CA9)', async () => {
+      vi.useFakeTimers();
+      const child = fakeChildProcess();
+      const spawnStub = vi.fn(() => child) as unknown as typeof import('node:child_process').spawn;
+      const port = nodeProcessPort({ spawn: spawnStub });
+
+      const promise = port.startOllama();
+      await vi.advanceTimersByTimeAsync(SPAWN_HANDSHAKE_TIMEOUT_MS);
+      const outcome = await promise;
+      expect(() => child.emit('spawn')).not.toThrow();
+      expect(outcome).toEqual({ started: false, reason: 'spawn-failed' });
+
+      // posse não atribuída (item 2.2): stopOllama() não encontra filho.
+      await port.stopOllama();
+      expect(child.killCalls).toBe(1); // só o kill do watchdog — nenhum de stopOllama
+    });
+
+    it('caminho feliz: spawn antes do orçamento ⇒ started:true, kill nunca chamado, timers zerados (CA10/CA29)', async () => {
+      vi.useFakeTimers();
+      const child = fakeChildProcess();
+      const spawnStub = vi.fn(() => child) as unknown as typeof import('node:child_process').spawn;
+      const port = nodeProcessPort({ spawn: spawnStub });
+
+      const promise = port.startOllama();
+      child.emit('spawn');
+
+      await expect(promise).resolves.toEqual({ started: true });
+      expect(child.killCalls).toBe(0);
+      expect(child.unrefCalls).toBe(1); // só o unref do handler de 'spawn' já existente
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('unref() que lança no estouro não impede o assentamento nem propaga (CA30)', async () => {
+      vi.useFakeTimers();
+      const child = fakeChildProcess({ unrefThrows: true });
+      const spawnStub = vi.fn(() => child) as unknown as typeof import('node:child_process').spawn;
+      const port = nodeProcessPort({ spawn: spawnStub });
+
+      const promise = port.startOllama();
+      await vi.advanceTimersByTimeAsync(SPAWN_HANDSHAKE_TIMEOUT_MS);
+
+      await expect(promise).resolves.toEqual({ started: false, reason: 'spawn-failed' });
+      expect(child.killCalls).toBe(1);
+    });
+  });
+
+  describe('inspectSearchContainer — DOCKER_PROBE_TIMEOUT_MS (CA 11, 14, 15, 27-29)', () => {
+    it('sem close/error ⇒ unavailable no orçamento exato, kill+unref uma vez, stdout destruído (CA11/CA27/CA28)', async () => {
+      vi.useFakeTimers();
+      const child = fakeChildProcess();
+      const removeAllSpy = vi.spyOn(child.stdout, 'removeAllListeners');
+      const destroySpy = vi.spyOn(child.stdout, 'destroy');
+      const spawnStub = vi.fn(() => child) as unknown as typeof import('node:child_process').spawn;
+      const port = nodeProcessPort({ spawn: spawnStub });
+
+      const promise = port.inspectSearchContainer('searxng');
+      await vi.advanceTimersByTimeAsync(DOCKER_PROBE_TIMEOUT_MS - 1);
+      expect(await isPending(promise)).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(1);
+      // Nunca 'unknown' (D8) — um estouro não é resposta do daemon.
+      await expect(promise).resolves.toBe('unavailable');
+      expect(child.killCalls).toBe(1);
+      expect(child.unrefCalls).toBe(1);
+      expect(removeAllSpy).toHaveBeenCalledWith('data');
+      expect(destroySpy).toHaveBeenCalledTimes(1);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('data tardio após o estouro não altera o desfecho nem lança (CA14/CA28)', async () => {
+      vi.useFakeTimers();
+      const child = fakeChildProcess();
+      const spawnStub = vi.fn(() => child) as unknown as typeof import('node:child_process').spawn;
+      const port = nodeProcessPort({ spawn: spawnStub });
+
+      const promise = port.inspectSearchContainer('searxng');
+      await vi.advanceTimersByTimeAsync(DOCKER_PROBE_TIMEOUT_MS);
+      const outcome = await promise;
+      expect(() => child.stdout.emit('data', Buffer.from('true\n'))).not.toThrow();
+      expect(outcome).toBe('unavailable');
+    });
+
+    it('close tardio após o estouro não altera o desfecho nem lança (CA14)', async () => {
+      vi.useFakeTimers();
+      const child = fakeChildProcess();
+      const spawnStub = vi.fn(() => child) as unknown as typeof import('node:child_process').spawn;
+      const port = nodeProcessPort({ spawn: spawnStub });
+
+      const promise = port.inspectSearchContainer('searxng');
+      await vi.advanceTimersByTimeAsync(DOCKER_PROBE_TIMEOUT_MS);
+      const outcome = await promise;
+      expect(() => child.emit('close', 0)).not.toThrow();
+      expect(outcome).toBe('unavailable');
+    });
+
+    it('caminho feliz: close antes do orçamento ⇒ desfecho de hoje, kill/unref nunca chamados, stdout não destruído (CA15/CA29)', async () => {
+      vi.useFakeTimers();
+      const child = fakeChildProcess();
+      const destroySpy = vi.spyOn(child.stdout, 'destroy');
+      const spawnStub = vi.fn(() => child) as unknown as typeof import('node:child_process').spawn;
+      const port = nodeProcessPort({ spawn: spawnStub });
+
+      const promise = port.inspectSearchContainer('searxng');
+      child.stdout.emit('data', Buffer.from('true\n'));
+      child.emit('close', 0);
+
+      await expect(promise).resolves.toBe('running');
+      expect(child.killCalls).toBe(0);
+      expect(child.unrefCalls).toBe(0);
+      expect(destroySpy).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+  });
+
+  describe('startSearchContainer — DOCKER_COMMAND_TIMEOUT_MS (CA 12, 14, 15, 27, 29)', () => {
+    it('sem close/error ⇒ docker-unavailable no orçamento exato, kill+unref uma vez (CA12/CA27)', async () => {
+      vi.useFakeTimers();
+      const child = fakeChildProcess();
+      const spawnStub = vi.fn(() => child) as unknown as typeof import('node:child_process').spawn;
+      const port = nodeProcessPort({ spawn: spawnStub });
+
+      const promise = port.startSearchContainer('searxng');
+      await vi.advanceTimersByTimeAsync(DOCKER_COMMAND_TIMEOUT_MS - 1);
+      expect(await isPending(promise)).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(promise).resolves.toEqual({ started: false, reason: 'docker-unavailable' });
+      expect(child.killCalls).toBe(1);
+      expect(child.unrefCalls).toBe(1);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('close tardio após o estouro não altera o desfecho nem lança (CA14)', async () => {
+      vi.useFakeTimers();
+      const child = fakeChildProcess();
+      const spawnStub = vi.fn(() => child) as unknown as typeof import('node:child_process').spawn;
+      const port = nodeProcessPort({ spawn: spawnStub });
+
+      const promise = port.startSearchContainer('searxng');
+      await vi.advanceTimersByTimeAsync(DOCKER_COMMAND_TIMEOUT_MS);
+      const outcome = await promise;
+      expect(() => child.emit('close', 0)).not.toThrow();
+      expect(outcome).toEqual({ started: false, reason: 'docker-unavailable' });
+    });
+
+    it('caminho feliz: close 0 antes do orçamento ⇒ started:true, kill/unref nunca chamados (CA15/CA29)', async () => {
+      vi.useFakeTimers();
+      const child = fakeChildProcess();
+      const spawnStub = vi.fn(() => child) as unknown as typeof import('node:child_process').spawn;
+      const port = nodeProcessPort({ spawn: spawnStub });
+
+      const promise = port.startSearchContainer('searxng');
+      child.emit('close', 0);
+
+      await expect(promise).resolves.toEqual({ started: true });
+      expect(child.killCalls).toBe(0);
+      expect(child.unrefCalls).toBe(0);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+  });
+
+  describe('stopSearchContainer — DOCKER_COMMAND_TIMEOUT_MS (CA 13, 14, 15, 27, 29)', () => {
+    it('sem close/error ⇒ resolve void no orçamento exato, sem lançar, kill+unref uma vez (CA13/CA27)', async () => {
+      vi.useFakeTimers();
+      const child = fakeChildProcess();
+      const spawnStub = vi.fn(() => child) as unknown as typeof import('node:child_process').spawn;
+      const port = nodeProcessPort({ spawn: spawnStub });
+
+      const promise = port.stopSearchContainer('searxng');
+      await vi.advanceTimersByTimeAsync(DOCKER_COMMAND_TIMEOUT_MS - 1);
+      expect(await isPending(promise)).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(promise).resolves.toBeUndefined();
+      expect(child.killCalls).toBe(1);
+      expect(child.unrefCalls).toBe(1);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('close tardio após o estouro não lança (CA14)', async () => {
+      vi.useFakeTimers();
+      const child = fakeChildProcess();
+      const spawnStub = vi.fn(() => child) as unknown as typeof import('node:child_process').spawn;
+      const port = nodeProcessPort({ spawn: spawnStub });
+
+      const promise = port.stopSearchContainer('searxng');
+      await vi.advanceTimersByTimeAsync(DOCKER_COMMAND_TIMEOUT_MS);
+      await promise;
+      expect(() => child.emit('close', 0)).not.toThrow();
+    });
+
+    it('caminho feliz: close antes do orçamento ⇒ resolve void, kill/unref nunca chamados (CA15/CA29)', async () => {
+      vi.useFakeTimers();
+      const child = fakeChildProcess();
+      const spawnStub = vi.fn(() => child) as unknown as typeof import('node:child_process').spawn;
+      const port = nodeProcessPort({ spawn: spawnStub });
+
+      const promise = port.stopSearchContainer('searxng');
+      child.emit('close', 0);
+
+      await expect(promise).resolves.toBeUndefined();
+      expect(child.killCalls).toBe(0);
+      expect(child.unrefCalls).toBe(0);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+  });
+
+  describe('pullOllamaModel — MODEL_PULL_STALL_TIMEOUT_MS, watchdog de estagnação (CA 16-19, 21, 31)', () => {
+    it('nenhuma resposta dentro do orçamento ⇒ failed/unreachable (CA16)', async () => {
+      vi.useFakeTimers();
+      const fetchStub = neverSettlingFetch();
+      const port = nodeProcessPort({ fetch: fetchStub });
+
+      const promise = port.pullOllamaModel({
+        baseUrl: 'http://x:1',
+        model: 'llama3.2',
+        signal: new AbortController().signal,
+        onProgress: noop,
+      });
+      await vi.advanceTimersByTimeAsync(MODEL_PULL_STALL_TIMEOUT_MS);
+
+      await expect(promise).resolves.toEqual({
+        status: 'failed',
+        model: 'llama3.2',
+        reason: 'unreachable',
+      });
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('resposta recebida e stream sem bytes novos por MODEL_PULL_STALL_TIMEOUT_MS ⇒ failed/stream-failed (CA17)', async () => {
+      vi.useFakeTimers();
+      const fetchStub = vi.fn(async (_url: string, init?: RequestInit) =>
+        hangingStreamResponse(init!.signal as AbortSignal),
+      );
+      const port = nodeProcessPort({ fetch: fetchStub as unknown as typeof fetch });
+
+      const promise = port.pullOllamaModel({
+        baseUrl: 'http://x:1',
+        model: 'llama3.2',
+        signal: new AbortController().signal,
+        onProgress: noop,
+      });
+      await vi.advanceTimersByTimeAsync(MODEL_PULL_STALL_TIMEOUT_MS);
+
+      await expect(promise).resolves.toEqual({
+        status: 'failed',
+        model: 'llama3.2',
+        reason: 'stream-failed',
+      });
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('chunks a cada quase-orçamento, somando bem mais que o orçamento total, terminam em installed (CA18 — prova de que não há timeout total)', async () => {
+      vi.useFakeTimers();
+      const chunkDelay = MODEL_PULL_STALL_TIMEOUT_MS - 1;
+      const chunks = [
+        { delayMs: chunkDelay, text: '{"status":"pulling"}' },
+        { delayMs: chunkDelay, text: '{"status":"downloading","completed":1,"total":4}' },
+        { delayMs: chunkDelay, text: '{"status":"downloading","completed":2,"total":4}' },
+        { delayMs: chunkDelay, text: '{"status":"success"}' },
+      ];
+      const fetchStub = vi.fn(async (_url: string, init?: RequestInit) =>
+        timedStreamResponse(chunks, init!.signal as AbortSignal),
+      );
+      const port = nodeProcessPort({ fetch: fetchStub as unknown as typeof fetch });
+
+      const promise = port.pullOllamaModel({
+        baseUrl: 'http://x:1',
+        model: 'llama3.2',
+        signal: new AbortController().signal,
+        onProgress: noop,
+      });
+
+      // soma dos delays > 3 × o orçamento; nenhum intervalo isolado o atinge.
+      await vi.advanceTimersByTimeAsync(chunkDelay * chunks.length);
+
+      await expect(promise).resolves.toEqual({ status: 'installed', model: 'llama3.2' });
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('cancelamento humano durante a janela de estagnação ⇒ cancelled, nunca stream-failed/unreachable (CA19)', async () => {
+      vi.useFakeTimers();
+      const controller = new AbortController();
+      const fetchStub = vi.fn(async (_url: string, init?: RequestInit) =>
+        hangingStreamResponse(init!.signal as AbortSignal),
+      );
+      const port = nodeProcessPort({ fetch: fetchStub as unknown as typeof fetch });
+
+      const promise = port.pullOllamaModel({
+        baseUrl: 'http://x:1',
+        model: 'llama3.2',
+        signal: controller.signal,
+        onProgress: noop,
+      });
+
+      await vi.advanceTimersByTimeAsync(MODEL_PULL_STALL_TIMEOUT_MS / 2);
+      controller.abort();
+
+      await expect(promise).resolves.toEqual({ status: 'cancelled', model: 'llama3.2' });
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('signal já abortado no instante da chamada ⇒ cancelled imediato, sem esperar o fetch (CA31/D19)', async () => {
+      vi.useFakeTimers();
+      const controller = new AbortController();
+      controller.abort();
+      const fetchStub = vi.fn(async (_url: string, init?: RequestInit) => {
+        if (init?.signal?.aborted === true) {
+          throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+        }
+        // Não deveria ser alcançado: o signal interno já deveria estar
+        // abortado (D19) — sem a checagem síncrona, ficaria pendurado aqui,
+        // provando que a requisição "saiu pela rede" apesar do cancelamento.
+        return new Promise<Response>(() => {});
+      });
+      const port = nodeProcessPort({ fetch: fetchStub as unknown as typeof fetch });
+
+      const outcome = await port.pullOllamaModel({
+        baseUrl: 'http://x:1',
+        model: 'llama3.2',
+        signal: controller.signal,
+        onProgress: noop,
+      });
+
+      expect(outcome).toEqual({ status: 'cancelled', model: 'llama3.2' });
+      expect(fetchStub).toHaveBeenCalledTimes(1);
+      const [, init] = fetchStub.mock.calls[0]!;
+      expect((init as RequestInit).signal?.aborted).toBe(true);
+      expect(vi.getTimerCount()).toBe(0);
     });
   });
 });

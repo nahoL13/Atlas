@@ -217,6 +217,17 @@ const CONTAINER_FAILED_UNKNOWN_REPORT: DependencyReport = {
     },
   ],
 };
+const CONTAINER_FAILED_DOCKER_UNAVAILABLE_REPORT: DependencyReport = {
+  outcomes: [
+    { dependency: 'ollama', status: 'disabled' },
+    {
+      dependency: 'search-container',
+      status: 'failed',
+      reason: 'docker-unavailable',
+      container: 'searxng',
+    },
+  ],
+};
 const CONTAINER_DISABLED_REPORT: DependencyReport = {
   outcomes: [
     { dependency: 'ollama', status: 'disabled' },
@@ -270,6 +281,17 @@ describe('auto-start do container de busca — integração via run() (SPEC-0061
       await run(['status'], {}, h.gateways, '0.1.0', { dependencies: fake.manager });
       expect(h.err()).toContain('o Docker não reconheceu esse container');
       expect(h.err()).toContain('O Atlas nunca cria containers.');
+    });
+
+    it('"failed"/"docker-unavailable" cita as três causas possíveis, sem mentir sobre um binário ausente (CA33, SPEC-0064/D17)', async () => {
+      const h = harness();
+      const fake = createFakeDependencyManager(CONTAINER_FAILED_DOCKER_UNAVAILABLE_REPORT);
+      await run(['status'], {}, h.gateways, '0.1.0', { dependencies: fake.manager });
+      expect(h.err()).toContain(
+        'Não foi possível iniciar o container de busca "searxng": o Docker não respondeu — ' +
+          'binário "docker" não encontrado, não executável, ou daemon sem resposta dentro do ' +
+          'tempo limite. Seguindo sem auto-start.',
+      );
     });
 
     it('"disabled" não escreve nada em stderr', async () => {

@@ -1,4 +1,5 @@
 import { spawn as nodeSpawn, type ChildProcess } from 'node:child_process';
+import type { Readable } from 'node:stream';
 import type {
   ModelPullProgress,
   ModelPullRequest,
@@ -23,6 +24,80 @@ export interface NodeProcessPortDeps {
 /** Contrato de invocação pinado como dado da SPEC-0060, item 2.5. */
 const HEALTH_CHECK_TIMEOUT_MS = 2000;
 const STOP_GRACE_PERIOD_MS = 2000;
+
+/**
+ * Orçamentos de tempo (watchdog) pinados como dado da SPEC-0064, item 1 —
+ * nunca configuráveis (D4). Cada um cobre exatamente a operação nomeada em
+ * sua constante; `MODEL_PULL_STALL_TIMEOUT_MS` é orçamento de **inatividade**
+ * do stream de download, nunca de duração total (D12).
+ */
+const SPAWN_HANDSHAKE_TIMEOUT_MS = 5_000;
+const DOCKER_PROBE_TIMEOUT_MS = 5_000;
+const DOCKER_COMMAND_TIMEOUT_MS = 30_000;
+const MODEL_PULL_STALL_TIMEOUT_MS = 120_000;
+
+/**
+ * Helper privado de watchdog (SPEC-0064, item 2.1), reusado pelas quatro
+ * operações baseadas em `ChildProcess`. Arma um `setTimeout` de `budgetMs`;
+ * ao expirar, mata e desacopla o filho — e, quando há um stream de `stdout`
+ * (só `inspectSearchContainer`), encerra-o — cada passo em seu próprio
+ * `try/catch` best-effort (D7/D18/Restrição 9), e assenta com o valor de
+ * `onTimeout()`. `attach` liga os eventos da operação (`'error'`/`'close'`/
+ * `'spawn'`) a `settle(compute)`, que só executa `compute()` — e portanto só
+ * produz efeito colateral (ex.: registrar posse) — se a operação ainda não
+ * tiver assentado (assentamento único, CA 9). Cancela o timer em todo
+ * caminho de saída, inclusive o feliz; no caminho feliz nenhum `kill()`/
+ * `unref()`/`destroy()` novo roda (CA 29).
+ */
+function runProcessOperation<T>(params: {
+  readonly proc: ChildProcess;
+  readonly budgetMs: number;
+  readonly attach: (settle: (compute: () => T) => void) => void;
+  readonly onTimeout: () => T;
+  readonly stdout?: Readable;
+}): Promise<T> {
+  const { proc, budgetMs, attach, onTimeout, stdout } = params;
+  return new Promise<T>((resolve) => {
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      try {
+        proc.kill();
+      } catch {
+        // best-effort (D7/D18) — nunca propaga.
+      }
+      try {
+        proc.unref();
+      } catch {
+        // best-effort (D18) — nunca propaga.
+      }
+      if (stdout !== undefined) {
+        try {
+          stdout.removeAllListeners('data');
+          stdout.destroy();
+        } catch {
+          // best-effort (D18) — nunca propaga.
+        }
+      }
+      resolve(onTimeout());
+    }, budgetMs);
+
+    function settle(compute: () => T): void {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      resolve(compute());
+    }
+
+    attach(settle);
+  });
+}
 
 /** `value` extraído só se finito e ≥ 0 (SPEC-0063, item 3.3) — nunca `NaN`/negativo/texto. */
 function finiteNonNegative(value: unknown): number | undefined {
@@ -100,16 +175,55 @@ export function nodeProcessPort(deps: NodeProcessPortDeps = {}): ProcessPort {
 
     async pullOllamaModel(request: ModelPullRequest): Promise<ModelPullOutcome> {
       const { baseUrl, model, signal, onProgress } = request;
+
+      // Watchdog de ESTAGNAÇÃO (SPEC-0064, item 2.7/D12) — nunca de duração
+      // total: um `AbortController` interno ao adaptador, cujo `signal` é o
+      // que de fato vai ao `fetch`; o `signal` externo (`request.signal`) é
+      // só encaminhado. Precedência absoluta do cancelamento humano (D19):
+      // (i) checagem SÍNCRONA de `request.signal.aborted`, antes de
+      // qualquer outra coisa — sem ela, um `signal` já abortado nunca
+      // dispararia o evento `'abort'` (já ocorrido) e a requisição sairia
+      // de fato.
+      const internalController = new AbortController();
+      if (signal.aborted) {
+        internalController.abort();
+      }
+      // (ii) encaminha aborts FUTUROS do signal externo.
+      const onExternalAbort = (): void => {
+        internalController.abort();
+      };
+      signal.addEventListener('abort', onExternalAbort, { once: true });
+
+      // (iii) arma o teto de estagnação — rearmado só em dois pontos (D10):
+      // resposta `ok` e cada `reader.read()` com bytes.
+      let timedOut = false;
+      let responseReceived = false;
+      let stallTimer: ReturnType<typeof setTimeout> | undefined;
+      const armStallTimer = (): void => {
+        if (stallTimer !== undefined) {
+          clearTimeout(stallTimer);
+        }
+        stallTimer = setTimeout(() => {
+          timedOut = true;
+          internalController.abort();
+        }, MODEL_PULL_STALL_TIMEOUT_MS);
+      };
+      armStallTimer();
+
       try {
+        // (iv) só agora a requisição, com o signal INTERNO.
         const response = await doFetch(`${baseUrl}/api/pull`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ name: model, stream: true }),
-          signal,
+          signal: internalController.signal,
         });
         if (response.ok !== true) {
           return { status: 'failed', model, reason: 'rejected' };
         }
+        responseReceived = true;
+        armStallTimer();
+
         const body = response.body;
         if (body === null || body === undefined) {
           return { status: 'failed', model, reason: 'stream-failed' };
@@ -126,6 +240,7 @@ export function nodeProcessPort(deps: NodeProcessPortDeps = {}): ProcessPort {
           if (done) {
             break;
           }
+          armStallTimer();
           buffer += decoder.decode(value, { stream: true });
           let newlineIndex = buffer.indexOf('\n');
           while (newlineIndex >= 0) {
@@ -165,28 +280,52 @@ export function nodeProcessPort(deps: NodeProcessPortDeps = {}): ProcessPort {
           ? { status: 'installed', model }
           : { status: 'failed', model, reason: 'stream-failed' };
       } catch {
+        // Classificação exaustiva e ordenada (item 2.7): o cancelamento
+        // humano tem precedência absoluta sobre a estagnação.
         if (signal.aborted) {
           return { status: 'cancelled', model };
         }
+        if (timedOut) {
+          return {
+            status: 'failed',
+            model,
+            reason: responseReceived ? 'stream-failed' : 'unreachable',
+          };
+        }
         return { status: 'failed', model, reason: 'unreachable' };
+      } finally {
+        if (stallTimer !== undefined) {
+          clearTimeout(stallTimer);
+        }
+        signal.removeEventListener('abort', onExternalAbort);
       }
     },
 
     async startOllama(): Promise<OllamaStartOutcome> {
       try {
         const proc = doSpawn('ollama', ['serve'], { detached: true, stdio: 'ignore' });
-        return await new Promise<OllamaStartOutcome>((resolve) => {
-          proc.once('error', (error: NodeJS.ErrnoException) => {
-            resolve({
-              started: false,
-              reason: error.code === 'ENOENT' ? 'binary-missing' : 'spawn-failed',
+        return await runProcessOperation<OllamaStartOutcome>({
+          proc,
+          budgetMs: SPAWN_HANDSHAKE_TIMEOUT_MS,
+          onTimeout: () => ({ started: false, reason: 'spawn-failed' }),
+          attach: (settle) => {
+            proc.once('error', (error: NodeJS.ErrnoException) => {
+              settle(() => ({
+                started: false,
+                reason: error.code === 'ENOENT' ? 'binary-missing' : 'spawn-failed',
+              }));
             });
-          });
-          proc.once('spawn', () => {
-            proc.unref();
-            child = proc;
-            resolve({ started: true });
-          });
+            proc.once('spawn', () => {
+              // Só roda se ainda não estourou (assentamento único, CA 9) —
+              // sem isso, um 'spawn' tardio atribuiria posse (`child`) a um
+              // filho já tratado como falho pelo watchdog.
+              settle(() => {
+                proc.unref();
+                child = proc;
+                return { started: true };
+              });
+            });
+          },
         });
       } catch {
         return { started: false, reason: 'spawn-failed' };
@@ -221,28 +360,36 @@ export function nodeProcessPort(deps: NodeProcessPortDeps = {}): ProcessPort {
           ['inspect', '--type', 'container', '--format', '{{.State.Running}}', containerName],
           { stdio: ['ignore', 'pipe', 'ignore'] },
         );
-        return await new Promise<SearchContainerState>((resolve) => {
-          let stdout = '';
-          proc.stdout?.on('data', (chunk: Buffer | string) => {
-            stdout += chunk.toString();
-          });
-          proc.once('error', () => {
-            resolve('unavailable');
-          });
-          proc.once('close', (code: number | null) => {
-            if (code !== 0) {
-              resolve('unknown');
-              return;
-            }
-            const trimmed = stdout.trim();
-            if (trimmed === 'true') {
-              resolve('running');
-            } else if (trimmed === 'false') {
-              resolve('stopped');
-            } else {
-              resolve('unknown');
-            }
-          });
+        return await runProcessOperation<SearchContainerState>({
+          proc,
+          budgetMs: DOCKER_PROBE_TIMEOUT_MS,
+          // Um estouro nunca é resposta do daemon — nunca 'unknown' (D8).
+          onTimeout: () => 'unavailable',
+          stdout: proc.stdout ?? undefined,
+          attach: (settle) => {
+            let stdout = '';
+            proc.stdout?.on('data', (chunk: Buffer | string) => {
+              stdout += chunk.toString();
+            });
+            proc.once('error', () => {
+              settle(() => 'unavailable');
+            });
+            proc.once('close', (code: number | null) => {
+              settle(() => {
+                if (code !== 0) {
+                  return 'unknown';
+                }
+                const trimmed = stdout.trim();
+                if (trimmed === 'true') {
+                  return 'running';
+                } else if (trimmed === 'false') {
+                  return 'stopped';
+                } else {
+                  return 'unknown';
+                }
+              });
+            });
+          },
         });
       } catch {
         return 'unavailable';
@@ -252,17 +399,21 @@ export function nodeProcessPort(deps: NodeProcessPortDeps = {}): ProcessPort {
     async startSearchContainer(containerName: string): Promise<SearchContainerStartOutcome> {
       try {
         const proc = doSpawn('docker', ['start', containerName], { stdio: 'ignore' });
-        return await new Promise<SearchContainerStartOutcome>((resolve) => {
-          proc.once('error', () => {
-            resolve({ started: false, reason: 'docker-unavailable' });
-          });
-          proc.once('close', (code: number | null) => {
-            if (code === 0) {
-              resolve({ started: true });
-            } else {
-              resolve({ started: false, reason: 'start-failed' });
-            }
-          });
+        return await runProcessOperation<SearchContainerStartOutcome>({
+          proc,
+          budgetMs: DOCKER_COMMAND_TIMEOUT_MS,
+          // Mata só o CLIENTE `docker start`, nunca o container (D7/ADR-0027(h)).
+          onTimeout: () => ({ started: false, reason: 'docker-unavailable' }),
+          attach: (settle) => {
+            proc.once('error', () => {
+              settle(() => ({ started: false, reason: 'docker-unavailable' }));
+            });
+            proc.once('close', (code: number | null) => {
+              settle(() =>
+                code === 0 ? { started: true } : { started: false, reason: 'start-failed' },
+              );
+            });
+          },
         });
       } catch {
         return { started: false, reason: 'docker-unavailable' };
@@ -272,9 +423,15 @@ export function nodeProcessPort(deps: NodeProcessPortDeps = {}): ProcessPort {
     async stopSearchContainer(containerName: string): Promise<void> {
       try {
         const proc = doSpawn('docker', ['stop', containerName], { stdio: 'ignore' });
-        await new Promise<void>((resolve) => {
-          proc.once('error', () => resolve());
-          proc.once('close', () => resolve());
+        await runProcessOperation<void>({
+          proc,
+          budgetMs: DOCKER_COMMAND_TIMEOUT_MS,
+          // A operação já devolve void e ignora qualquer desfecho (item 2.5).
+          onTimeout: () => undefined,
+          attach: (settle) => {
+            proc.once('error', () => settle(() => undefined));
+            proc.once('close', () => settle(() => undefined));
+          },
         });
       } catch {
         // Nunca lança (item 3.2).
