@@ -181,6 +181,9 @@ export interface AtlasDouble {
     available(): Promise<RendererVadAvailability>;
     resources(): Promise<RendererVadLoad>;
   };
+  handsFree: {
+    setActive(active: boolean): Promise<boolean>;
+  };
   /** SPEC-0054 — métricas de recurso do host, espelho de `window.atlas.metrics` em `src/preload.cjs`. */
   metrics: {
     read(): Promise<RendererSystemMetricsSnapshot>;
@@ -385,6 +388,8 @@ export interface RendererCalls {
   /** SPEC-0052 — modo hands-free: chamadas de IPC do VAD. */
   vadAvailableCalls: number;
   vadResourcesCalls: number;
+  /** SPEC-0065 — ACKs efêmeros publicados ao main para parentamento condicional. */
+  readonly handsFreeSetActive: boolean[];
   /** SPEC-0054 — painel `Sistema`: nº de invocações de cada canal IPC. */
   metricsReadCalls: number;
   tokensReadCalls: number;
@@ -418,6 +423,7 @@ function createCalls(): RendererCalls {
     scriptProcessorCreated: [],
     vadAvailableCalls: 0,
     vadResourcesCalls: 0,
+    handsFreeSetActive: [],
     metricsReadCalls: 0,
     tokensReadCalls: 0,
     dependenciesReadCalls: 0,
@@ -451,6 +457,8 @@ export interface RendererFixtureOptions {
     session: string,
     input: string,
   ) => RendererTurnSnapshot | Promise<RendererTurnSnapshot>;
+  /** SPEC-0065 — permite ACK controlado mantendo o registro ordenado do canal. */
+  readonly handsFreeSetActive?: (active: boolean) => Promise<boolean>;
   /** Override total ou parcial (por canal) da superfície `window.atlas` — resolver/rejeitar cada canal individualmente. */
   readonly atlas?: AtlasOverrides;
   /** SPEC-0046 — disponibilidade/resultado padrão de `window.atlas.stt`. */
@@ -699,6 +707,12 @@ function buildAtlasDouble(options: RendererFixtureOptions, calls: RendererCalls)
         );
       },
     },
+    handsFree: {
+      setActive: (active) => {
+        calls.handsFreeSetActive.push(active);
+        return options.handsFreeSetActive?.(active) ?? Promise.resolve(true);
+      },
+    },
     metrics: {
       read: () => {
         calls.metricsReadCalls += 1;
@@ -797,6 +811,7 @@ function buildAtlasDouble(options: RendererFixtureOptions, calls: RendererCalls)
     tts: { ...base.tts, ...overrides.tts },
     stt: { ...base.stt, ...overrides.stt },
     vad: { ...base.vad, ...overrides.vad },
+    handsFree: { ...base.handsFree, ...overrides.handsFree },
     metrics: { ...base.metrics, ...overrides.metrics },
     tokens: { ...base.tokens, ...overrides.tokens },
     dependencies: { ...base.dependencies, ...overrides.dependencies },

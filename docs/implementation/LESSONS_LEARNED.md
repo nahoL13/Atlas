@@ -74,6 +74,24 @@ Lições que se repetiram em três ou mais SPECs. Este índice existe para sobre
 
 # Registro
 
+## [SPEC-0065](specs/SPEC-0065-desktop-modal-native-dialogs.md) — Modalidade condicional para diálogos nativos com `BrowserWindow` pai (2026-10-10)
+
+**Descobrimos que...**
+
+O parentamento de um diálogo não pode ser decidido uma vez no bootstrap: foco, visibilidade, minimização e hands-free mudam entre solicitações. Um ACK `true` não autoriza captura se voz, microfone ou um turno mudaram na espera; `setActive(false)` compensa a ativação obsoleta.
+
+**A arquitetura ajudou porque...**
+
+As quatro portas já recebiam `ShowMessageBox` injetável e o renderer já tinha harness jsdom, fontes de estado e guardas de gesto. O adaptador puro e o canal local ficaram confinados ao desktop, sem tocar Core, contratos ou as portas fail-closed.
+
+**A arquitetura atrapalhou porque...**
+
+Nada de estrutural a registrar. Sem WindowServer, a modalidade visual real permanece confirmação humana pendente, apesar dos 30 critérios e quatro gates técnicos aprovados.
+
+**Precisamos mudar...**
+
+Nada obrigatório nesta fatia. O smoke humano de modalidade deve ser executado em Electron real; encaminhamento: pendência operacional em `NEXT_CONTEXT.md` e `apps/desktop/CLAUDE.md`.
+
 ## [SPEC-0064](specs/SPEC-0064-process-operation-time-budgets.md) — Orçamento de tempo (watchdog) para as operações de processo do `ProcessPort`, fechando o achado não-bloqueante aberto desde a SPEC-0061 (2026-09-21)
 
 **Descobrimos que...**
@@ -146,23 +164,6 @@ Nada de estrutural — os quatro comandos da raiz (1959/1959 testes) e os 39 Cri
 
 Nada de obrigatório para esta fatia. (1) Esta é a 3ª e última SPEC candidata do [ADR-0027](../06-adr/ADR-0027-external-process-lifecycle-management.md) — o ADR fica inteiramente consumido, nenhuma cláusula (a)–(h) sem implementação — encaminhamento: nenhum, resíduo fechado. (2) Nenhum dos três `spawn` de Docker/Ollama tem teto de tempo (achado não-bloqueante do `architecture-reviewer`, fora do escopo dos CA desta SPEC) — encaminhamento: candidato futuro registrado em `NEXT_CONTEXT.md`, sem SPEC própria. (3) Acesso ao socket do Docker equivale a privilégio elevado no host (Observações da própria SPEC) — mitigado por escopo (três operações fixas) e visibilidade (`atlas status`/stderr/log), não eliminado; mesma classe do resíduo de egress fora de `netRoots` já catalogado desde a SPEC-0055 — encaminhamento: nenhum novo, resíduo de segurança aceito e documentado. (4) O item 1.4 do Roadmap segue não fechado (resta a execução de comandos sob o Permission Service, `ADR primeiro`) — encaminhamento: candidato nomeado desde a SPEC-0028, sem SPEC própria hoje.
 
-## [SPEC-0060](specs/SPEC-0060-ollama-auto-start.md) — Auto-start do Ollama sob opt-in explícito: `createDependencyManager`/`ProcessPort` em `@atlas/core`, CLI + desktop (2026-09-12)
-
-**Descobrimos que...**
-
-O 1º veto do `architecture-reviewer` (achados A1-A7, corrigidos como D22-D25) pegou uma classe de risco que o rascunho original não via porque olhava só "reusar `model.baseUrl`" em isolado: `model.baseUrl` é um campo **compartilhado** pelos providers `local` e `remote`, então derivar `ollamaBaseUrl` dele sem checar o provider efetivo faria `--provider remote --base-url https://api.<terceiro>.com --auto-start-ollama` martelar até 41 requisições HTTP sem credencial contra um host de terceiro que nunca vai rodar Ollama — o mesmo tipo de vazamento por reuso "óbvio demais" de campo compartilhado que o Registro já vê em outras formas (SPEC-0057/D21: duas deps independentes que só coincidiam por convenção). O achado mais consequente (A2/D23) foi estrutural, não de segurança: o desenho inicial condicionava o registro de posse do processo à **prontidão** (health-check verdadeiro), não ao **sucesso do spawn** — um `ollama serve` lento a carregar um modelo grande (>10s) sobreviveria ao `before-quit` como órfão permanente, porque a sessão seguinte o veria como `'already-running'` sem nunca ter registrado que foi ela quem o subiu. A correção (posse no `spawn`, nunca na prontidão) é o tipo de decisão que só aparece quando alguém pergunta "e se o daemon for só lento, não se ele nunca sobe" — a mesma disciplina de "enumerar nominalmente, não generalizar em prosa" que os Padrões Recorrentes já catalogam, aqui aplicada a um eixo temporal (lento × nunca), não de contagem.
-
-**A arquitetura ajudou porque...**
-
-O molde "porta injetável com três operações nomeadas e fixas, nunca `run(command, args)` genérico" (ADR-0027(b), já decidido fora da SPEC) preveniu por construção a tentação de generalizar cedo demais: `ProcessPort` nasceu só com `ollama`, e a 3ª SPEC candidata do próprio ADR-0027 (container SearXNG) vai estender por união discriminada aditiva, não por parâmetro `containerName` morto hoje — mesma disciplina "promover só com 2º consumidor real" (ADR-0007) aplicada a uma porta em vez de um tipo. `resolveDependencyConfig` (molde de `resolveDataDir`, SPEC-0039/D17) absorveu o resolvedor parcial sem desenho novo, e o precedente "campo obrigatório novo em `AtlasConfig` quebra fakes tipados diretamente" (catalogado desde a SPEC-0017, 6ª+ ocorrência) foi precificado corretamente desde o rascunho — `apps/cli/tests/status.test.ts` quebrou exatamente como previsto no passo 1 da Estratégia de Implementação, sem surpresa. O padrão de desfecho como união discriminada com `reason` de conjunto fechado (`stt-engine.ts`, `GitRootError` da SPEC-0056) generalizou de novo para `DependencyOutcome`/`OllamaFailureReason` sem inventar uma 4ª variante de "erro estruturado".
-
-**A arquitetura atrapalhou porque...**
-
-Nada de estrutural — os quatro comandos da raiz (101 arquivos/1865 testes, +93 sobre a baseline de 1772 da SPEC-0059) e os 29 Critérios de Aceitação passaram sem achado bloqueante na 2ª rodada do `spec-validator`. O único custo real, nomeado e aceito pela própria SPEC (não um atrito de arquitetura): o ADR-0027(d) exige o disparo **antes de despachar para qualquer comando**, então comandos que nunca tocam o Model Gateway (`memory list`, `forget`, `skills list`, `status`) pagam até 10 s de bloqueio quando o opt-in está ligado e o Ollama está fora do ar — o preço de "uma única decisão, no bootstrap, sem implicitude por comando" (ADR-0027(g)) é justamente não poder filtrar por comando sem reabrir essa implicitude.
-
-**Precisamos mudar...**
-
-Nada de obrigatório para esta fatia. (1) O desktop segue efetivamente restrito a lançamento por terminal/dev nesta fatia — a única fonte de opt-in é `ATLAS_AUTO_START_OLLAMA`, e um app empacotado aberto por Finder/Dock tipicamente não herda o ambiente do shell (D15/D25) — mesmo precedente da SPEC-0055/D17, fechado depois pela SPEC-0059 — encaminhamento: candidato de painel de rede/dependências nomeado em `NEXT_CONTEXT.md`/`apps/desktop/CLAUDE.md`, sem SPEC própria hoje. (2) Achado N1 da 2ª revisão: com provider `'local'` + `--base-url` apontando para um Ollama remoto legítimo fora do ar, o Atlas ainda sobe um `ollama serve` local inútil (10 s de penalidade) — caso não coberto por D22 (que resolve exfiltração, não este desperdício de latência) — encaminhamento: registrado como candidato futuro, sem ADR necessário a priori, sem SPEC própria hoje. (3) Terceira instância do resíduo de egress não julgado por `evaluate`/`netRoots` da plataforma (Model Gateway desde a SPEC-0004, `http_get`/`web_search` desde a SPEC-0055/0057, agora o health-check do Ollama, D10/ADR-0027(a)) — fica registrada como fato estrutural recorrente, não um bug novo — encaminhamento: já nomeado desde a SPEC-0055 como candidato de consolidação futura, sem SPEC própria. (4) A 3ª SPEC candidata do ADR-0027 (auto-start do container SearXNG) fica desbloqueada — a unidade, a porta e o formato de desfecho que ela vai estender já existem — encaminhamento: candidato nomeado em `NEXT_CONTEXT.md`, sem SPEC própria ainda.
 
 ---
 

@@ -45,6 +45,9 @@ contextBridge.exposeInMainWorld('atlas', {
     available: () => ipcRenderer.invoke('atlas:vad:available'),
     resources: () => ipcRenderer.invoke('atlas:vad:resources'),
   },
+  handsFree: {
+    setActive: (active) => ipcRenderer.invoke('atlas:hands-free:set-active', active),
+  },
   metrics: {
     read: () => ipcRenderer.invoke('atlas:metrics:read'),
   },

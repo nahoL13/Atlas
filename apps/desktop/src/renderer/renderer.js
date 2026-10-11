@@ -696,7 +696,7 @@ function refreshPermissionsPanelState() {
 // origem única — visível/habilitado SSE `askInFlight`. Nenhum `.finally` do
 // gesto atribui `hidden`/`disabled` deste botão diretamente (D10).
 function refreshAskControls() {
-  const disabled = chatTurnInFlight || askInFlight;
+  const disabled = chatTurnInFlight || askInFlight || handsFreeActivationInFlight;
   const submitButton = document.getElementById('ask-submit');
   if (submitButton !== null) {
     submitButton.disabled = disabled;
@@ -827,7 +827,7 @@ document.getElementById('ask-form').addEventListener('submit', (event) => {
   // submissão implícita do `<form>` (Enter em `#objective`, que fica
   // deliberadamente habilitado — D3) contorna o botão. Recusa silenciosa:
   // não escreve em `#ask-result`, não limpa `#objective` (D4).
-  if (chatTurnInFlight || askInFlight) {
+  if (chatTurnInFlight || askInFlight || handsFreeActivationInFlight) {
     return;
   }
   const objective = document.getElementById('objective').value.trim();
@@ -2050,7 +2050,7 @@ function micBusy() {
 // `micBusy()`: o gesto cancela o round-trip cognitivo, não a transcrição
 // local — `#mic-cancel-button` segue intacto e separado).
 function refreshChatControlsForMic() {
-  const disabled = chatTurnInFlight || askInFlight || micBusy();
+  const disabled = chatTurnInFlight || askInFlight || micBusy() || handsFreeActivationInFlight;
   const sendButton = document.getElementById('chat-send');
   if (sendButton !== null) {
     sendButton.disabled = disabled;
@@ -2071,7 +2071,7 @@ function setMicStatus(text) {
 }
 
 function refreshMicButtons() {
-  const externalBusy = chatTurnInFlight || askInFlight;
+  const externalBusy = chatTurnInFlight || askInFlight || handsFreeActivationInFlight;
   if (micState === 'unavailable') {
     micButton.disabled = true;
     // SPEC-0053 (Escopo 9/CA11): rótulo de controle sem emoji.
@@ -2334,6 +2334,9 @@ async function startRecording() {
 }
 
 micButton.addEventListener('click', () => {
+  if (handsFreeActivationInFlight) {
+    return;
+  }
   if (micState === 'idle') {
     void startRecording();
   } else if (micState === 'recording') {
@@ -2364,7 +2367,7 @@ document.getElementById('chat-form').addEventListener('submit', (event) => {
   // um `submit` despachado programaticamente ou por submissão implícita do
   // `<form>` contorna o botão. Serializa contra o próprio turno de chat e
   // contra um `ask` em voo (fecha o achado da SPEC-0047).
-  if (chatTurnInFlight || askInFlight) {
+  if (chatTurnInFlight || askInFlight || handsFreeActivationInFlight) {
     return;
   }
   const inputEl = document.getElementById('chat-input');
@@ -2977,6 +2980,7 @@ let handsFreePreRollRing = [];
 let handsFreeUtteranceChunks = [];
 let handsFreeFrameQueue = [];
 let handsFreeProcessingQueue = false;
+let handsFreeActivationInFlight = false;
 
 // Ponto de criação ÚNICO do detector (CA 23/24, ADR-0023(c)) — a chamada de
 // criação da sessão de inferência do runtime só pode aparecer DENTRO desta
@@ -3115,10 +3119,10 @@ function refreshHandsFreeToggle() {
   if (handsFreeState === 'unavailable') {
     handsFreeState = 'off';
   }
-  const busy = chatTurnInFlight || askInFlight;
+  const busy = chatTurnInFlight || askInFlight || handsFreeActivationInFlight;
   handsFreeToggleEl.disabled = busy && handsFreeState === 'off';
   handsFreeToggleEl.title =
-    busy && handsFreeState === 'off' ? 'turno de chat/ask em andamento' : '';
+    busy && handsFreeState === 'off' ? 'ativação ou turno em andamento' : '';
   // SPEC-0053 (Escopo 9/CA11): rótulo de controle sem emoji.
   handsFreeToggleEl.textContent =
     handsFreeState === 'off' ? 'Ligar conversa contínua' : 'Desligar conversa contínua';
@@ -3142,13 +3146,45 @@ function refreshChatControlsForHandsFree() {
 }
 
 function handsFreeDispatch(event) {
+  const wasActive = handsFreeActive();
   handsFreeState = nextHandsFreeState(handsFreeState, event);
+  if (wasActive && !handsFreeActive()) {
+    publishHandsFreeInactive();
+  }
   refreshHandsFreeIndicator();
   refreshHandsFreeToggle();
   refreshAskControls();
   refreshMicButtons();
   refreshChatControlsForHandsFree();
   return handsFreeState;
+}
+
+function refreshHandsFreeActivationControls() {
+  refreshHandsFreeToggle();
+  refreshAskControls();
+  refreshMicButtons();
+  refreshChatControlsForMic();
+}
+
+function setHandsFreeActivationInFlight(value) {
+  handsFreeActivationInFlight = value;
+  refreshHandsFreeActivationControls();
+}
+
+function publishHandsFreeInactive() {
+  void Promise.resolve()
+    .then(() => window.atlas.handsFree.setActive(false))
+    .catch(() => {});
+}
+
+function canActivateHandsFree() {
+  return (
+    handsFreeState === 'off' &&
+    !chatTurnInFlight &&
+    !askInFlight &&
+    !micBusy() &&
+    computeHandsFreeUnavailableReason() === ''
+  );
 }
 
 function handsFreeStartRearmTimer() {
@@ -3555,9 +3591,41 @@ async function handsFreeEnable() {
   setHandsFreeStatus('');
 }
 
+async function requestHandsFreeEnable() {
+  if (handsFreeActivationInFlight || handsFreeState !== 'off') {
+    return;
+  }
+  setHandsFreeActivationInFlight(true);
+  let acknowledged = false;
+  try {
+    acknowledged = (await window.atlas.handsFree.setActive(true)) === true;
+  } catch {
+    // Sem ACK, o modo fica desligado e o main conserva o fallback sem pai.
+  }
+  if (!acknowledged) {
+    setHandsFreeStatus('Não foi possível sincronizar a conversa contínua.');
+    setHandsFreeActivationInFlight(false);
+    return;
+  }
+  if (!canActivateHandsFree()) {
+    try {
+      await window.atlas.handsFree.setActive(false);
+    } catch {
+      // O main conservador mantém diálogos sem pai até a próxima sincronização.
+    }
+    setHandsFreeActivationInFlight(false);
+    return;
+  }
+  void handsFreeEnable();
+  setHandsFreeActivationInFlight(false);
+}
+
 handsFreeToggleEl.addEventListener('click', () => {
+  if (handsFreeActivationInFlight) {
+    return;
+  }
   if (handsFreeState === 'off') {
-    void handsFreeEnable();
+    void requestHandsFreeEnable();
     return;
   }
   if (handsFreeState === 'unavailable') {

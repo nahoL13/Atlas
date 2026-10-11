@@ -61,7 +61,7 @@ As métricas são separadas por executor. Tokens efetivos Claude usam os pesos h
 | SPEC-0048 | Claude | Fechamento dos dois resíduos da SPEC-0047 no renderer do desktop: `#chat-send` passa a considerar `askInFlight` na serialização de gestos (com guarda no manipulador de envio), e o comentário sobre `computeDefaultPiperVoiceURI` volta a descrever o estado real de cobertura | Done | 2 | 2026-08-03 | 24.788.975 | 4.859.006 | complete |
 | SPEC-0049 | Claude | Fechamento das duas direções residuais de serialização de gestos registradas pela SPEC-0048 (DoD-d): o painel `ask` do desktop passa a recusar um 2º `ask` concorrente e um `ask` disparado durante um turno de chat em voo, e a falha de `atlas.ask` deixa de virar unhandled rejection para aparecer no `#ask-result` | Done | 2 | 2026-08-06 | 20.345.139 | 3.913.578 | complete |
 | SPEC-0050 | Claude | Fechamento do resíduo D7 da SPEC-0049: o rastreio de operação em voo do `core-bridge` (`busySessions`/`inFlightOperations`) passa a ser guarda de entrada também de `resolveAskSnapshot` e `sendChatTurn` — somando-se aos consumidores que já existem (`updatePersona`, `selectPermissionRoots`) —, tornando o invariante "um round-trip contra o Core por vez" estrutural no main process, e não mais garantia exclusiva do renderer | Done | 2 | 2026-08-04 | 31.029.100 | 8.304.209 | complete |
-| SPEC-0051 | Claude | Cancelamento (desistência) de uma operação em voo no `apps/desktop`: um botão "Cancelar" por painel (`ask` e chat) faz a promessa do gesto assentar imediatamente com mensagem pinada, libera a interface e o main process para um gesto novo, e **contém** os efeitos do trabalho abandonado (nenhum `learned` persistido, nenhuma conversa atualizada, `ConfirmPort` fail-closed **pegajoso por sessão**, conversa afetada em quarentena), sem introduzir cancelamento real dentro do Core. | Done | 2 | 2026-08-05 | 99.432.888 | 13.842.602 | complete |
+| SPEC-0051 | Claude | Cancelamento (desistência) de uma operação em voo no `apps/desktop`: um botão "Cancelar" por painel (`ask` e chat) faz a promessa do gesto assentar imediatamente com mensagem pinada, libera a interface e o main process para um gesto novo, e **contém** os efeitos do trabalho abandonado (nenhum `learned` persistido, nenhuma conversa atualizada, `ConfirmPort` fail-closed **pegajoso por sessão**, conversa afetada em quarentena), sem introduzir cancelamento real dentro do Core. | Done | 3 | 2026-09-22 | 103.912.430 | 14.988.562 | complete |
 | SPEC-0052 | Claude | Modo hands-free no `apps/desktop`: microfone aberto entre turnos sob toggle explícito, fim de fala detectado por VAD Silero em WASM no renderer, auto-envio da transcrição ao chat e resposta falada — com o microfone fechado durante o processamento e durante a fala | Draft | 7 | 2026-09-13 | 87.098.925 | 13.212.332 | complete |
 | SPEC-0053 | Claude | Desktop v3.0: núcleo holográfico volumétrico (Canvas 2D, 400 pontos determinísticos, sete perfis de estado ligados a sinais reais de voz) substitui a esfera CSS-only; navegação passa a drawer overlay sob demanda com Sessão absorvendo a timeline integralmente; substitui integralmente as direções v1.x/v2.0 reprovadas em smoke humano | Done | 21 | 2026-08-18 | 222.553.211 | 35.802.728 | complete |
 | SPEC-0053 | Codex | Núcleo holográfico volumétrico, navegação por drawer e sessão sob demanda no | Done | 6 | 2026-08-07 | 79.822.388 | N/D | complete |
@@ -75,7 +75,8 @@ As métricas são separadas por executor. Tokens efetivos Claude usam os pesos h
 | SPEC-0061 | Claude | Auto-start do container Docker do provedor de busca sob opt-in explícito e nominal: `ProcessPort`/`createDependencyManager` (`@atlas/core`) estendidos de forma aditiva com três operações Docker nomeadas — só `start` de um container **já existente**, nunca `run`/`create`/`pull` —, disparados uma vez por processo em `apps/cli` e uma vez por sessão de app em `apps/desktop`. | Draft | 5 | 2026-09-13 | 43.402.496 | 7.957.334 | complete |
 | SPEC-0062 | Claude | Auto-start do Ollama ligado **por padrão** no `apps/desktop` (env explícita como via de desligamento) e campo de nome do container Docker do provedor de busca no painel de rede/busca, com a tentativa automática auditável no painel `Sistema`. | Draft | 12 | 2026-09-19 | 160.440.469 | 24.832.683 | complete |
 | SPEC-0063 | Claude | Detecção de "nenhum modelo de IA instalado" na abertura do `apps/desktop` e instalação assistida, a partir de um catálogo curado e fixo, com tamanho visível antes do download, progresso por polling e cancelamento. | Draft | 11 | 2026-09-21 | 338.576.110 | 47.856.099 | complete |
-| SPEC-0064 | Claude | Orçamento de tempo (watchdog) para cada operação de processo/stream do adaptador real `nodeProcessPort()` — `spawn` do Ollama, as três invocações Docker do container de busca e o stream NDJSON de `pullOllamaModel` —, de forma que nenhuma chamada da `ProcessPort` possa ficar pendurada indefinidamente. | Draft | 6 | 2026-09-21 | 34.475.800 | 6.048.828 | complete |
+| SPEC-0064 | Claude | Orçamento de tempo (watchdog) para cada operação de processo/stream do adaptador real `nodeProcessPort()` — `spawn` do Ollama, as três invocações Docker do container de busca e o stream NDJSON de `pullOllamaModel` —, de forma que nenhuma chamada da `ProcessPort` possa ficar pendurada indefinidamente. | Draft | 7 | 2026-09-22 | 59.502.485 | 9.569.276 | complete |
+| SPEC-0065 | Claude | Passar a janela principal como **pai** de toda chamada a `dialog.showMessageBox` do `apps/desktop`, tornando os quatro diálogos nativos de consentimento modais em relação a ela — de forma que a janela deixe de aceitar gestos novos enquanto um diálogo de consentimento estiver na tela, o que remove a origem humana do "diálogo fantasma" (SPEC-0051/D16) e da corrida A7 (SPEC-0038), sem introduzir cancelamento real no Core e sem tocar as quatro portas fail-closed. | Draft | 2 | 2026-09-22 | 6.137.921 | 1.683.421 | complete |
 
 ## Detalhamento por fase
 
@@ -132,7 +133,7 @@ Valores em tokens efetivos. Codex não é somado nem comparado a Claude enquanto
 | SPEC-0048 | Claude | 555.980 | 729.619 | 577.471 | 768.961 | 557.359 | 1.669.616 | 0 |
 | SPEC-0049 | Claude | 677.295 | 0 | 439.408 | 1.052.170 | 415.004 | 1.329.701 | 0 |
 | SPEC-0050 | Claude | 826.040 | 3.578.699 | 867.789 | 864.266 | 695.112 | 1.472.303 | 0 |
-| SPEC-0051 | Claude | 1.107.198 | 23.450 | 935.085 | 8.915.134 | 1.178.794 | 1.682.941 | 0 |
+| SPEC-0051 | Claude | 1.107.198 | 1.169.410 | 935.085 | 8.915.134 | 1.178.794 | 1.682.941 | 0 |
 | SPEC-0052 | Claude | 8.783.958 | 0 | 794.333 | 0 | 994.857 | 2.431.406 | 207.778 |
 | SPEC-0053 | Claude | 7.965.554 | 1.996.006 | 1.000.863 | 18.752.363 | 3.097.778 | 2.990.164 | 0 |
 | SPEC-0053 | Codex | N/D | N/D | N/D | N/D | N/D | — | — |
@@ -146,7 +147,8 @@ Valores em tokens efetivos. Codex não é somado nem comparado a Claude enquanto
 | SPEC-0061 | Claude | 728.579 | 1.856.617 | 0 | 1.843.822 | 1.155.908 | 3.081.205 | 0 |
 | SPEC-0062 | Claude | 5.827.354 | 2.639.871 | 1.524.014 | 10.068.741 | 1.214.887 | 3.557.816 | 0 |
 | SPEC-0063 | Claude | 3.622.090 | 3.050.145 | 2.372.091 | 32.936.486 | 2.378.928 | 3.496.359 | 0 |
-| SPEC-0064 | Claude | 1.055.407 | 1.085.230 | 1.288.306 | 2.581.801 | 0 | 38.084 | 0 |
+| SPEC-0064 | Claude | 1.541.284 | 1.085.230 | 1.288.306 | 2.581.801 | 0 | 3.072.655 | 0 |
+| SPEC-0065 | Claude | 789.547 | 0 | 893.874 | 0 | 0 | 0 | 0 |
 
 ## Eficiência de processo (overhead ÷ implementação)
 
@@ -192,7 +194,7 @@ Calculada separadamente por executor, apenas quando tokens efetivos comparáveis
 | SPEC-0048 | Claude | 768.961 | 4.090.045 | 5.3× |
 | SPEC-0049 | Claude | 1.052.170 | 2.861.408 | 2.7× |
 | SPEC-0050 | Claude | 864.266 | 7.439.943 | 8.6× |
-| SPEC-0051 | Claude | 8.915.134 | 4.927.468 | 0.6× |
+| SPEC-0051 | Claude | 8.915.134 | 6.073.428 | 0.7× |
 | SPEC-0053 | Claude | 18.752.363 | 17.050.365 | 0.9× |
 | SPEC-0054 | Claude | 13.556.745 | 14.059.800 | 1.0× |
 | SPEC-0055 | Claude | 7.224.968 | 15.569.154 | 2.2× |
@@ -204,8 +206,8 @@ Calculada separadamente por executor, apenas quando tokens efetivos comparáveis
 | SPEC-0061 | Claude | 1.843.822 | 6.822.309 | 3.7× |
 | SPEC-0062 | Claude | 10.068.741 | 14.763.942 | 1.5× |
 | SPEC-0063 | Claude | 32.936.486 | 14.919.613 | 0.5× |
-| SPEC-0064 | Claude | 2.581.801 | 3.467.027 | 1.3× |
+| SPEC-0064 | Claude | 2.581.801 | 6.987.475 | 2.7× |
 
 ## Como estimar antes de começar uma SPEC nova
 
-- Claude: SPECs concluídas: 50. Custo médio: **9.675.589 tokens efetivos**. Faixa: 2.795.790 – 35.802.728.
+- Claude: SPECs concluídas: 50. Custo médio: **9.698.508 tokens efetivos**. Faixa: 2.795.790 – 35.802.728.

@@ -48,35 +48,48 @@ import { createSttEngine } from './stt-engine.js';
 import type { SttProcess, SpawnStt, SttTranscribeInput } from './stt-engine.js';
 import { createVadResources } from './vad-resources.js';
 import { createSystemMetrics } from './system-metrics.js';
+import { createParentedShowMessageBox } from './dialog-parent.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Estado efêmero do renderer (SPEC-0065): enquanto o modo hands-free está
+// ativo, os diálogos permanecem independentes para o freio continuar
+// alcançável. Nunca persiste nem atravessa contratos públicos.
+let handsFreeModeActive = false;
+
+const showMessageBox = createParentedShowMessageBox({
+  isParentingAllowed: () => !handsFreeModeActive,
+  listWindows: () => BrowserWindow.getAllWindows(),
+  showWithParent: (parent, options) => dialog.showMessageBox(parent, options),
+  showWithoutParent: (options) => dialog.showMessageBox(options),
+});
 
 // ConfirmPort de diálogo nativo: `dialog.showMessageBox` só existe aqui, no
 // main process — `confirm-port.ts`/`core-bridge.ts` seguem livres de import
 // de Electron (testáveis no Vitest).
 const confirm = createDialogConfirmPort({
-  showMessageBox: (options) => dialog.showMessageBox(options),
+  showMessageBox,
 });
 
 // GrantConfirmPort de concessão de política de escrita (SPEC-0038, D11):
 // diálogo dedicado, distinto do `confirm` de ação pontual acima — mesma
 // razão de `dialog.showMessageBox` só existir no main process.
 const confirmGrant = createGrantConfirmDialog({
-  showMessageBox: (options) => dialog.showMessageBox(options),
+  showMessageBox,
 });
 
 // PersonaDeleteConfirmPort de consentimento de remoção de Persona
 // (SPEC-0039, Decisão D14): diálogo dedicado, distinto dos dois acima —
 // mesma razão de `dialog.showMessageBox` só existir no main process.
 const confirmDelete = createPersonaDeleteDialog({
-  showMessageBox: (options) => dialog.showMessageBox(options),
+  showMessageBox,
 });
 
 // NetworkGrantConfirmPort de concessão de política de rede (SPEC-0059, D3):
 // quarta porta fail-closed, diálogo dedicado, distinto dos três acima —
 // mesma razão de `dialog.showMessageBox` só existir no main process.
 const confirmNetworkGrant = createNetworkGrantConfirmDialog({
-  showMessageBox: (options) => dialog.showMessageBox(options),
+  showMessageBox,
 });
 
 // Piper (SPEC-0040, ADR-0021): motor de TTS neural local, subprocesso de
@@ -354,9 +367,15 @@ function createWindow(): void {
   // Gatilhos de fechamento da janela de captura (D17): navegação/recarga do
   // `webContents` e o fechamento da própria janela — nenhum deles deve
   // deixar a permissão de microfone concedida além do necessário.
-  window.webContents.on('did-start-navigation', () => captureWindow.end());
+  window.webContents.on('did-start-navigation', () => {
+    handsFreeModeActive = false;
+    captureWindow.end();
+  });
   window.webContents.on('did-finish-load', () => captureWindow.end());
-  window.on('closed', () => captureWindow.end());
+  window.on('closed', () => {
+    handsFreeModeActive = false;
+    captureWindow.end();
+  });
 
   void window.loadFile(join(__dirname, 'renderer', 'index.html'));
 }
@@ -468,6 +487,13 @@ ipcMain.handle('atlas:models:cancel', () => cancelModelInstall());
 // (nunca sobe/desliga um Core) — só marca como abandonada toda operação
 // cancelável (`ask`/turno de chat) ainda ativa.
 ipcMain.handle('atlas:cancel', () => cancelInFlightOperation());
+
+ipcMain.handle('atlas:hands-free:set-active', (_event, active: unknown) => {
+  if (typeof active === 'boolean') {
+    handsFreeModeActive = active;
+  }
+  return handsFreeModeActive;
+});
 
 ipcMain.handle('atlas:permissions:select', async (_event, roots: PermissionRoots) => {
   const selection = await selectPermissionRoots(roots, { confirmGrant });

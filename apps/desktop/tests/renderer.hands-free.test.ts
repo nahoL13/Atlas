@@ -45,6 +45,20 @@ function indicatorText(f: RendererFixture): string {
   return f.document.getElementById('hands-free-indicator')?.textContent ?? '';
 }
 
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve(value: T): void;
+  reject(reason: unknown): void;
+} {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 interface ScriptedDetector {
   probe(frame: Float32Array): Promise<number>;
   reset(): void;
@@ -103,6 +117,90 @@ async function enableHandsFree(
   toggleEl(f).click();
   await f.flush();
 }
+
+describe('handshake do parentamento condicional (SPEC-0065)', () => {
+  it('bloqueia os quatro gestos enquanto o ACK true fica pendente e habilita uma única captura após ACK', async () => {
+    const ack = deferred<boolean>();
+    let askCalls = 0;
+    const f = await open({
+      handsFreeSetActive: () => ack.promise,
+      atlas: {
+        ask: () => {
+          askCalls += 1;
+          return Promise.resolve({ text: '', steps: [], learned: [] });
+        },
+      },
+    });
+    const setFactory = f.internals['setHandsFreeDetectorFactory'] as (
+      factory: () => Promise<ScriptedDetector>,
+    ) => void;
+    setFactory(() => Promise.resolve(scriptedDetector([0]).detector));
+
+    toggleEl(f).click();
+    await f.flush();
+    expect(f.calls.handsFreeSetActive).toEqual([true]);
+    expect(toggleEl(f).disabled).toBe(true);
+    expect((f.document.getElementById('chat-send') as HTMLButtonElement).disabled).toBe(true);
+    expect((f.document.getElementById('ask-submit') as HTMLButtonElement).disabled).toBe(true);
+    expect((f.document.getElementById('mic-button') as HTMLButtonElement).disabled).toBe(true);
+
+    toggleEl(f).click();
+    (f.document.getElementById('chat-input') as HTMLInputElement).value = 'não enviar';
+    f.document
+      .getElementById('chat-form')
+      ?.dispatchEvent(new f.window.Event('submit', { cancelable: true }));
+    (f.document.getElementById('objective') as HTMLInputElement).value = 'não perguntar';
+    f.document
+      .getElementById('ask-form')
+      ?.dispatchEvent(new f.window.Event('submit', { cancelable: true }));
+    (f.document.getElementById('mic-button') as HTMLButtonElement).click();
+    await f.flush();
+    expect(f.calls.handsFreeSetActive).toEqual([true]);
+    expect(f.calls.chatSend).toEqual([]);
+    expect(askCalls).toBe(0);
+    expect(f.calls.getUserMediaCalls).toEqual([]);
+
+    ack.resolve(true);
+    await f.flush();
+    expect(f.calls.handsFreeSetActive).toEqual([true]);
+    expect(f.calls.getUserMediaCalls).toHaveLength(1);
+    expect(indicatorText(f)).toContain('Ouvindo');
+    expect(toggleEl(f).disabled).toBe(false);
+  });
+
+  it('compensa ACK true obsoleto após perder voz antes do ACK', async () => {
+    const ack = deferred<boolean>();
+    const f = await open({
+      handsFreeSetActive: (active) =>
+        active ? ack.promise : Promise.reject(new Error('compensação indisponível')),
+    });
+    toggleEl(f).click();
+    await f.flush();
+    f.speechSynthesis.setVoices([]);
+    f.speechSynthesis.fireVoicesChanged();
+    await f.flush();
+    ack.resolve(true);
+    await f.flush();
+
+    expect(f.calls.handsFreeSetActive).toEqual([true, false]);
+    expect(f.calls.getUserMediaCalls).toEqual([]);
+    expect(statusText(f)).not.toBe('');
+    expect(toggleEl(f).disabled).toBe(true);
+  });
+
+  it('ACK rejeitado mantém off, não compensa e mostra falha', async () => {
+    const f = await open({
+      handsFreeSetActive: () => Promise.reject(new Error('IPC falhou')),
+    });
+    toggleEl(f).click();
+    await f.flush();
+
+    expect(f.calls.handsFreeSetActive).toEqual([true]);
+    expect(f.calls.getUserMediaCalls).toEqual([]);
+    expect(toggleEl(f).textContent).toContain('Ligar');
+    expect(statusText(f)).not.toBe('');
+  });
+});
 
 /** Empurra `count` frames em lotes de 8 (cadência real do ScriptProcessorNode), drenando a fila entre lotes. */
 async function pushFrames(f: RendererFixture, count: number): Promise<void> {
@@ -357,6 +455,7 @@ describe('overrun da fila (CA34)', () => {
     expect(toggleEl(f).textContent).toContain('Ligar');
     expect(statusText(f)).not.toBe('');
     expect(f.calls.sttCaptureEndCalls).toBeGreaterThanOrEqual(1);
+    expect(f.calls.handsFreeSetActive).toEqual([true, false]);
   });
 });
 
@@ -592,6 +691,7 @@ describe('freio: desligar fecha o microfone em qualquer estado (CA39)', () => {
     await f.flush();
 
     expect(f.calls.cancelCalls).toBe(1);
+    expect(f.calls.handsFreeSetActive).toEqual([true, false]);
   });
 
   it('desligar em speaking (fala do assistente pendente) desliga sem esperar o fim da fala', async () => {
